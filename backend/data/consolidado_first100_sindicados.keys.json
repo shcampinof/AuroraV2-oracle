@@ -1,0 +1,126 @@
+{
+  "generatedAt": "2026-03-02T19:26:14.447Z",
+  "source": "consolidado_ppl.csv:first100",
+  "count": 17,
+  "keys": [
+    {
+      "numero": "584994",
+      "proceso": "760016000193202331309",
+      "nombre": "Jesse Alexander Bernald Crilly",
+      "situacion": "SINDICADO",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "865092",
+      "proceso": "765206000180202000000",
+      "nombre": "Jose Luis Escobar Cabal",
+      "situacion": "SINDICADO",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "1707100",
+      "proceso": "68-081-60-00135-2018-00218",
+      "nombre": "WILLIAM JOSE ROSALES SANCHEZ",
+      "situacion": "SINDICADO",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "1733226",
+      "proceso": "11001-6000-253-2012-84674",
+      "nombre": "DALWIN ENRIQUE ALCOSER FRANCO",
+      "situacion": "Sindicado",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "1977993",
+      "proceso": "110016000098201000000",
+      "nombre": "Abimael Gomez Ballena",
+      "situacion": "SINDICADO",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "2662265",
+      "proceso": "REF: 472456001031202400451",
+      "nombre": "EDIXON JOHAN RICO HERRERA",
+      "situacion": "SINDICADO",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "2781811",
+      "proceso": "50016000206202300000",
+      "nombre": "Maikel Hogmin Lam Fernandez",
+      "situacion": "SINDICADO",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "3128899",
+      "proceso": "2529061080102021-80200",
+      "nombre": "MIGUEL RERNANDO GUARIN",
+      "situacion": "SINDICADO",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "3158654",
+      "proceso": "110016099144202000000",
+      "nombre": "Julio Daniel Castañeda Prieto",
+      "situacion": "SINDICADO",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "3523832",
+      "proceso": "050016000248202314028",
+      "nombre": "Luis Rodrigo Pulgarin Mazo",
+      "situacion": "SINDICADO",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "3761060",
+      "proceso": "0863860012592018-01815-00",
+      "nombre": "DIOGENES ENRIQUE MAURY PATIÑO",
+      "situacion": "Sindicado",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "3811597",
+      "proceso": "130016001129202103812",
+      "nombre": "DONALDO BELTRAN LUNA",
+      "situacion": "Sindicado",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "3907978",
+      "proceso": "138366001111202000000",
+      "nombre": "Alveiro Jose Garcia Vasquez",
+      "situacion": "SINDICADO",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "4174471",
+      "proceso": "810016001137202100483",
+      "nombre": "TORIBIO CARVAJAL",
+      "situacion": "SINDICADO",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "4538205",
+      "proceso": "664406000068202000000",
+      "nombre": "Rubien Antonio Restrepo Garcia",
+      "situacion": "SINDICADO",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "4545859",
+      "proceso": "17614-60-00-042-2019-00289-00",
+      "nombre": "HOOVER ANTONIO LOAIZA LADINO",
+      "situacion": "Sindicado",
+      "situacionActualizada": ""
+    },
+    {
+      "numero": "4779724",
+      "proceso": "1,980961073122E+22",
+      "nombre": "VICTOR MANUEL FLOREZ HINESTROZA",
+      "situacion": "SINDICADO",
+      "situacionActualizada": ""
+    }
+  ]
+}
