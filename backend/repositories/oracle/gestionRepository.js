@@ -3,6 +3,7 @@ const { execute, getOracleDriver } = require('../../db/oraclePool');
 const GESTION_COLUMNS = new Set([
   'PAG',
   'DEFENSOR',
+  'CEDULA_DEFENSOR',
   'ACCION_REALIZAR',
   'FECHA_ANALISIS',
   'VENCIMIENTO_TERMINOS',
@@ -212,19 +213,36 @@ async function updateGestionById(idGestion, fields = {}) {
   return Number(result?.rowsAffected || 0);
 }
 
-async function assignDefensorBySituacion(idSituacion, defensor, pagAsignador = '') {
-  const hasPag = String(pagAsignador || '').trim() !== '';
+function normalizeAssignOptions(pagOrOptions) {
+  if (pagOrOptions && typeof pagOrOptions === 'object') {
+    return {
+      pagAsignador: String(pagOrOptions?.pagAsignador || '').trim(),
+      defensorCedula: String(pagOrOptions?.defensorCedula || pagOrOptions?.defensorId || '').trim(),
+    };
+  }
+  return {
+    pagAsignador: String(pagOrOptions || '').trim(),
+    defensorCedula: '',
+  };
+}
+
+async function assignDefensorBySituacion(idSituacion, defensor, pagOrOptions = '') {
+  const options = normalizeAssignOptions(pagOrOptions);
+  const hasPag = String(options.pagAsignador || '').trim() !== '';
+  const hasDefensorCedula = String(options.defensorCedula || '').trim() !== '';
   const sql = `
     UPDATE DNDP.GESTION_JURIDICA
        SET DEFENSOR = :defensor
          ${hasPag ? ', PAG = :pag' : ''}
+         ${hasDefensorCedula ? ', CEDULA_DEFENSOR = :cedulaDefensor' : ''}
      WHERE ID_SITUACION = :idSituacion
   `;
 
   const binds = {
     defensor: String(defensor || '').trim(),
     idSituacion: Number(idSituacion),
-    ...(hasPag ? { pag: String(pagAsignador || '').trim() } : {}),
+    ...(hasPag ? { pag: String(options.pagAsignador || '').trim() } : {}),
+    ...(hasDefensorCedula ? { cedulaDefensor: String(options.defensorCedula || '').trim() } : {}),
   };
 
   const result = await execute(sql, binds, {

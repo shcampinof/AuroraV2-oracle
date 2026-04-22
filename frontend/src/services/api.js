@@ -223,11 +223,15 @@ export async function getDefensoresCondenados() {
   return readJsonOrThrow(res, 'Error consultando defensores'); // { defensores }
 }
 
-export async function createDefensor(nombre) {
+export async function createDefensor(nombreOrPayload) {
+  const payload =
+    nombreOrPayload && typeof nombreOrPayload === 'object'
+      ? nombreOrPayload
+      : { nombre: nombreOrPayload };
   const res = await fetchJson(`${API_BASE}/defensores`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nombre }),
+    body: JSON.stringify(payload),
   });
 
   const data = await res.json().catch(() => ({}));
@@ -293,6 +297,7 @@ export async function assignDefensorPpl(documento, defensor, options = {}) {
     ? documento.map((d) => String(d || '').trim()).filter(Boolean)
     : [String(documento || '').trim()].filter(Boolean);
   const defensorNombre = String(defensor ?? '').trim();
+  const defensorCedula = String(options?.defensorCedula || options?.defensorId || '').replace(/\D+/g, '');
   if (!documentos.length) throw new Error('No hay documentos para asignar.');
   if (!defensorNombre) throw new Error('Defensor invalido.');
 
@@ -303,10 +308,10 @@ export async function assignDefensorPpl(documento, defensor, options = {}) {
       documentos,
       defensor: defensorNombre,
       ...(options || {}),
+      ...(defensorCedula ? { defensorCedula } : {}),
     }),
   });
 
   if (!res.ok) throw new Error('Error guardando la asignacion de defensor');
   return readJsonOrThrow(res, 'Error guardando la asignacion de defensor');
 }
-

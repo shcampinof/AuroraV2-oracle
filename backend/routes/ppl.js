@@ -1,6 +1,7 @@
 ﻿const express = require('express');
 const consolidado = require('../db/oracleConsolidado.repo');
-const pagRepo = require('../db/pag.repo');
+const pagRepo = require('../repositories/oracle/pagRepository');
+const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 
 const router = express.Router();
 
@@ -485,31 +486,37 @@ router.get('/condenados', async (req, res) => {
 
 // Validar cedula PAG contra catalogo CSV
 // GET /api/ppl/pag/:cedula/validar
-router.get('/pag/:cedula/validar', (req, res) => {
+router.get('/pag/:cedula/validar', async (req, res) => {
   const cedula = String(req.params?.cedula || '').trim();
   if (!cedula) {
     return res.status(400).json({ message: 'Debe indicar la cedula del PAG.' });
   }
 
-  const pag = pagRepo.findByCedula(cedula);
-  if (!pag) {
-    return res.status(404).json({ message: 'Cedula PAG no encontrada en el listado.' });
-  }
+  try {
+    const pag = await pagRepo.findByCedula(cedula);
+    if (!pag) {
+      return res.status(404).json({ message: 'Cedula PAG no encontrada en el listado.' });
+    }
 
-  return res.json({ ok: true, pag });
+    return res.json({ ok: true, pag });
+  } catch (err) {
+    console.error('[ppl:pag:validar] Error Oracle:', err?.message || err);
+    return res.status(500).json({ message: 'Error consultando PAG.' });
+  }
 });
 
 // Asignacion masiva de defensor por documento(s)
 // POST /api/ppl/asignar-defensor
-// body: { documentos: string[] | string, defensor: string, pagCedula: string }
+// body: { documentos: string[] | string, defensor: string, pagCedula: string, defensorCedula?: string }
 router.post('/asignar-defensor', async (req, res) => {
   const body = req.body || {};
   const defensor = String(body?.defensor || '').trim();
+  const defensorCedula = defensoresRepo.normalizeCedula(body?.defensorCedula || body?.defensorId || '');
   const pagCedula = String(body?.pagCedula || '').trim();
   const rawDocs = Array.isArray(body?.documentos) ? body.documentos : [body?.documentos];
   const documentos = rawDocs.map((d) => String(d || '').trim()).filter(Boolean);
 
-  if (!defensor) {
+  if (!defensor && !defensorCedula) {
     return res.status(400).json({ message: 'Debe indicar un defensor.' });
   }
   if (!pagCedula) {
@@ -519,19 +526,32 @@ router.post('/asignar-defensor', async (req, res) => {
     return res.status(400).json({ message: 'Debe indicar al menos un documento.' });
   }
 
-  const pag = pagRepo.findByCedula(pagCedula);
+  const pag = await pagRepo.findByCedula(pagCedula);
   if (!pag) {
     return res.status(400).json({ message: 'Cedula PAG no valida para asignar.' });
   }
 
   try {
+    let defensorNombre = defensor;
+    if (defensorCedula) {
+      const defensorDb = await defensoresRepo.findByCedula(defensorCedula);
+      if (!defensorDb) {
+        return res.status(404).json({ message: 'Cedula de defensor no encontrada.' });
+      }
+      defensorNombre = String(defensorDb.nombre || '').trim() || defensorNombre;
+    }
+
     const pagAsignador = pag?.nombre ? `${pag.nombre} (${pag.cedula})` : String(pag.cedula || '').trim();
-    const updated = await consolidado.assignDefensor(documentos, defensor, { pagAsignador });
+    const updated = await consolidado.assignDefensor(documentos, defensorNombre, {
+      pagAsignador,
+      defensorCedula,
+    });
     return res.json({
       ok: true,
       updated,
       documentos: Array.from(new Set(documentos)),
-      defensor,
+      defensor: defensorNombre,
+      defensorCedula,
       pag,
     });
   } catch (err) {
@@ -638,4 +658,3 @@ router.put('/:documento', async (req, res) => {
 });
 
 module.exports = router;
-

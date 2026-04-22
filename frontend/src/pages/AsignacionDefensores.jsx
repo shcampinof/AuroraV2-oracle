@@ -46,6 +46,7 @@ function AsignacionDefensores() {
   const [defensores, setDefensores] = useState([]);
   const [nuevoDefensorId, setNuevoDefensorId] = useState('');
   const [crearDefensorNombre, setCrearDefensorNombre] = useState('');
+  const [crearDefensorCedula, setCrearDefensorCedula] = useState('');
   const [crearDefensorError, setCrearDefensorError] = useState('');
   const [crearDefensorSuccess, setCrearDefensorSuccess] = useState('');
   const [guardandoDefensor, setGuardandoDefensor] = useState(false);
@@ -318,7 +319,11 @@ function AsignacionDefensores() {
     setError('');
     setToastOpen(false);
     try {
-      await assignDefensorPpl(documentos, defensor, { pagCedula: pagValidado.cedula });
+      const defensorCedula = normalizeDocumento(nuevoDefensorId);
+      await assignDefensorPpl(documentos, defensor, {
+        pagCedula: pagValidado.cedula,
+        ...(defensorCedula ? { defensorCedula } : {}),
+      });
 
       setToastOpen(true);
       setSeleccionados(new Set());
@@ -334,8 +339,13 @@ function AsignacionDefensores() {
 
   async function guardarNuevoDefensor() {
     const nombre = normalizeDefensorNombre(crearDefensorNombre);
+    const cedula = normalizeDocumento(crearDefensorCedula);
     setCrearDefensorSuccess('');
 
+    if (!cedula) {
+      setCrearDefensorError('La cedula del defensor es obligatoria.');
+      return;
+    }
     if (!nombre) {
       setCrearDefensorError('El nombre del defensor es obligatorio.');
       return;
@@ -345,8 +355,9 @@ function AsignacionDefensores() {
       return;
     }
 
-    const existe = defensores.some((d) => normalizeDefensorNombre(d?.nombre) === nombre);
-    if (existe) {
+    const existeNombre = defensores.some((d) => normalizeDefensorNombre(d?.nombre) === nombre);
+    const existeCedula = defensores.some((d) => normalizeDocumento(d?.id) === cedula);
+    if (existeNombre || existeCedula) {
       setCrearDefensorError('El defensor ya existe.');
       return;
     }
@@ -354,7 +365,7 @@ function AsignacionDefensores() {
     setGuardandoDefensor(true);
     setCrearDefensorError('');
     try {
-      const data = await createDefensor(nombre);
+      const data = await createDefensor({ nombre, cedula });
       const creado = normalizeDefensorNombre(data?.defensor || nombre);
       const opcionCreada = data?.opcion;
 
@@ -365,6 +376,7 @@ function AsignacionDefensores() {
         if (hit?.id) setNuevoDefensorId(String(hit.id));
       }
       setCrearDefensorNombre('');
+      setCrearDefensorCedula('');
       setCrearDefensorSuccess('Defensor creado correctamente');
       await cargarDefensoresActuales();
     } catch (e) {
@@ -383,6 +395,7 @@ function AsignacionDefensores() {
     setCrearDefensorError('');
     setCrearDefensorSuccess('');
     setNuevoDefensorId('');
+    setCrearDefensorCedula('');
 
     if (nextTab === 'asignacion') {
       setFDefensorActual('');
@@ -396,7 +409,9 @@ function AsignacionDefensores() {
   }
 
   const botonGuardarDefensorDeshabilitado =
-    guardandoDefensor || String(crearDefensorNombre || '').trim() === '';
+    guardandoDefensor ||
+    String(crearDefensorNombre || '').trim() === '' ||
+    String(crearDefensorCedula || '').trim() === '';
 
   return (
     <div className="card">
@@ -476,7 +491,26 @@ function AsignacionDefensores() {
               {crearDefensorSuccess && <p className="hint-text">{crearDefensorSuccess}</p>}
               {guardandoDefensor && <p className="hint-text">Guardando defensor...</p>}
             </div>
-            <div />
+            <div className="form-field">
+              <label>Numero de cedula del defensor</label>
+              <input
+                className="input-text"
+                placeholder="Ingrese cedula del defensor"
+                value={crearDefensorCedula}
+                onChange={(e) => {
+                  setCrearDefensorCedula(normalizeDocumento(e.target.value));
+                  if (crearDefensorError) setCrearDefensorError('');
+                  if (crearDefensorSuccess) setCrearDefensorSuccess('');
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    guardarNuevoDefensor();
+                  }
+                }}
+              />
+              <p className="hint-text">Ingrese solo numeros.</p>
+            </div>
           </div>
           <div className="actions-center">
             <button
@@ -761,4 +795,3 @@ function AsignacionDefensores() {
 }
 
 export default AsignacionDefensores;
-

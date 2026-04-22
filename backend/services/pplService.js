@@ -3,6 +3,7 @@ const { getOptionalGestionSequence } = require('../config/oracle');
 const personaRepo = require('../repositories/oracle/personaRepository');
 const situacionRepo = require('../repositories/oracle/situacionRepository');
 const gestionRepo = require('../repositories/oracle/gestionRepository');
+const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const { DEFAULT_SCOPE_DEPARTAMENTOS } = require('../repositories/oracle/sqlFragments');
 
 let dataVersion = 0;
@@ -11,75 +12,75 @@ const SCOPE_DEPARTAMENTOS = [...DEFAULT_SCOPE_DEPARTAMENTOS];
 
 const LEGACY_COLUMNS = [
   'Nombre',
-  'Tipo de indentificación',
-  'Número de identificación',
-  'Situación Jurídica',
-  'Género',
-  'Enfoque Étnico/Racial/Cultural',
+  'Tipo de indentificaciÃ³n',
+  'NÃºmero de identificaciÃ³n',
+  'SituaciÃ³n JurÃ­dica',
+  'GÃ©nero',
+  'Enfoque Ã‰tnico/Racial/Cultural',
   'Nacionalidad',
   'Fecha de nacimiento',
   'Edad',
-  'Lugar de privación de la libertad',
-  'Nombre del lugar de privación de la libertad',
-  'Departamento del lugar de privación de la libertad',
-  'Distrito/municipio del lugar de privación de la libertad',
-  '¿ La persona sigue en el CDT?',
+  'Lugar de privaciÃ³n de la libertad',
+  'Nombre del lugar de privaciÃ³n de la libertad',
+  'Departamento del lugar de privaciÃ³n de la libertad',
+  'Distrito/municipio del lugar de privaciÃ³n de la libertad',
+  'Â¿ La persona sigue en el CDT?',
   'Autoridad a cargo',
-  'Número de proceso',
+  'NÃºmero de proceso',
   'Delitos',
-  'Situación Jurídica actualizada (de conformidad con la rama judicial)',
+  'SituaciÃ³n JurÃ­dica actualizada (de conformidad con la rama judicial)',
   'Fecha de captura',
-  'Pena (años, meses y días)',
-  'Pena total en días',
-  'Tiempo que la persona lleva privada de la libertad (en días)',
-  'Redención total acumulada en días',
-  'Tiempo efectivo de pena cumplida en días (teniendo en cuenta la redención)',
+  'Pena (aÃ±os, meses y dÃ­as)',
+  'Pena total en dÃ­as',
+  'Tiempo que la persona lleva privada de la libertad (en dÃ­as)',
+  'RedenciÃ³n total acumulada en dÃ­as',
+  'Tiempo efectivo de pena cumplida en dÃ­as (teniendo en cuenta la redenciÃ³n)',
   'Porcentaje de avance de pena cumplida',
   'Fase de tramiento',
-  '¿ Cuenta con requerimientos judiciales por otros procesos ?',
-  'Fecha última calificación',
-  'Calificación de conducta',
+  'Â¿ Cuenta con requerimientos judiciales por otros procesos ?',
+  'Fecha Ãºltima calificaciÃ³n',
+  'CalificaciÃ³n de conducta',
   'PAG',
-  'Defensor(a) Público(a) Asignado para tramitar la solicitud',
-  'Acción a realizar',
-  'Fecha de análisis jurídico del caso',
-  'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS',
-  'Procedencia de utilidad pública (solo para mujeres)',
+  'Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud',
+  'AcciÃ³n a realizar',
+  'Fecha de anÃ¡lisis jurÃ­dico del caso',
+  'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÃ‰RMINOS',
+  'Procedencia de utilidad pÃºblica (solo para mujeres)',
   'Procedencia de libertad condicional',
-  'Procedencia de prisión domiciliaria de mitad de pena',
+  'Procedencia de prisiÃ³n domiciliaria de mitad de pena',
   'Procedencia de pena cumplida',
-  'Procedencia de acumulación de penas',
-  'Con qué proceso(s) debe acumular penas (si aplica)',
+  'Procedencia de acumulaciÃ³n de penas',
+  'Con quÃ© proceso(s) debe acumular penas (si aplica)',
   'Otras solicitudes a tramitar',
-  'Resumen del análisis del caso',
+  'Resumen del anÃ¡lisis del caso',
   'Fecha de entrevista',
-  'Decisión del usuario',
-  'Actuación a adelantar',
+  'DecisiÃ³n del usuario',
+  'ActuaciÃ³n a adelantar',
   'Requiere pruebas',
   'Poder en caso de avanzar con la solicitud',
   'Fecha de entrevista psicosocial',
   'Cumple el requisito de marginalidad',
   'Cumple el requisito de jefatura de hogar',
-  'Se requiere misión de trabajo',
-  'Fecha de solicitud de misión de trabajo',
-  'Fecha de asignación de investigador',
+  'Se requiere misiÃ³n de trabajo',
+  'Fecha de solicitud de misiÃ³n de trabajo',
+  'Fecha de asignaciÃ³n de investigador',
   'Fecha en la que se reciben todas las pruebas',
-  'Fecha de recepción de pruebas aportadas por el usuario (Si aplica)',
+  'Fecha de recepciÃ³n de pruebas aportadas por el usuario (Si aplica)',
   'Fecha de solicitud de documentos al INPEC (Si aplica)',
-  'FECHA DE REVISIÓN DEL EXPEDIENTE Y ELEMENTOS MATERIALES PROBATORIOS',
-  'CONFIRMACIÓN DE LA PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS',
-  'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA',
-  'FECHA DE REALIZACIÓN DE AUDIENCIA',
-  'Fecha de presentación de la solicitud a la autoridad',
-  'Fecha de decisión de la autoridad',
-  'Sentido de la decisión',
-  'Motivo de la decisión negativa',
+  'FECHA DE REVISIÃ“N DEL EXPEDIENTE Y ELEMENTOS MATERIALES PROBATORIOS',
+  'CONFIRMACIÃ“N DE LA PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÃ‰RMINOS',
+  'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÃAS PARA SUSTENTAR REVOCATORIA',
+  'FECHA DE REALIZACIÃ“N DE AUDIENCIA',
+  'Fecha de presentaciÃ³n de la solicitud a la autoridad',
+  'Fecha de decisiÃ³n de la autoridad',
+  'Sentido de la decisiÃ³n',
+  'Motivo de la decisiÃ³n negativa',
   'Se presenta recurso',
   'Fecha de recurso en caso desfavorable',
-  'Sentido de la decisión que resuelve recurso',
-  'Sentido de la decisión que resuelve la solicitud',
+  'Sentido de la decisiÃ³n que resuelve recurso',
+  'Sentido de la decisiÃ³n que resuelve la solicitud',
   'Estado del caso',
-  'Estado del trámite',
+  'Estado del trÃ¡mite',
   'numero',
   'situacion',
   'ESTABLECIMIENTO',
@@ -113,7 +114,17 @@ const DATE_FIELDS = new Set([
   'FECHA_RECURSO_DESFAVORABLE',
 ]);
 
-const NUMERIC_FIELDS = new Set(['NUMERO', 'EDAD', 'PENA_DIAS', 'PRIVACION', 'REDENCION', 'TIEMPO_EFECTIVO', 'PORCENTAJE', 'ACTIVO']);
+const NUMERIC_FIELDS = new Set([
+  'NUMERO',
+  'EDAD',
+  'PENA_DIAS',
+  'PRIVACION',
+  'REDENCION',
+  'TIEMPO_EFECTIVO',
+  'PORCENTAJE',
+  'ACTIVO',
+  'CEDULA_DEFENSOR',
+]);
 
 function normalizeText(value) {
   return String(value ?? '')
@@ -208,82 +219,83 @@ function bind(aliases, table, column) {
 }
 
 bind(['Nombre', 'Nombre usuario'], 'PERSONA', 'NOMBRE');
-bind(['Tipo de indentificación', 'Tipo de identificación'], 'PERSONA', 'TIPO_IDENTIFICACION');
-bind(['Número de identificación', 'Numero de identificacion', 'numeroIdentificacion', 'numero'], 'PERSONA', 'NUMERO');
-bind(['Género', 'Genero'], 'PERSONA', 'GENERO');
+bind(['Tipo de indentificaciÃ³n', 'Tipo de identificaciÃ³n'], 'PERSONA', 'TIPO_IDENTIFICACION');
+bind(['NÃºmero de identificaciÃ³n', 'Numero de identificacion', 'numeroIdentificacion', 'numero'], 'PERSONA', 'NUMERO');
+bind(['GÃ©nero', 'Genero'], 'PERSONA', 'GENERO');
 bind(['Nacionalidad'], 'PERSONA', 'NACIONALIDAD');
 bind(['Fecha de nacimiento'], 'PERSONA', 'FECHA_NACIMIENTO');
 bind(['Edad'], 'PERSONA', 'EDAD');
 
-bind(['Situación Jurídica', 'Situacion Juridica', 'situacion'], 'SITUACION', 'SITUACION');
+bind(['SituaciÃ³n JurÃ­dica', 'Situacion Juridica', 'situacion'], 'SITUACION', 'SITUACION');
 bind(
   [
-    'Situación Jurídica actualizada (de conformidad con la rama judicial)',
+    'SituaciÃ³n JurÃ­dica actualizada (de conformidad con la rama judicial)',
     'Situacion Juridica actualizada (de conformidad con la rama judicial)',
-    'Situación Jurídica actualizada',
+    'SituaciÃ³n JurÃ­dica actualizada',
   ],
   'SITUACION',
   'SITUACION_JURIDICA_ACTUALIZADA'
 );
 bind(['Delitos'], 'SITUACION', 'DELITOS');
-bind(['Número de proceso', 'Numero de proceso', 'Proceso'], 'SITUACION', 'PROCESO');
+bind(['NÃºmero de proceso', 'Numero de proceso', 'Proceso'], 'SITUACION', 'PROCESO');
 bind(['Autoridad a cargo', 'autoridad'], 'SITUACION', 'AUTORIDAD');
 bind(['Fecha de captura'], 'SITUACION', 'FECHA_CAPTURA');
-bind(['Lugar de privación de la libertad', 'Lugar de privacion de la libertad'], 'SITUACION', 'LUGAR_PRIVACION');
-bind(['Nombre del lugar de privación de la libertad', 'Nombre del lugar de privacion de la libertad', 'ESTABLECIMIENTO'], 'SITUACION', 'ESTABLECIMIENTO');
-bind(['Departamento del lugar de privación de la libertad', 'Departamento del lugar de privacion de la libertad', 'Departamento'], 'SITUACION', 'DEPARTAMENTO');
-bind(['Distrito/municipio del lugar de privación de la libertad', 'Distrito/municipio del lugar de privacion de la libertad', 'Municipio'], 'SITUACION', 'MUNICIPIO');
-bind(['¿ La persona sigue en el CDT?', 'Sigue CDT'], 'SITUACION', 'SIGUE_CDT');
-bind(['Pena (años, meses y días)', 'Pena'], 'SITUACION', 'PENA');
-bind(['Pena total en días', 'Pena dias'], 'SITUACION', 'PENA_DIAS');
-bind(['Tiempo que la persona lleva privada de la libertad (en días)', 'Privacion'], 'SITUACION', 'PRIVACION');
-bind(['Redención total acumulada en días', 'Redencion'], 'SITUACION', 'REDENCION');
-bind(['Tiempo efectivo de pena cumplida en días (teniendo en cuenta la redención)', 'Tiempo efectivo'], 'SITUACION', 'TIEMPO_EFECTIVO');
+bind(['Lugar de privaciÃ³n de la libertad', 'Lugar de privacion de la libertad'], 'SITUACION', 'LUGAR_PRIVACION');
+bind(['Nombre del lugar de privaciÃ³n de la libertad', 'Nombre del lugar de privacion de la libertad', 'ESTABLECIMIENTO'], 'SITUACION', 'ESTABLECIMIENTO');
+bind(['Departamento del lugar de privaciÃ³n de la libertad', 'Departamento del lugar de privacion de la libertad', 'Departamento'], 'SITUACION', 'DEPARTAMENTO');
+bind(['Distrito/municipio del lugar de privaciÃ³n de la libertad', 'Distrito/municipio del lugar de privacion de la libertad', 'Municipio'], 'SITUACION', 'MUNICIPIO');
+bind(['Â¿ La persona sigue en el CDT?', 'Sigue CDT'], 'SITUACION', 'SIGUE_CDT');
+bind(['Pena (aÃ±os, meses y dÃ­as)', 'Pena'], 'SITUACION', 'PENA');
+bind(['Pena total en dÃ­as', 'Pena dias'], 'SITUACION', 'PENA_DIAS');
+bind(['Tiempo que la persona lleva privada de la libertad (en dÃ­as)', 'Privacion'], 'SITUACION', 'PRIVACION');
+bind(['RedenciÃ³n total acumulada en dÃ­as', 'Redencion'], 'SITUACION', 'REDENCION');
+bind(['Tiempo efectivo de pena cumplida en dÃ­as (teniendo en cuenta la redenciÃ³n)', 'Tiempo efectivo'], 'SITUACION', 'TIEMPO_EFECTIVO');
 bind(['Porcentaje de avance de pena cumplida', 'Porcentaje'], 'SITUACION', 'PORCENTAJE');
 bind(['Fase de tramiento', 'Fase'], 'SITUACION', 'FASE');
-bind(['Enfoque Étnico/Racial/Cultural', 'Enfoque'], 'SITUACION', 'ENFOQUE');
-bind(['¿ Cuenta con requerimientos judiciales por otros procesos ?', 'Requerimientos'], 'SITUACION', 'REQUERIMIENTOS');
+bind(['Enfoque Ã‰tnico/Racial/Cultural', 'Enfoque'], 'SITUACION', 'ENFOQUE');
+bind(['Â¿ Cuenta con requerimientos judiciales por otros procesos ?', 'Requerimientos'], 'SITUACION', 'REQUERIMIENTOS');
 
-bind(['Fecha última calificación', 'Fecha ultima calificacion', 'Fecha calificacion'], 'SITUACION', 'FECHA_CALIFICACION');
-bind(['Calificación de conducta', 'Calificacion de conducta', 'Calificacion'], 'SITUACION', 'CALIFICACION');
+bind(['Fecha Ãºltima calificaciÃ³n', 'Fecha ultima calificacion', 'Fecha calificacion'], 'SITUACION', 'FECHA_CALIFICACION');
+bind(['CalificaciÃ³n de conducta', 'Calificacion de conducta', 'Calificacion'], 'SITUACION', 'CALIFICACION');
 bind(['PAG'], 'GESTION', 'PAG');
-bind(['Defensor(a) Público(a) Asignado para tramitar la solicitud', 'Defensor(a) Publico(a) Asignado para tramitar la solicitud', 'Defensor', 'defensorAsignado'], 'GESTION', 'DEFENSOR');
-bind(['Acción a realizar', 'Accion a realizar'], 'GESTION', 'ACCION_REALIZAR');
-bind(['Fecha de análisis jurídico del caso', 'Fecha de analisis juridico del caso', 'Fecha analisis'], 'GESTION', 'FECHA_ANALISIS');
-bind(['PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS', 'Vencimiento de terminos'], 'GESTION', 'VENCIMIENTO_TERMINOS');
-bind(['Procedencia de utilidad pública (solo para mujeres)', 'Utilidad publica'], 'GESTION', 'UTILIDAD_PUBLICA');
+bind(['Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud', 'Defensor(a) Publico(a) Asignado para tramitar la solicitud', 'Defensor', 'defensorAsignado'], 'GESTION', 'DEFENSOR');
+bind(['Cedula defensor', 'CÃ©dula defensor', 'cedulaDefensor', 'defensorCedula'], 'GESTION', 'CEDULA_DEFENSOR');
+bind(['AcciÃ³n a realizar', 'Accion a realizar'], 'GESTION', 'ACCION_REALIZAR');
+bind(['Fecha de anÃ¡lisis jurÃ­dico del caso', 'Fecha de analisis juridico del caso', 'Fecha analisis'], 'GESTION', 'FECHA_ANALISIS');
+bind(['PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÃ‰RMINOS', 'Vencimiento de terminos'], 'GESTION', 'VENCIMIENTO_TERMINOS');
+bind(['Procedencia de utilidad pÃºblica (solo para mujeres)', 'Utilidad publica'], 'GESTION', 'UTILIDAD_PUBLICA');
 bind(['Procedencia de libertad condicional', 'Libertad condicional'], 'GESTION', 'LIBERTAD_CONDICIONAL');
-bind(['Procedencia de prisión domiciliaria de mitad de pena', 'Prision domiciliaria de mitad de pena'], 'GESTION', 'PRISION_DOMICILIARIA_MITAD_PENA');
+bind(['Procedencia de prisiÃ³n domiciliaria de mitad de pena', 'Prision domiciliaria de mitad de pena'], 'GESTION', 'PRISION_DOMICILIARIA_MITAD_PENA');
 bind(['Procedencia de pena cumplida'], 'GESTION', 'PROCEDENCIA_PENA_CUMPLIDA');
-bind(['Procedencia de acumulación de penas'], 'GESTION', 'PROCEDENCIA_ACUMULACION_PENAS');
-bind(['Con qué proceso(s) debe acumular penas (si aplica)', 'Con que proceso(s) debe acumular penas (si aplica)'], 'GESTION', 'CON_QUE_PROCESOS_ACUMULAR');
+bind(['Procedencia de acumulaciÃ³n de penas'], 'GESTION', 'PROCEDENCIA_ACUMULACION_PENAS');
+bind(['Con quÃ© proceso(s) debe acumular penas (si aplica)', 'Con que proceso(s) debe acumular penas (si aplica)'], 'GESTION', 'CON_QUE_PROCESOS_ACUMULAR');
 bind(['Otras solicitudes a tramitar'], 'GESTION', 'OTRAS_SOLICITUDES_TRAMITAR');
-bind(['Resumen del análisis del caso', 'Resumen del analisis del caso'], 'GESTION', 'RESUMEN_ANALISIS_CASO');
+bind(['Resumen del anÃ¡lisis del caso', 'Resumen del analisis del caso'], 'GESTION', 'RESUMEN_ANALISIS_CASO');
 bind(['Fecha de entrevista'], 'GESTION', 'FECHA_ENTREVISTA');
-bind(['Decisión del usuario', 'Decision del usuario'], 'GESTION', 'DECISION_USUARIO');
-bind(['Actuación a adelantar', 'Actuacion a adelantar'], 'GESTION', 'ACTUACION_ADELANTAR');
+bind(['DecisiÃ³n del usuario', 'Decision del usuario'], 'GESTION', 'DECISION_USUARIO');
+bind(['ActuaciÃ³n a adelantar', 'Actuacion a adelantar'], 'GESTION', 'ACTUACION_ADELANTAR');
 bind(['Requiere pruebas'], 'GESTION', 'REQUIERE_PRUEBAS');
 bind(['Poder en caso de avanzar con la solicitud'], 'GESTION', 'PODER_AVANZAR_SOLICITUD');
 bind(['Fecha de entrevista psicosocial'], 'GESTION', 'FECHA_ENTREVISTA_PSICOSOCIAL');
 bind(['Cumple el requisito de marginalidad'], 'GESTION', 'CUMPLE_REQUISITO_MARGINALIDAD');
 bind(['Cumple el requisito de jefatura de hogar'], 'GESTION', 'CUMPLE_REQUISITO_JEFATURA_HOGAR');
-bind(['Se requiere misión de trabajo', 'Se requiere mision de trabajo'], 'GESTION', 'REQUIERE_MISION_TRABAJO');
-bind(['Fecha de solicitud de misión de trabajo'], 'GESTION', 'FECHA_SOLICITUD_MISION_TRABAJO');
-bind(['Fecha de asignación de investigador'], 'GESTION', 'FECHA_ASIGNACION_INVESTIGADOR');
+bind(['Se requiere misiÃ³n de trabajo', 'Se requiere mision de trabajo'], 'GESTION', 'REQUIERE_MISION_TRABAJO');
+bind(['Fecha de solicitud de misiÃ³n de trabajo'], 'GESTION', 'FECHA_SOLICITUD_MISION_TRABAJO');
+bind(['Fecha de asignaciÃ³n de investigador'], 'GESTION', 'FECHA_ASIGNACION_INVESTIGADOR');
 bind(['Fecha en la que se reciben todas las pruebas'], 'GESTION', 'FECHA_RECEPCION_TODAS_PRUEBAS');
-bind(['Fecha de recepción de pruebas aportadas por el usuario (Si aplica)'], 'GESTION', 'FECHA_RECEPCION_PRUEBAS_USUARIO');
+bind(['Fecha de recepciÃ³n de pruebas aportadas por el usuario (Si aplica)'], 'GESTION', 'FECHA_RECEPCION_PRUEBAS_USUARIO');
 bind(['Fecha de solicitud de documentos al INPEC (Si aplica)'], 'GESTION', 'FECHA_SOLICITUD_DOCS_INPEC');
-bind(['FECHA DE REVISIÓN DEL EXPEDIENTE Y ELEMENTOS MATERIALES PROBATORIOS'], 'GESTION', 'FECHA_REVISION_EXPEDIENTE');
-bind(['CONFIRMACIÓN DE LA PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS'], 'GESTION', 'CONFIRMACION_PROCEDENCIA_VENCIMIENTO');
-bind(['FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA'], 'GESTION', 'FECHA_SOLICITUD_AUDIENCIA_CONTROL');
-bind(['FECHA DE REALIZACIÓN DE AUDIENCIA'], 'GESTION', 'FECHA_REALIZACION_AUDIENCIA');
-bind(['Fecha de presentación de la solicitud a la autoridad', 'Fecha de presentacion de la solicitud a la autoridad'], 'GESTION', 'FECHA_PRESENTACION_SOLICITUD_AUTORIDAD');
-bind(['Fecha de decisión de la autoridad', 'Fecha de decision de la autoridad'], 'GESTION', 'FECHA_DECISION_AUTORIDAD');
-bind(['Sentido de la decisión', 'Sentido de la decision'], 'GESTION', 'SENTIDO_DECISION');
-bind(['Motivo de la decisión negativa', 'Motivo de la decision negativa'], 'GESTION', 'MOTIVO_DECISION_NEGATIVA');
+bind(['FECHA DE REVISIÃ“N DEL EXPEDIENTE Y ELEMENTOS MATERIALES PROBATORIOS'], 'GESTION', 'FECHA_REVISION_EXPEDIENTE');
+bind(['CONFIRMACIÃ“N DE LA PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÃ‰RMINOS'], 'GESTION', 'CONFIRMACION_PROCEDENCIA_VENCIMIENTO');
+bind(['FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÃAS PARA SUSTENTAR REVOCATORIA'], 'GESTION', 'FECHA_SOLICITUD_AUDIENCIA_CONTROL');
+bind(['FECHA DE REALIZACIÃ“N DE AUDIENCIA'], 'GESTION', 'FECHA_REALIZACION_AUDIENCIA');
+bind(['Fecha de presentaciÃ³n de la solicitud a la autoridad', 'Fecha de presentacion de la solicitud a la autoridad'], 'GESTION', 'FECHA_PRESENTACION_SOLICITUD_AUTORIDAD');
+bind(['Fecha de decisiÃ³n de la autoridad', 'Fecha de decision de la autoridad'], 'GESTION', 'FECHA_DECISION_AUTORIDAD');
+bind(['Sentido de la decisiÃ³n', 'Sentido de la decision'], 'GESTION', 'SENTIDO_DECISION');
+bind(['Motivo de la decisiÃ³n negativa', 'Motivo de la decision negativa'], 'GESTION', 'MOTIVO_DECISION_NEGATIVA');
 bind(['Se presenta recurso'], 'GESTION', 'SE_PRESENTA_RECURSO');
 bind(['Fecha de recurso en caso desfavorable'], 'GESTION', 'FECHA_RECURSO_DESFAVORABLE');
-bind(['Sentido de la decisión que resuelve recurso', 'Sentido de la decision que resuelve recurso'], 'GESTION', 'SENTIDO_DECISION_RESUELVE_RECURSO');
+bind(['Sentido de la decisiÃ³n que resuelve recurso', 'Sentido de la decision que resuelve recurso'], 'GESTION', 'SENTIDO_DECISION_RESUELVE_RECURSO');
 
 function toLegacyRecord(raw = {}) {
   const numero = coalesce(raw.P_NUMERO, '');
@@ -292,101 +304,102 @@ function toLegacyRecord(raw = {}) {
   const record = {
     Nombre: String(raw.P_NOMBRE ?? ''),
     'Nombre usuario': String(raw.P_NOMBRE ?? ''),
-    'Tipo de indentificación': String(raw.P_TIPO_IDENTIFICACION ?? ''),
-    'Número de identificación': numeroText,
+    'Tipo de indentificaciÃ³n': String(raw.P_TIPO_IDENTIFICACION ?? ''),
+    'NÃºmero de identificaciÃ³n': numeroText,
     numero: numeroText,
     numeroIdentificacion: numeroText,
-    'Situación Jurídica': String(raw.S_SITUACION ?? ''),
+    'SituaciÃ³n JurÃ­dica': String(raw.S_SITUACION ?? ''),
     situacion: String(raw.S_SITUACION ?? ''),
-    'Género': String(raw.P_GENERO ?? ''),
-    'Enfoque Étnico/Racial/Cultural': String(raw.S_ENFOQUE ?? ''),
+    'GÃ©nero': String(raw.P_GENERO ?? ''),
+    'Enfoque Ã‰tnico/Racial/Cultural': String(raw.S_ENFOQUE ?? ''),
     Nacionalidad: String(raw.P_NACIONALIDAD ?? ''),
     'Fecha de nacimiento': toIsoDate(raw.P_FECHA_NACIMIENTO),
     Edad: String(raw.P_EDAD ?? ''),
-    'Lugar de privación de la libertad': String(raw.S_LUGAR_PRIVACION ?? ''),
-    'Nombre del lugar de privación de la libertad': String(raw.S_ESTABLECIMIENTO ?? ''),
+    'Lugar de privaciÃ³n de la libertad': String(raw.S_LUGAR_PRIVACION ?? ''),
+    'Nombre del lugar de privaciÃ³n de la libertad': String(raw.S_ESTABLECIMIENTO ?? ''),
     ESTABLECIMIENTO: String(raw.S_ESTABLECIMIENTO ?? ''),
-    'Departamento del lugar de privación de la libertad': String(raw.S_DEPARTAMENTO ?? ''),
+    'Departamento del lugar de privaciÃ³n de la libertad': String(raw.S_DEPARTAMENTO ?? ''),
     Departamento: String(raw.S_DEPARTAMENTO ?? ''),
-    'Distrito/municipio del lugar de privación de la libertad': String(raw.S_MUNICIPIO ?? ''),
+    'Distrito/municipio del lugar de privaciÃ³n de la libertad': String(raw.S_MUNICIPIO ?? ''),
     Municipio: String(raw.S_MUNICIPIO ?? ''),
-    '¿ La persona sigue en el CDT?': String(raw.S_SIGUE_CDT ?? ''),
+    'Â¿ La persona sigue en el CDT?': String(raw.S_SIGUE_CDT ?? ''),
     'Autoridad a cargo': String(raw.S_AUTORIDAD ?? ''),
     autoridad: String(raw.S_AUTORIDAD ?? ''),
-    'Número de proceso': String(raw.S_PROCESO ?? ''),
+    'NÃºmero de proceso': String(raw.S_PROCESO ?? ''),
     Proceso: String(raw.S_PROCESO ?? ''),
     Delitos: String(raw.S_DELITOS ?? ''),
-    'Situación Jurídica actualizada (de conformidad con la rama judicial)': String(raw.S_SITUACION_JURIDICA_ACTUALIZADA ?? ''),
+    'SituaciÃ³n JurÃ­dica actualizada (de conformidad con la rama judicial)': String(raw.S_SITUACION_JURIDICA_ACTUALIZADA ?? ''),
     'Fecha de captura': toIsoDate(raw.S_FECHA_CAPTURA),
-    'Pena (años, meses y días)': String(raw.S_PENA ?? ''),
-    'Pena total en días': String(raw.S_PENA_DIAS ?? ''),
-    'Tiempo que la persona lleva privada de la libertad (en días)': String(raw.S_PRIVACION ?? ''),
-    'Redención total acumulada en días': String(raw.S_REDENCION ?? ''),
-    'Tiempo efectivo de pena cumplida en días (teniendo en cuenta la redención)': String(raw.S_TIEMPO_EFECTIVO ?? ''),
+    'Pena (aÃ±os, meses y dÃ­as)': String(raw.S_PENA ?? ''),
+    'Pena total en dÃ­as': String(raw.S_PENA_DIAS ?? ''),
+    'Tiempo que la persona lleva privada de la libertad (en dÃ­as)': String(raw.S_PRIVACION ?? ''),
+    'RedenciÃ³n total acumulada en dÃ­as': String(raw.S_REDENCION ?? ''),
+    'Tiempo efectivo de pena cumplida en dÃ­as (teniendo en cuenta la redenciÃ³n)': String(raw.S_TIEMPO_EFECTIVO ?? ''),
     'Porcentaje de avance de pena cumplida': String(raw.S_PORCENTAJE ?? ''),
     'Fase de tramiento': String(raw.S_FASE ?? ''),
-    '¿ Cuenta con requerimientos judiciales por otros procesos ?': String(raw.S_REQUERIMIENTOS ?? ''),
+    'Â¿ Cuenta con requerimientos judiciales por otros procesos ?': String(raw.S_REQUERIMIENTOS ?? ''),
 
-    'Fecha última calificación': toIsoDate(raw.S_FECHA_CALIFICACION),
-    'Calificación de conducta': String(raw.S_CALIFICACION ?? ''),
+    'Fecha Ãºltima calificaciÃ³n': toIsoDate(raw.S_FECHA_CALIFICACION),
+    'CalificaciÃ³n de conducta': String(raw.S_CALIFICACION ?? ''),
     PAG: String(raw.G_PAG ?? ''),
-    'Defensor(a) Público(a) Asignado para tramitar la solicitud': String(raw.G_DEFENSOR ?? ''),
+    'Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud': String(raw.G_DEFENSOR ?? ''),
     'Defensor(a) Publico(a) Asignado para tramitar la solicitud': String(raw.G_DEFENSOR ?? ''),
     Defensor: String(raw.G_DEFENSOR ?? ''),
     defensorAsignado: String(raw.G_DEFENSOR ?? ''),
 
-    'Acción a realizar': String(raw.G_ACCION_REALIZAR ?? ''),
-    'Fecha de análisis jurídico del caso': toIsoDate(raw.G_FECHA_ANALISIS),
-    'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS': String(raw.G_VENCIMIENTO_TERMINOS ?? ''),
-    'Procedencia de utilidad pública (solo para mujeres)': String(raw.G_UTILIDAD_PUBLICA ?? ''),
+    'AcciÃ³n a realizar': String(raw.G_ACCION_REALIZAR ?? ''),
+    'Fecha de anÃ¡lisis jurÃ­dico del caso': toIsoDate(raw.G_FECHA_ANALISIS),
+    'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÃ‰RMINOS': String(raw.G_VENCIMIENTO_TERMINOS ?? ''),
+    'Procedencia de utilidad pÃºblica (solo para mujeres)': String(raw.G_UTILIDAD_PUBLICA ?? ''),
     'Procedencia de libertad condicional': String(raw.G_LIBERTAD_CONDICIONAL ?? ''),
-    'Procedencia de prisión domiciliaria de mitad de pena': String(raw.G_PRISION_DOMICILIARIA_MITAD_PENA ?? ''),
+    'Procedencia de prisiÃ³n domiciliaria de mitad de pena': String(raw.G_PRISION_DOMICILIARIA_MITAD_PENA ?? ''),
     'Procedencia de pena cumplida': String(raw.G_PROCEDENCIA_PENA_CUMPLIDA ?? ''),
-    'Procedencia de acumulación de penas': String(raw.G_PROCEDENCIA_ACUMULACION_PENAS ?? ''),
-    'Con qué proceso(s) debe acumular penas (si aplica)': String(raw.G_CON_QUE_PROCESOS_ACUMULAR ?? ''),
+    'Procedencia de acumulaciÃ³n de penas': String(raw.G_PROCEDENCIA_ACUMULACION_PENAS ?? ''),
+    'Con quÃ© proceso(s) debe acumular penas (si aplica)': String(raw.G_CON_QUE_PROCESOS_ACUMULAR ?? ''),
     'Otras solicitudes a tramitar': String(raw.G_OTRAS_SOLICITUDES_TRAMITAR ?? ''),
-    'Resumen del análisis del caso': String(raw.G_RESUMEN_ANALISIS_CASO ?? ''),
+    'Resumen del anÃ¡lisis del caso': String(raw.G_RESUMEN_ANALISIS_CASO ?? ''),
     'Fecha de entrevista': toIsoDate(raw.G_FECHA_ENTREVISTA),
-    'Decisión del usuario': String(raw.G_DECISION_USUARIO ?? ''),
-    'Actuación a adelantar': String(raw.G_ACTUACION_ADELANTAR ?? ''),
+    'DecisiÃ³n del usuario': String(raw.G_DECISION_USUARIO ?? ''),
+    'ActuaciÃ³n a adelantar': String(raw.G_ACTUACION_ADELANTAR ?? ''),
     'Requiere pruebas': String(raw.G_REQUIERE_PRUEBAS ?? ''),
     'Poder en caso de avanzar con la solicitud': String(raw.G_PODER_AVANZAR_SOLICITUD ?? ''),
     'Fecha de entrevista psicosocial': toIsoDate(raw.G_FECHA_ENTREVISTA_PSICOSOCIAL),
     'Cumple el requisito de marginalidad': String(raw.G_CUMPLE_REQUISITO_MARGINALIDAD ?? ''),
     'Cumple el requisito de jefatura de hogar': String(raw.G_CUMPLE_REQUISITO_JEFATURA_HOGAR ?? ''),
-    'Se requiere misión de trabajo': String(raw.G_REQUIERE_MISION_TRABAJO ?? ''),
-    'Fecha de solicitud de misión de trabajo': toIsoDate(raw.G_FECHA_SOLICITUD_MISION_TRABAJO),
-    'Fecha de asignación de investigador': toIsoDate(raw.G_FECHA_ASIGNACION_INVESTIGADOR),
+    'Se requiere misiÃ³n de trabajo': String(raw.G_REQUIERE_MISION_TRABAJO ?? ''),
+    'Fecha de solicitud de misiÃ³n de trabajo': toIsoDate(raw.G_FECHA_SOLICITUD_MISION_TRABAJO),
+    'Fecha de asignaciÃ³n de investigador': toIsoDate(raw.G_FECHA_ASIGNACION_INVESTIGADOR),
     'Fecha en la que se reciben todas las pruebas': toIsoDate(raw.G_FECHA_RECEPCION_TODAS_PRUEBAS),
-    'Fecha de recepción de pruebas aportadas por el usuario (Si aplica)': toIsoDate(raw.G_FECHA_RECEPCION_PRUEBAS_USUARIO),
+    'Fecha de recepciÃ³n de pruebas aportadas por el usuario (Si aplica)': toIsoDate(raw.G_FECHA_RECEPCION_PRUEBAS_USUARIO),
     'Fecha de solicitud de documentos al INPEC (Si aplica)': toIsoDate(raw.G_FECHA_SOLICITUD_DOCS_INPEC),
-    'FECHA DE REVISIÓN DEL EXPEDIENTE Y ELEMENTOS MATERIALES PROBATORIOS': toIsoDate(raw.G_FECHA_REVISION_EXPEDIENTE),
-    'CONFIRMACIÓN DE LA PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS': String(raw.G_CONFIRMACION_PROCEDENCIA_VENCIMIENTO ?? ''),
-    'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA': toIsoDate(raw.G_FECHA_SOLICITUD_AUDIENCIA_CONTROL),
-    'FECHA DE REALIZACIÓN DE AUDIENCIA': toIsoDate(raw.G_FECHA_REALIZACION_AUDIENCIA),
-    'Fecha de presentación de la solicitud a la autoridad': toIsoDate(raw.G_FECHA_PRESENTACION_SOLICITUD_AUTORIDAD),
-    'Fecha de decisión de la autoridad': toIsoDate(raw.G_FECHA_DECISION_AUTORIDAD),
-    'Sentido de la decisión': String(raw.G_SENTIDO_DECISION ?? ''),
-    'Motivo de la decisión negativa': String(raw.G_MOTIVO_DECISION_NEGATIVA ?? ''),
+    'FECHA DE REVISIÃ“N DEL EXPEDIENTE Y ELEMENTOS MATERIALES PROBATORIOS': toIsoDate(raw.G_FECHA_REVISION_EXPEDIENTE),
+    'CONFIRMACIÃ“N DE LA PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÃ‰RMINOS': String(raw.G_CONFIRMACION_PROCEDENCIA_VENCIMIENTO ?? ''),
+    'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÃAS PARA SUSTENTAR REVOCATORIA': toIsoDate(raw.G_FECHA_SOLICITUD_AUDIENCIA_CONTROL),
+    'FECHA DE REALIZACIÃ“N DE AUDIENCIA': toIsoDate(raw.G_FECHA_REALIZACION_AUDIENCIA),
+    'Fecha de presentaciÃ³n de la solicitud a la autoridad': toIsoDate(raw.G_FECHA_PRESENTACION_SOLICITUD_AUTORIDAD),
+    'Fecha de decisiÃ³n de la autoridad': toIsoDate(raw.G_FECHA_DECISION_AUTORIDAD),
+    'Sentido de la decisiÃ³n': String(raw.G_SENTIDO_DECISION ?? ''),
+    'Motivo de la decisiÃ³n negativa': String(raw.G_MOTIVO_DECISION_NEGATIVA ?? ''),
     'Se presenta recurso': String(raw.G_SE_PRESENTA_RECURSO ?? ''),
     'Fecha de recurso en caso desfavorable': toIsoDate(raw.G_FECHA_RECURSO_DESFAVORABLE),
-    'Sentido de la decisión que resuelve recurso': String(raw.G_SENTIDO_DECISION_RESUELVE_RECURSO ?? ''),
-    'Sentido de la decisión que resuelve la solicitud': '',
+    'Sentido de la decisiÃ³n que resuelve recurso': String(raw.G_SENTIDO_DECISION_RESUELVE_RECURSO ?? ''),
+    'Sentido de la decisiÃ³n que resuelve la solicitud': '',
     'Estado del caso': '',
-    'Estado del trámite': '',
+    'Estado del trÃ¡mite': '',
     posibleActuacionJudicial: String(raw.G_ACTUACION_ADELANTAR ?? ''),
 
     __oracleIdPersona: raw.P_ID_PERSONA == null ? null : Number(raw.P_ID_PERSONA),
     __oracleIdSituacion: raw.S_ID_SITUACION == null ? null : Number(raw.S_ID_SITUACION),
     __oracleIdGestion: raw.G_ID_GESTION == null ? null : Number(raw.G_ID_GESTION),
+    __oracleCedulaDefensor: raw.G_CEDULA_DEFENSOR == null ? null : String(raw.G_CEDULA_DEFENSOR),
   };
 
   return record;
 }
 
 function computeTipo(record) {
-  const updated = normalizeText(record?.['Situación Jurídica actualizada (de conformidad con la rama judicial)']);
-  const base = normalizeText(record?.['Situación Jurídica']);
+  const updated = normalizeText(record?.['SituaciÃ³n JurÃ­dica actualizada (de conformidad con la rama judicial)']);
+  const base = normalizeText(record?.['SituaciÃ³n JurÃ­dica']);
   if (updated.includes('condenad') || base.includes('condenad')) return 'condenado';
   return 'sindicado';
 }
@@ -394,7 +407,7 @@ function computeTipo(record) {
 function extractDefensor(record) {
   return coalesce(
     record?.defensorAsignado,
-    record?.['Defensor(a) Público(a) Asignado para tramitar la solicitud'],
+    record?.['Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud'],
     record?.['Defensor(a) Publico(a) Asignado para tramitar la solicitud'],
     record?.Defensor
   );
@@ -405,7 +418,7 @@ function hydrateDefensorAliases(record, fallback = '') {
   return {
     ...(record || {}),
     defensorAsignado: defensor,
-    'Defensor(a) Público(a) Asignado para tramitar la solicitud': defensor,
+    'Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud': defensor,
     'Defensor(a) Publico(a) Asignado para tramitar la solicitud': defensor,
     Defensor: defensor,
   };
@@ -641,8 +654,20 @@ async function assignDefensor(documentos, defensor, options = {}) {
   const docs = Array.from(new Set((documentos || []).map((item) => normalizeDocumento(item)).filter(Boolean)));
   if (!docs.length) return 0;
 
-  const defensorNombre = String(defensor || '').trim();
+  let defensorNombre = String(defensor || '').trim();
   const pagAsignador = String(options?.pagAsignador || '').trim();
+  let defensorCedula = defensoresRepo.normalizeCedula(options?.defensorCedula || options?.defensorId || '');
+
+  if (defensorCedula) {
+    const defensorDb = await defensoresRepo.findByCedula(defensorCedula);
+    if (!defensorDb) {
+      defensorCedula = '';
+    } else {
+      const dbNombre = String(defensorDb.nombre || '').trim();
+      if (dbNombre) defensorNombre = dbNombre;
+    }
+  }
+
   if (!defensorNombre) return 0;
 
   let updated = 0;
@@ -652,7 +677,10 @@ async function assignDefensor(documentos, defensor, options = {}) {
     });
     if (!context?.S_ID_SITUACION) continue;
 
-    const affected = await gestionRepo.assignDefensorBySituacion(context.S_ID_SITUACION, defensorNombre, pagAsignador);
+    const affected = await gestionRepo.assignDefensorBySituacion(context.S_ID_SITUACION, defensorNombre, {
+      pagAsignador,
+      defensorCedula,
+    });
     if (affected > 0) {
       updated += affected;
       continue;
@@ -663,6 +691,7 @@ async function assignDefensor(documentos, defensor, options = {}) {
       {
         DEFENSOR: defensorNombre,
         ...(pagAsignador ? { PAG: pagAsignador } : {}),
+        ...(defensorCedula ? { CEDULA_DEFENSOR: defensorCedula } : {}),
       },
       { sequenceName: getOptionalGestionSequence() }
     );

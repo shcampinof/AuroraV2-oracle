@@ -45,7 +45,8 @@ const BASE_SELECT_COLUMNS = [
   'g.ID_GESTION AS G_ID_GESTION',
   'g.ID_SITUACION AS G_ID_SITUACION',
   'g.PAG AS G_PAG',
-  'g.DEFENSOR AS G_DEFENSOR',
+  'g.CEDULA_DEFENSOR AS G_CEDULA_DEFENSOR',
+  'COALESCE(g.DEFENSOR, TO_NCHAR(d.NOMBRE)) AS G_DEFENSOR',
   'g.ACCION_REALIZAR AS G_ACCION_REALIZAR',
   'g.FECHA_ANALISIS AS G_FECHA_ANALISIS',
   'g.VENCIMIENTO_TERMINOS AS G_VENCIMIENTO_TERMINOS',
@@ -124,6 +125,8 @@ async function listRowsWithActiveSituacionAndGestiones({
      AND s.RN = 1
     LEFT JOIN DNDP.GESTION_JURIDICA g
       ON g.ID_SITUACION = s.ID_SITUACION
+    LEFT JOIN DNDP.DEFENSORES d
+      ON d.CEDULA = g.CEDULA_DEFENSOR
     WHERE ${scopeClause}
       ${hasDocumento ? 'AND TO_CHAR(p.NUMERO) = :documento' : ''}
     ORDER BY
@@ -153,16 +156,18 @@ async function listDistinctDefensores({ tipo = '', scopeDepartamentos = DEFAULT_
   const sql = `
     ${buildActiveSituacionCte()}
     SELECT DISTINCT
-      TRIM(g.DEFENSOR) AS DEFENSOR
+      TRIM(COALESCE(g.DEFENSOR, TO_NCHAR(d.NOMBRE))) AS DEFENSOR
     FROM ranked_situacion s
     JOIN DNDP.PERSONA p
       ON p.ID_PERSONA = s.ID_PERSONA
     JOIN DNDP.GESTION_JURIDICA g
       ON g.ID_SITUACION = s.ID_SITUACION
+    LEFT JOIN DNDP.DEFENSORES d
+      ON d.CEDULA = g.CEDULA_DEFENSOR
     WHERE s.RN = 1
       AND ${scopeClause}
       AND ${tipoClause}
-      AND TRIM(NVL(g.DEFENSOR, '')) <> ''
+      AND TRIM(NVL(COALESCE(g.DEFENSOR, TO_NCHAR(d.NOMBRE)), '')) <> ''
     ORDER BY DEFENSOR ASC
   `;
 

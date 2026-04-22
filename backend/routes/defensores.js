@@ -1,5 +1,5 @@
 const express = require('express');
-const defensores = require('../db/defensores.repo');
+const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const consolidado = require('../db/oracleConsolidado.repo');
 
 const router = express.Router();
@@ -13,12 +13,13 @@ router.get('/', async (req, res) => {
       const defensoresCondenados = await consolidado.getDefensoresDistinct({ tipo: 'condenado' });
       return res.json({
         defensores: defensoresCondenados,
-        opciones: defensores.toOptions(defensoresCondenados),
+        opciones: defensoresRepo.toOptions(defensoresCondenados),
       });
     }
+    const defensores = await defensoresRepo.listAll();
     return res.json({
-      defensores: defensores.getAll(),
-      opciones: defensores.getAllOptions(),
+      defensores: defensores.map((item) => item.nombre).filter(Boolean),
+      opciones: defensoresRepo.toOptions(defensores),
     });
   } catch (err) {
     console.error('[defensores:list] Error Oracle:', err?.message || err);
@@ -30,11 +31,12 @@ router.get('/', async (req, res) => {
 // body: { nombre: string }
 router.post('/', async (req, res) => {
   try {
-    const nombre = defensores.normalizeNombre(req.body?.nombre);
-    defensores.assertNombreValido(nombre);
+    const nombre = defensoresRepo.normalizeNombre(req.body?.nombre);
+    defensoresRepo.assertNombreValido(nombre);
+    const cedula = defensoresRepo.normalizeCedula(req.body?.cedula);
 
     const existsInCondenados = (await consolidado.getDefensoresDistinct({ tipo: 'condenado' }))
-      .some((value) => defensores.normalizeNombre(value) === nombre);
+      .some((value) => defensoresRepo.normalizeNombre(value) === nombre);
 
     if (existsInCondenados) {
       return res.status(409).json({
@@ -43,10 +45,16 @@ router.post('/', async (req, res) => {
       });
     }
 
-    const created = defensores.create(nombre);
+    const created = await defensoresRepo.create({
+      cedula,
+      nombre,
+      correo: req.body?.correo,
+      regional: req.body?.regional,
+      cedulaPag: req.body?.cedulaPag,
+    });
     return res.status(201).json({
-      defensor: created,
-      opcion: defensores.toOptions([created])[0],
+      defensor: created?.nombre || nombre,
+      opcion: defensoresRepo.toOptions([created])[0],
     });
   } catch (err) {
     const status = Number(err?.status) || 500;
