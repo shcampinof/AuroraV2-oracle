@@ -1,38 +1,100 @@
-﻿# AURORA - Reglas de estado de actuaciones (Usuarios asignados)
+# AURORA/Celeste - Reglas de estado de actuaciones (Usuarios asignados)
 
-Fuentes de implementacion actuales:
+Fuentes:
 
 - `frontend/src/config/estadoActuaciones.rules.ts`
-- `frontend/src/config/estadoActuaciones.rules.test.ts`
-- `frontend/src/pages/RegistrosAsignados.jsx`
-- `frontend/src/App.css` (clases `estado--*` y `estadoBadge`)
-- `frontend/src/utils/evaluateAuroraRules.ts` (origen de `derivedStatus`)
+- `frontend/src/utils/evaluateAuroraRules.ts`
+- `frontend/src/utils/evaluateCelesteRules.ts`
+- `frontend/src/config/formRules.aurora.ts`
+- `frontend/src/config/formRules.celeste.ts`
+
+---
 
 ## 1. Resolucion de estado logico
 
-La tabla de Usuarios asignados resuelve el estado con `obtenerEstadoActuacion(record)`:
+`obtenerEstadoActuacion(record)`:
 
-1. `pickActiveCaseData(record)` para resolver el bloque de datos activo.
-2. `evaluateAuroraRules({ answers: data }).derivedStatus`.
-3. Normalizacion del label canonico (`Analizar el caso`, `Entrevistar al usuario`, etc.).
+1. Toma caso activo (`pickActiveCaseData`).
+2. Resuelve flujo por situacion juridica (`condenado` o `sindicado`).
+3. Evalua:
+   - `condenado`: `evaluateAuroraRules({ answers: data }).derivedStatus`
+   - `sindicado`: `evaluateCelesteRules({ answers: data }).derivedStatus`
+4. Mapea etiqueta/clase de estado para UI.
 
-## 2. Mapeo estado -> etiqueta y clase
+---
 
-| Regla ID | Condicion | Etiqueta | Clase final |
+## 2. Mapeo principal
+
+| Regla ID | Condicion | Etiqueta | Clase base |
 |---|---|---|---|
-| `ESTADO.CASO_CERRADO.1` | `derivedStatus = "Caso cerrado"` | `Caso cerrado` | `estado--gris` |
-| `ESTADO.PENDIENTE_DECISION.1` | `derivedStatus = "Pendiente decision"` | `Pendiente decision` | `estado--azul` |
-| `ESTADO.ANALIZAR.1` | `derivedStatus = "Analizar el caso"` | `Analizar el caso` | semaforo por dias (fallback `estado--verde`) |
-| `ESTADO.ENTREVISTAR.1` | `derivedStatus = "Entrevistar al usuario"` | `Entrevistar al usuario` | semaforo por dias (fallback `estado--amarillo`) |
-| `ESTADO.SOLICITUD.1` | `derivedStatus = "Presentar solicitud"` | `Presentar solicitud` | semaforo por dias (fallback `estado--rojo`) |
+| `ESTADO.CASO_CERRADO.1` | `derivedStatus = Caso cerrado` | `Caso cerrado` | `estado--gris` |
+| `ESTADO.PENDIENTE_DECISION.1` | `derivedStatus = Pendiente decision` | `Pendiente decision` | `estado--azul` |
+| `ESTADO.PENDIENTE_AUDIENCIA.1` | `derivedStatus = Pendiente audiencia` | `Pendiente audiencia` | *(sin color)* |
+| `ESTADO.PENDIENTE_DECISION_AUDIENCIA.1` | `derivedStatus = Pendiente decision de audiencia` | `Pendiente decisión de audiencia` | *(sin color)* |
+| `ESTADO.ANALIZAR.1` | `derivedStatus = Analizar el caso` | `Analizar el caso` | `estado--verde` |
+| `ESTADO.ENTREVISTAR.1` | `derivedStatus = Entrevistar al usuario` | `Entrevistar al usuario` | `estado--amarillo` |
+| `ESTADO.SOLICITUD.1` | `derivedStatus = Presentar solicitud` | `Presentar solicitud` | `estado--rojo` |
+| `ESTADO.RECURSO.1` | `derivedStatus = Presentar recurso` | `Presentar recurso` | `estado--rojo` |
 
-Nota:
+---
 
-- En estados con semaforo, `claseFinal` toma el color de semaforo si existe; en caso contrario usa la clase base.
+## 3. Reglas vigentes de estado derivado
 
-## 3. Reglas de semaforo por dias
+`derivedStatus` en Aurora (condenados) se calcula asi:
 
-El semaforo usa `getSemaforoClassByDays(days)`.
+- `Entrevistar al usuario`:
+  - Q29 y Q37 diligenciadas,
+  - y falta Q38 o Q40.
+- `Presentar solicitud`:
+  - Q29, Q37, Q38 y Q40 diligenciadas,
+  - y falta Q50 (utilidad publica) o Q45 (tramite normal).
+  - En tramite normal, tambien cuando Q47 = `No concede la solicitud` y Q49 aun no esta diligenciada.
+- `Pendiente decision`:
+  - Q29, Q37, Q38 y Q40 diligenciadas,
+  - ya existe Q50 (utilidad publica) o Q45 (tramite normal),
+  - y falta Q51 (utilidad publica) o Q46 (tramite normal).
+  - En tramite normal, tambien cuando Q47 = `No concede la solicitud`, Q49 = `Si` y Q52 esta vacia.
+
+Notas:
+
+- `Caso cerrado` prevalece sobre los estados anteriores cuando aplica una regla de cierre.
+- Se mantienen aliases historicos para leer radicacion/decision en columnas legacy.
+- Reglas de cierre clave que disparan `Caso cerrado`:
+  - Q39 en opcion no afirmativa (las dos opciones que inician por `Si` son afirmativas),
+  - Q40 con "NINGUNA"/"NO PROCEDE NADA",
+  - Q44 o Q45 = `No` en utilidad publica,
+  - recurso en `No`,
+  - Q57 (utilidad) o Q52 (tramite) diligenciada,
+  - en tramite normal, Q47 diligenciada con valor distinto de `No concede la solicitud`.
+
+`derivedStatus` en Celeste (sindicados) se calcula asi:
+
+- `Analizar el caso`:
+  - faltan Q19-Q22.
+- `Caso cerrado`:
+  - Q21 inicia con `No se avanzara...`, o
+  - Q30 (fecha de la decision del recurso) diligenciada, o
+  - Q31 (sentido de la decision que resuelve recurso) diligenciada, o
+  - Q24+Q25 diligenciadas y Q26 = `Revoca.../Sustituye...`, o
+  - en flujo de recurso, Q28 = `No`.
+- `Entrevistar al usuario`:
+  - Q19-Q22 completas, Q21 inicia con `Se avanzara...`, y Q23 vacia.
+- `Presentar solicitud`:
+  - Q23 diligenciada y sin resultado de audiencia.
+- `Pendiente audiencia`:
+  - Q24 diligenciada y Q25 vacia.
+- `Pendiente decisión de audiencia`:
+  - Q25 diligenciada y Q26 vacia.
+- `Presentar recurso`:
+  - Q24+Q25 diligenciadas y Q26 = `Niega la solicitud`, con Q28 vacia o `Si`.
+- `Pendiente decision`:
+  - flujo de recurso con Q29 diligenciada.
+
+---
+
+## 4. Semaforo por dias
+
+`getSemaforoClassByDays(days)`:
 
 | Regla ID | Condicion | Clase |
 |---|---|---|
@@ -40,37 +102,9 @@ El semaforo usa `getSemaforoClassByDays(days)`.
 | `ESTADO.SEMAFORO.AMARILLO.1` | `16 <= days <= 30` | `estado--amarillo` |
 | `ESTADO.SEMAFORO.ROJO.1` | `days > 30` | `estado--rojo` |
 
-## 4. Fecha de referencia por estado con semaforo
+---
 
-| Estado | Fecha usada por la implementacion |
-|---|---|
-| `Analizar el caso` | primera no vacia entre: `Fecha de asignacion del PAG`, `Fecha asignacion del PAG`, `Fecha de asignacion PAG`, `Fecha asignacion PAG`, `Fecha de asignacion`, `Fecha de asignacion`, `fechaAsignacionPAG`, `fechaAsignacionPag`, `fechaAsignacion`; fallback: `record.createdAt` |
-| `Entrevistar al usuario` | primera no vacia entre: `Fecha de analisis juridico del caso`, `Fecha de analisis juridico del caso`, `aurora_b3_fechaAnalisis` |
-| `Presentar solicitud` | `Fecha de entrevista` |
+## 5. Ultima actuacion
 
-## 5. Fallback de etiqueta y clase
-
-Si `derivedStatus` no cae en los estados principales:
-
-1. Etiqueta = primer valor no vacio entre:
-   - `Accion a realizar`
-   - `Actuacion a adelantar`
-   - `posibleActuacionJudicial`
-   - `Estado del caso`
-   - `Estado del tramite`
-   - `estado`
-   - `estadoEntrevista`
-   - `Estado entrevista`
-   - `derivedStatus`
-2. Clase por mapeo de label (`getEstadoClassByLabel`):
-   - `analizar el caso` -> `estado--verde`
-   - `entrevistar al usuario` -> `estado--amarillo`
-   - `presentar solicitud` -> `estado--rojo`
-   - `pendiente decision` -> `estado--azul`
-   - `caso cerrado` / `cerrado` -> `estado--gris`
-   - `activo` -> `estado--azul`
-
-## 6. TODO de trazabilidad
-
-- Si se agregan nuevos labels operativos de estado en CSV/API, actualizar `getEstadoClassByLabel` y esta matriz.
-- Si cambia la fuente de fecha para semaforo, actualizar tests `ESTADO.SEMAFORO.*`.
+- El estado visible en tablas se calcula con `pickActiveCaseData`, priorizando la actuacion mas reciente.
+- En guardado, si hay `actuacionId` se actualiza esa actuacion; si no, el backend actualiza la ultima actuacion del documento.

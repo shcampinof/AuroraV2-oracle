@@ -63,6 +63,17 @@ app.listen(PORT, '0.0.0.0', () => {
     } catch (err) {
       console.error('[warmup] No fue posible consultar Oracle:', err?.message || err);
     }
+
+    try {
+      const warmupCondenadosStartedAt = Date.now();
+      if (typeof pplRoutes.warmupCondenadosIndex === 'function') {
+        await pplRoutes.warmupCondenadosIndex();
+      }
+      const warmupCondenadosElapsed = Date.now() - warmupCondenadosStartedAt;
+      console.log(`[warmup] Indice de usuarios asignados precalculado (${warmupCondenadosElapsed} ms)`);
+    } catch (err) {
+      console.error('[warmup] No fue posible precargar cache de condenados:', err?.message || err);
+    }
   });
 });
 

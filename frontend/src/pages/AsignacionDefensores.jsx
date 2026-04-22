@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   assignDefensorPpl,
   createDefensor,
   getCondenados,
+  getDefensoresCondenados,
   getDefensoresCatalogo,
+  extractDefensoresCatalogo,
   validatePagCedula,
 } from '../services/api.js';
 import Toast from '../components/Toast.jsx';
-import { getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
+import LoadingOverlay from '../components/LoadingOverlay.jsx';
+import { getEstadoClassByLabel } from '../config/estadoActuaciones.rules.ts';
 import { displayOrDash } from '../utils/pplDisplay.js';
 import { reportError } from '../utils/reportError.js';
 
@@ -31,7 +34,16 @@ function isNombreDefensorValido(value) {
   return /^[\p{L}\s]+$/u.test(value);
 }
 
-const DEFAULT_INITIAL_LIMIT = 1000;
+function getEstadoInfoLigero(row) {
+  const label = String(row?.['Estado del caso'] || '').trim();
+  if (!label) return { label: '', className: '' };
+  return {
+    label,
+    className: String(getEstadoClassByLabel(label) || '').trim(),
+  };
+}
+
+const DEFAULT_INITIAL_LIMIT = 500;
 const DEFAULT_FILTERED_LIMIT = 200;
 
 function AsignacionDefensores() {
@@ -44,9 +56,10 @@ function AsignacionDefensores() {
   const [seleccionados, setSeleccionados] = useState(new Set());
 
   const [defensores, setDefensores] = useState([]);
+  const [defensoresError, setDefensoresError] = useState('');
   const [nuevoDefensorId, setNuevoDefensorId] = useState('');
+  const [nuevoDefensorInput, setNuevoDefensorInput] = useState('');
   const [crearDefensorNombre, setCrearDefensorNombre] = useState('');
-  const [crearDefensorCedula, setCrearDefensorCedula] = useState('');
   const [crearDefensorError, setCrearDefensorError] = useState('');
   const [crearDefensorSuccess, setCrearDefensorSuccess] = useState('');
   const [guardandoDefensor, setGuardandoDefensor] = useState(false);
@@ -58,12 +71,14 @@ function AsignacionDefensores() {
   const [fDepartamento, setFDepartamento] = useState('');
   const [fMunicipio, setFMunicipio] = useState('');
   const [fLugar, setFLugar] = useState('');
+  const [fPotencialSubrogado, setFPotencialSubrogado] = useState('');
   const [fDefensorActual, setFDefensorActual] = useState('');
   const [filtrosAplicados, setFiltrosAplicados] = useState({
     documento: '',
     departamento: '',
     municipio: '',
     lugar: '',
+    potencialSubrogado: '',
     defensorActual: '',
   });
   const [metaConsulta, setMetaConsulta] = useState(null);
@@ -75,6 +90,7 @@ function AsignacionDefensores() {
       departamento: String(safe.departamento || '').trim(),
       municipio: String(safe.municipio || '').trim(),
       lugar: String(safe.lugar || '').trim(),
+      potencialSubrogado: String(safe.potencialSubrogado || '').trim(),
       defensor: currentTab === 'reasignacion' ? String(safe.defensorActual || '').trim() : '',
     };
   }, []);
@@ -101,20 +117,48 @@ function AsignacionDefensores() {
   }, [buildBackendFilters]);
 
   const cargarDefensoresActuales = useCallback(async () => {
-    try {
-      const catalogo = await getDefensoresCatalogo();
+    const normalizarLista = (catalogo) => {
       const map = new Map();
-      catalogo.forEach((item) => {
+      (Array.isArray(catalogo) ? catalogo : []).forEach((item) => {
         const id = String(item?.id || '').trim();
         const nombre = String(item?.nombre || '').trim();
         if (!id || !nombre) return;
         if (!map.has(id)) map.set(id, { id, nombre });
       });
+      return Array.from(map.values());
+    };
 
-      setDefensores(Array.from(map.values()));
+    try {
+      const catalogo = await getDefensoresCatalogo();
+      let normalizados = normalizarLista(catalogo);
+
+      // Fallback: si el catalogo principal viene vacio en runtime, intenta
+      // reconstruir opciones desde el consolidado para no bloquear asignacion.
+      if (!normalizados.length) {
+        const fallbackRaw = await getDefensoresCondenados();
+        normalizados = normalizarLista(extractDefensoresCatalogo(fallbackRaw));
+      }
+
+      setDefensores(normalizados);
+      setDefensoresError(
+        normalizados.length ? '' : 'No se encontraron defensores disponibles en el catálogo.'
+      );
     } catch (e) {
       reportError(e, 'asignacion-defensores:cargar-defensores');
-      setDefensores([]);
+      try {
+        const fallbackRaw = await getDefensoresCondenados();
+        const fallback = normalizarLista(extractDefensoresCatalogo(fallbackRaw));
+        setDefensores(fallback);
+        setDefensoresError(
+          fallback.length
+            ? 'Se cargó listado alterno de defensores. Revise conectividad del catálogo principal.'
+            : 'No fue posible cargar defensores.'
+        );
+      } catch (fallbackError) {
+        reportError(fallbackError, 'asignacion-defensores:cargar-defensores-fallback');
+        setDefensores([]);
+        setDefensoresError('No fue posible cargar defensores.');
+      }
     }
   }, []);
 
@@ -138,6 +182,19 @@ function AsignacionDefensores() {
       const nombre = String(item?.nombre || '').trim();
       if (!id || !nombre) return;
       map.set(id, nombre);
+    });
+    return map;
+  }, [defensores]);
+
+  const defensoresPorNombreNormalizado = useMemo(() => {
+    const map = new Map();
+    defensores.forEach((item) => {
+      const id = String(item?.id || '').trim();
+      const nombre = String(item?.nombre || '').trim();
+      if (!id || !nombre) return;
+      const key = normalizeDefensorNombre(nombre);
+      if (!key || map.has(key)) return;
+      map.set(key, { id, nombre });
     });
     return map;
   }, [defensores]);
@@ -227,6 +284,7 @@ function AsignacionDefensores() {
       departamento: String(fDepartamento || '').trim(),
       municipio: String(fMunicipio || '').trim(),
       lugar: String(fLugar || '').trim(),
+      potencialSubrogado: String(fPotencialSubrogado || '').trim(),
       defensorActual: tab === 'reasignacion' ? String(fDefensorActual || '').trim() : '',
     };
 
@@ -243,12 +301,14 @@ function AsignacionDefensores() {
       departamento: '',
       municipio: '',
       lugar: '',
+      potencialSubrogado: '',
       defensorActual: '',
     };
     setFDocumento('');
     setFDepartamento('');
     setFMunicipio('');
     setFLugar('');
+    setFPotencialSubrogado('');
     setFDefensorActual('');
     setFiltrosAplicados(emptyFiltros);
     setSeleccionados(new Set());
@@ -292,9 +352,17 @@ function AsignacionDefensores() {
       return;
     }
 
-    const defensor = String(defensoresPorId.get(nuevoDefensorId) || '').trim();
+    let defensor = String(defensoresPorId.get(nuevoDefensorId) || '').trim();
     if (!defensor) {
-      setError('Seleccione un defensor.');
+      const typedKey = normalizeDefensorNombre(nuevoDefensorInput);
+      const hit = typedKey ? defensoresPorNombreNormalizado.get(typedKey) : null;
+      if (hit?.id) {
+        defensor = String(hit.nombre || '').trim();
+        setNuevoDefensorId(hit.id);
+      }
+    }
+    if (!defensor) {
+      setError('Seleccione un defensor válido de la lista.');
       return;
     }
 
@@ -319,11 +387,7 @@ function AsignacionDefensores() {
     setError('');
     setToastOpen(false);
     try {
-      const defensorCedula = normalizeDocumento(nuevoDefensorId);
-      await assignDefensorPpl(documentos, defensor, {
-        pagCedula: pagValidado.cedula,
-        ...(defensorCedula ? { defensorCedula } : {}),
-      });
+      await assignDefensorPpl(documentos, defensor, { pagCedula: pagValidado.cedula });
 
       setToastOpen(true);
       setSeleccionados(new Set());
@@ -339,13 +403,8 @@ function AsignacionDefensores() {
 
   async function guardarNuevoDefensor() {
     const nombre = normalizeDefensorNombre(crearDefensorNombre);
-    const cedula = normalizeDocumento(crearDefensorCedula);
     setCrearDefensorSuccess('');
 
-    if (!cedula) {
-      setCrearDefensorError('La cedula del defensor es obligatoria.');
-      return;
-    }
     if (!nombre) {
       setCrearDefensorError('El nombre del defensor es obligatorio.');
       return;
@@ -355,9 +414,8 @@ function AsignacionDefensores() {
       return;
     }
 
-    const existeNombre = defensores.some((d) => normalizeDefensorNombre(d?.nombre) === nombre);
-    const existeCedula = defensores.some((d) => normalizeDocumento(d?.id) === cedula);
-    if (existeNombre || existeCedula) {
+    const existe = defensores.some((d) => normalizeDefensorNombre(d?.nombre) === nombre);
+    if (existe) {
       setCrearDefensorError('El defensor ya existe.');
       return;
     }
@@ -365,18 +423,21 @@ function AsignacionDefensores() {
     setGuardandoDefensor(true);
     setCrearDefensorError('');
     try {
-      const data = await createDefensor({ nombre, cedula });
+      const data = await createDefensor(nombre);
       const creado = normalizeDefensorNombre(data?.defensor || nombre);
       const opcionCreada = data?.opcion;
 
       if (opcionCreada?.id) {
         setNuevoDefensorId(String(opcionCreada.id));
+        setNuevoDefensorInput(String(opcionCreada?.nombre || creado));
       } else {
         const hit = defensores.find((item) => normalizeDefensorNombre(item?.nombre) === creado);
-        if (hit?.id) setNuevoDefensorId(String(hit.id));
+        if (hit?.id) {
+          setNuevoDefensorId(String(hit.id));
+          setNuevoDefensorInput(String(hit.nombre || creado));
+        }
       }
       setCrearDefensorNombre('');
-      setCrearDefensorCedula('');
       setCrearDefensorSuccess('Defensor creado correctamente');
       await cargarDefensoresActuales();
     } catch (e) {
@@ -395,7 +456,7 @@ function AsignacionDefensores() {
     setCrearDefensorError('');
     setCrearDefensorSuccess('');
     setNuevoDefensorId('');
-    setCrearDefensorCedula('');
+    setNuevoDefensorInput('');
 
     if (nextTab === 'asignacion') {
       setFDefensorActual('');
@@ -409,13 +470,13 @@ function AsignacionDefensores() {
   }
 
   const botonGuardarDefensorDeshabilitado =
-    guardandoDefensor ||
-    String(crearDefensorNombre || '').trim() === '' ||
-    String(crearDefensorCedula || '').trim() === '';
+    guardandoDefensor || String(crearDefensorNombre || '').trim() === '';
+  const mostrarOverlayCarga = tab !== 'crearDefensor' && (cargando || validandoPag);
+  const mensajeOverlayCarga = 'Cargando información...';
 
   return (
-    <div className="card">
-      <h2>PAG - Asignación de Casos</h2>
+    <div className="card loading-layer-host">
+      <h2>PAG -Asignación de casos de condenados</h2>
 
       <Toast
         open={toastOpen}
@@ -432,7 +493,6 @@ function AsignacionDefensores() {
       )}
 
       {tab !== 'crearDefensor' && error && <p className="hint-text">{error}</p>}
-      {tab !== 'crearDefensor' && cargando && <p>Cargando...</p>}
       {tab !== 'crearDefensor' && sugerenciaReasignacion && (
         <p className="hint-text">{sugerenciaReasignacion}</p>
       )}
@@ -491,26 +551,7 @@ function AsignacionDefensores() {
               {crearDefensorSuccess && <p className="hint-text">{crearDefensorSuccess}</p>}
               {guardandoDefensor && <p className="hint-text">Guardando defensor...</p>}
             </div>
-            <div className="form-field">
-              <label>Numero de cedula del defensor</label>
-              <input
-                className="input-text"
-                placeholder="Ingrese cedula del defensor"
-                value={crearDefensorCedula}
-                onChange={(e) => {
-                  setCrearDefensorCedula(normalizeDocumento(e.target.value));
-                  if (crearDefensorError) setCrearDefensorError('');
-                  if (crearDefensorSuccess) setCrearDefensorSuccess('');
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    guardarNuevoDefensor();
-                  }
-                }}
-              />
-              <p className="hint-text">Ingrese solo numeros.</p>
-            </div>
+            <div />
           </div>
           <div className="actions-center">
             <button
@@ -653,6 +694,22 @@ function AsignacionDefensores() {
               }}
             />
           </div>
+
+          <div className="form-field">
+            <label>Potenciales candidatos de solicitudes</label>
+            <select
+              value={fPotencialSubrogado}
+              onChange={(e) => setFPotencialSubrogado(String(e.target.value || '').trim())}
+            >
+              <option value="">Todas las personas condenadas</option>
+              <option value="potenciales_beneficiarios">Potenciales beneficiarios</option>
+              <option value="proximos_requisito_temporal">Personas próximas a cumplir requisito temporal</option>
+              <option value="no_reunen_requisitos">Condenados que no reúnen los requisitos</option>
+            </select>
+            <p className="hint-text">
+              Criterio: 50% de pena cumplida o faltan 90 días o menos para llegar al 50%.
+            </p>
+          </div>
         </div>
 
         <div className="actions-center" style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
@@ -668,12 +725,20 @@ function AsignacionDefensores() {
           filtrosAplicados.municipio ||
           filtrosAplicados.lugar ||
           filtrosAplicados.documento ||
+          filtrosAplicados.potencialSubrogado ||
           (tab === 'reasignacion' && filtrosAplicados.defensorActual)) && (
           <p className="hint-text" style={{ marginTop: '0.75rem' }}>
             Filtros aplicados:{' '}
             {tab === 'reasignacion' ? `${filtrosAplicados.defensorActual || '-'} / ` : ''}
             {filtrosAplicados.departamento || '-'} / {filtrosAplicados.municipio || '-'} /{' '}
-            {filtrosAplicados.lugar || '-'} / {filtrosAplicados.documento || '-'}
+            {filtrosAplicados.lugar || '-'} / {filtrosAplicados.documento || '-'} /{' '}
+            {filtrosAplicados.potencialSubrogado === 'potenciales_beneficiarios'
+              ? 'Potenciales beneficiarios'
+              : filtrosAplicados.potencialSubrogado === 'proximos_requisito_temporal'
+                ? 'Próximos a cumplir requisito temporal'
+                : filtrosAplicados.potencialSubrogado === 'no_reunen_requisitos'
+                  ? 'No reúnen requisitos'
+                  : 'Todas las personas condenadas'}
           </p>
         )}
       </div>
@@ -690,14 +755,35 @@ function AsignacionDefensores() {
         <div className="grid-2">
           <div className="form-field">
             <label>Nuevo defensor</label>
-            <select value={nuevoDefensorId} onChange={(e) => setNuevoDefensorId(e.target.value)}>
-              <option value="">Seleccione un defensor</option>
+            <input
+              list="pag-nuevo-defensor-list"
+              className="input-text"
+              placeholder="Escriba para buscar defensor"
+              value={nuevoDefensorInput}
+              onChange={(e) => {
+                const next = String(e.target.value || '');
+                setNuevoDefensorInput(next);
+                const hit = defensoresPorNombreNormalizado.get(normalizeDefensorNombre(next));
+                setNuevoDefensorId(hit?.id ? String(hit.id) : '');
+              }}
+            />
+            <datalist id="pag-nuevo-defensor-list">
               {defensoresOrdenados.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.nombre}
-                </option>
+                <option key={d.id} value={d.nombre} />
               ))}
-            </select>
+            </datalist>
+            {defensoresError && <p className="hint-text">{defensoresError}</p>}
+            {!defensoresError && defensoresOrdenados.length === 0 && (
+              <p className="hint-text">No hay defensores para mostrar.</p>
+            )}
+            <button
+              className="primary-button"
+              type="button"
+              onClick={cargarDefensoresActuales}
+              style={{ marginTop: '0.5rem' }}
+            >
+              Recargar defensores
+            </button>
           </div>
           <div />
         </div>
@@ -732,7 +818,7 @@ function AsignacionDefensores() {
                 {rowsFiltradas.map((r, idx) => {
                   const doc = String(r.numeroIdentificacion);
                   const rowKey = `${doc}-${idx}`;
-                  const estadoInfo = getEstadoDisplayInfo(r);
+                  const estadoInfo = getEstadoInfoLigero(r);
                   const estadoLabel = String(estadoInfo?.label || '').trim();
                   const estadoClass = String(estadoInfo?.className || '').trim();
                   return (
@@ -790,8 +876,11 @@ function AsignacionDefensores() {
       )}
         </>
       )}
+      <LoadingOverlay show={mostrarOverlayCarga} message={mensajeOverlayCarga} />
     </div>
   );
 }
 
 export default AsignacionDefensores;
+
+

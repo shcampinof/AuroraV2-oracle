@@ -231,6 +231,63 @@ a:hover{
   overflow-wrap: anywhere;
 }
 
+.loading-layer-host{
+  position: relative;
+}
+
+.loading-overlay{
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(245, 248, 252, 0.78);
+  backdrop-filter: blur(1.5px);
+}
+
+.loading-overlay-card{
+  min-width: 220px;
+  max-width: min(90%, 360px);
+  padding: 1rem 1.15rem;
+  border-radius: 10px;
+  border: 1px solid var(--primary-blue-soft-border);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 6px 18px rgba(7, 71, 148, 0.14);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.loading-overlay-logo{
+  width: clamp(84px, 18vw, 124px);
+  height: auto;
+  object-fit: contain;
+}
+
+.loading-overlay-spinner{
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 3px solid #c7d8ef;
+  border-top-color: var(--primaryBlue);
+  animation: auroraSpin 0.9s linear infinite;
+}
+
+.loading-overlay-text{
+  margin: 0;
+  color: #1c4b84;
+  font-weight: 700;
+  text-align: center;
+}
+
+@keyframes auroraSpin{
+  to{
+    transform: rotate(360deg);
+  }
+}
+
 /* =========================================================
    HOME
 ========================================================= */
@@ -320,6 +377,17 @@ a:hover{
   border: 2px solid var(--secondaryBlue);
   font-size: 0.95rem;
   background: #fff;
+}
+
+/* Evita que checkboxes/radios hereden estilos de inputs de texto. */
+.form-field input[type='checkbox'],
+.form-field input[type='radio']{
+  width: auto;
+  max-width: none;
+  min-width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .form-field input:focus-visible,
@@ -455,6 +523,17 @@ input[list]{
   white-space: nowrap;
   font-weight: 700;
   background: #f8fafc;
+}
+
+.calificacion-resumen-group-row td{
+  background: #edf3fb;
+  color: #000;
+  font-weight: 800;
+  border-top: 2px solid #d6dfeb;
+}
+
+.calificacion-resumen-group-cell{
+  padding: 0.6rem;
 }
 
 .calificacion-resumen-table td input,
@@ -651,10 +730,26 @@ input[list]{
   font-weight: 900;
   cursor: pointer;
   font-family: var(--font-display);
+  transition: background-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
 }
 
 .save-button:hover{
   background-color: var(--secondary-blue-dark);
+}
+
+.save-button:active{
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.24);
+  transform: translateY(0);
+}
+
+.save-button:focus-visible{
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.save-button:disabled{
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .save-button.secondary{
@@ -675,6 +770,10 @@ input[list]{
   color: #ffffff;
 }
 
+.question-40-highlight .form-field.is-disabled label{
+  color: #ffffff;
+}
+
 .question-40-highlight .required-note{
   color: #ffd6dc;
 }
@@ -689,11 +788,36 @@ input[list]{
   border-color: rgba(255,255,255,0.85);
 }
 
+.question-40-highlight .form-field input,
+.question-40-highlight .form-field textarea{
+  background-color: rgba(255,255,255,0.12);
+  color: #ffffff;
+  border-color: rgba(255,255,255,0.85);
+  -webkit-text-fill-color: #ffffff;
+}
+
+.question-40-highlight .form-field input:disabled,
+.question-40-highlight .form-field input[readonly],
+.question-40-highlight .form-field textarea:disabled,
+.question-40-highlight .form-field textarea[readonly]{
+  background-color: rgba(255,255,255,0.12);
+  color: #ffffff;
+  border-color: rgba(255,255,255,0.85);
+  -webkit-text-fill-color: #ffffff;
+  opacity: 1;
+}
+
 /* Mantiene legible el desplegable nativo del navegador en P40. */
 .question-40-highlight .form-field select option,
 .question-40-highlight .form-field select optgroup{
   color: #111827;
   background-color: #ffffff;
+}
+
+.remaining-days-field .form-field label{
+  min-height: 2.6rem;
+  display: flex;
+  align-items: flex-end;
 }
 
 .fuga-button{
@@ -783,11 +907,31 @@ input[list]{
   flex: 1;
   min-width: 0;
   width: 100%;
+  position: relative;
 }
 
 .asignados-table-container{
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: auto;
+}
+
+.asignados-scrollbar-sticky{
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  height: 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: linear-gradient(to top, #ffffff, rgba(255, 255, 255, 0.9));
+  border-top: 1px solid var(--primary-blue-soft-border);
+}
+
+.asignados-scrollbar-sticky > div{
+  height: 1px;
+}
+
+.asignados-scrollbar-sticky.is-hidden{
+  display: none;
 }
 
 .asignados-table{
@@ -1515,6 +1659,10 @@ input[list]{
 
   .asignados-table-container{
     max-height: 70vh;
+  }
+
+  .asignados-scrollbar-sticky{
+    height: 16px;
   }
 
   .asignados-table{

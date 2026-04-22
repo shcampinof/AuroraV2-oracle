@@ -21,6 +21,9 @@ export interface EvaluateAuroraRulesResult {
 }
 
 const PLACEHOLDER_VALUES = new Set(['-', '--', 'null', 'undefined', 'seleccione', 'todos']);
+const OTRAS_SOLICITUDES_KEY = 'Otras solicitudes a tramitar';
+const OTRAS_SOLICITUDES_MULTIPLE_LINE = 'MAS DE UNA OPCION';
+const OTRAS_SOLICITUDES_MULTIPLE_LINE_LEGACY = 'MAS DE UNA OPCION (VER RESUMEN ANALISIS DEL CASO)';
 
 function toText(value: unknown): string {
   if (value === null || value === undefined) return '';
@@ -127,6 +130,43 @@ function isAffirmativeProcedencia(value: unknown): boolean {
   return normalizeText(value).startsWith('si');
 }
 
+function parseOtrasSolicitudesSelection(value: unknown): string[] {
+  const text = toText(value);
+  if (!text) return [];
+  const parts = text
+    .split(/\r?\n|\s*\|\s*|\s*;\s*/g)
+    .map((item) => toText(item))
+    .filter(Boolean);
+
+  const selected: string[] = [];
+  const seen = new Set<string>();
+  const isP36MultipleMarker = (normalizedValue: string) =>
+    (normalizedValue.includes('mas de una') && normalizedValue.includes('opci')) || (normalizedValue.includes('resumen') && normalizedValue.includes('opci'));
+  for (const part of parts) {
+    const normalized = normalizeText(part);
+    if (!normalized) continue;
+    if (
+      isP36MultipleMarker(normalized) ||
+      normalized === normalizeText(OTRAS_SOLICITUDES_MULTIPLE_LINE) ||
+      normalized === normalizeText(OTRAS_SOLICITUDES_MULTIPLE_LINE_LEGACY)
+    ) {
+      continue;
+    }
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    selected.push(part);
+  }
+  return selected;
+}
+
+function isMandatoryFieldFilled(answers: FormRecord, field: { key: string; id?: string }): boolean {
+  const value = readFieldValue(answers, field);
+  if (normalizeKeyLoose(field.key) === normalizeKeyLoose(OTRAS_SOLICITUDES_KEY)) {
+    return parseOtrasSolicitudesSelection(value).length > 0;
+  }
+  return isFilled(value);
+}
+
 function hasAtLeastOneSiBetween30And34(answers: FormRecord): boolean {
   const block3Fields = auroraFormRules.mandatoryByBlock?.bloque3 || [];
   const targetIds = new Set([
@@ -139,6 +179,17 @@ function hasAtLeastOneSiBetween30And34(answers: FormRecord): boolean {
 
   const targets = block3Fields.filter((field) => field.id && targetIds.has(field.id));
   return targets.some((field) => isAffirmativeProcedencia(readFieldValue(answers, field)));
+}
+
+function hasPositiveOtrasSolicitudesInP36(answers: FormRecord): boolean {
+  const block3Fields = auroraFormRules.mandatoryByBlock?.bloque3 || [];
+  const q36Field =
+    block3Fields.find((field) => field.id === AURORA_FIELD_IDS.B3_ANALISIS_ACTUACION) ||
+    block3Fields.find((field) => normalizeKeyLoose(field.key) === normalizeKeyLoose(OTRAS_SOLICITUDES_KEY));
+  if (!q36Field) return false;
+
+  const selections = parseOtrasSolicitudesSelection(readFieldValue(answers, q36Field));
+  return selections.some((item) => normalizeText(item) !== 'ninguna');
 }
 
 function firstLockMatch(answers: FormRecord) {
@@ -159,7 +210,7 @@ function getActiveBlock5Variant(answers: FormRecord): {
 
 function areMandatoryFieldsFilled(answers: FormRecord, blockId: string): boolean {
   const fields = auroraFormRules.mandatoryByBlock?.[blockId] || [];
-  const complete = fields.every((field) => field.optional || isFilled(readFieldValue(answers, field)));
+  const complete = fields.every((field) => field.optional || isMandatoryFieldFilled(answers, field));
   return complete;
 }
 
@@ -173,7 +224,7 @@ function evaluateVisibleBlocks(answers: FormRecord, locked: boolean, activeBlock
   if (
     visible.includes('bloque3') &&
     areMandatoryFieldsFilled(answers, 'bloque3') &&
-    hasAtLeastOneSiBetween30And34(answers)
+    (hasAtLeastOneSiBetween30And34(answers) || hasPositiveOtrasSolicitudesInP36(answers))
   ) {
     visible.push('bloque4');
   }
@@ -241,3 +292,5 @@ export function evaluateAuroraRules({ answers }: EvaluateAuroraRulesInput): Eval
 }
 
 export default evaluateAuroraRules;
+
+

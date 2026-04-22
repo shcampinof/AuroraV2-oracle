@@ -47,15 +47,6 @@ Opcionales de build frontend:
 
 No se incluyen credenciales ni archivos `.env` dentro de la imagen. Si agregas integraciones sensibles (tokens, DB URI, etc.), inyectalas como variables de entorno al desplegar.
 
-Para variante Oracle v2, inyecta además:
-
-- `ORACLE_USER`
-- `ORACLE_PASSWORD`
-- `ORACLE_HOST`
-- `ORACLE_PORT`
-- `ORACLE_SERVICE_NAME`
-- `ORACLE_GESTION_ID_SEQUENCE` (opcional)
-
 ## Uso en Hugging Face Spaces (Docker)
 
 1. Sube el repositorio con este `Dockerfile` en la raiz.

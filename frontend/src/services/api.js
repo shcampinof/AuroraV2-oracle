@@ -62,10 +62,7 @@ const CONFIGURED_API_BASE = ensureApiSuffix(
   typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_API_BASE_URL : ''
 );
 
-const DEFAULT_API_BASE =
-  typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV
-    ? 'http://localhost:7860/api'
-    : '/api';
+const DEFAULT_API_BASE = '/api';
 
 const API_BASE = shouldUseConfiguredApiBase(CONFIGURED_API_BASE) ? CONFIGURED_API_BASE : DEFAULT_API_BASE;
 
@@ -181,6 +178,9 @@ export function getFormatoDownloadUrl(id) {
 export async function getCondenados(options = 1000) {
   const isLegacyNumeric = typeof options === 'number' || typeof options === 'string';
   const source = isLegacyNumeric ? { limit: options } : options && typeof options === 'object' ? options : {};
+  const rawTipo = String(source?.tipo || '').trim().toLowerCase();
+  const safeTipo =
+    rawTipo === 'all' || rawTipo === 'condenado' || rawTipo === 'sindicado' ? rawTipo : '';
 
   const safeLimit = Number.isFinite(Number(source?.limit))
     ? Math.max(1, Math.min(10000, Number(source.limit)))
@@ -191,9 +191,20 @@ export async function getCondenados(options = 1000) {
 
   const filters = source?.filters && typeof source.filters === 'object' ? source.filters : {};
   const params = new URLSearchParams();
+  if (safeTipo) params.set('tipo', safeTipo);
   params.set('limit', String(safeLimit));
 
-  const filterKeys = ['defensor', 'nombre', 'documento', 'lugar', 'departamento', 'municipio', 'estado'];
+  const filterKeys = [
+    'defensor',
+    'nombre',
+    'documento',
+    'lugar',
+    'departamento',
+    'municipio',
+    'estadoAccion',
+    'estado',
+    'potencialSubrogado',
+  ];
   let hasFilters = false;
   filterKeys.forEach((key) => {
     const value = String(filters?.[key] ?? '').trim();
@@ -223,15 +234,11 @@ export async function getDefensoresCondenados() {
   return readJsonOrThrow(res, 'Error consultando defensores'); // { defensores }
 }
 
-export async function createDefensor(nombreOrPayload) {
-  const payload =
-    nombreOrPayload && typeof nombreOrPayload === 'object'
-      ? nombreOrPayload
-      : { nombre: nombreOrPayload };
+export async function createDefensor(nombre) {
   const res = await fetchJson(`${API_BASE}/defensores`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ nombre }),
   });
 
   const data = await res.json().catch(() => ({}));
@@ -297,7 +304,6 @@ export async function assignDefensorPpl(documento, defensor, options = {}) {
     ? documento.map((d) => String(d || '').trim()).filter(Boolean)
     : [String(documento || '').trim()].filter(Boolean);
   const defensorNombre = String(defensor ?? '').trim();
-  const defensorCedula = String(options?.defensorCedula || options?.defensorId || '').replace(/\D+/g, '');
   if (!documentos.length) throw new Error('No hay documentos para asignar.');
   if (!defensorNombre) throw new Error('Defensor invalido.');
 
@@ -308,10 +314,10 @@ export async function assignDefensorPpl(documento, defensor, options = {}) {
       documentos,
       defensor: defensorNombre,
       ...(options || {}),
-      ...(defensorCedula ? { defensorCedula } : {}),
     }),
   });
 
   if (!res.ok) throw new Error('Error guardando la asignacion de defensor');
   return readJsonOrThrow(res, 'Error guardando la asignacion de defensor');
 }
+

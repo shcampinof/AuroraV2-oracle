@@ -2,7 +2,7 @@ import { AURORA_FIELD_IDS } from './auroraFieldIds';
 
 /**
  * Nota de diseño:
- * Las reglas aún aceptan labels como claves, pero se est? migrando a IDs estables.
+ * Las reglas aún aceptan labels como claves, pero se está migrando a IDs estables.
  * Cuando la migración termine, se puede simplificar el matching tolerante de claves.
  */
 export type AuroraBlockId =
@@ -79,6 +79,7 @@ const FIELD = {
   q38: 'Fecha de entrevista',
   q39: 'Decisión del usuario',
   q40: 'Actuación a adelantar',
+  q41: 'Requiere pruebas',
   q43: 'Fecha de entrevista psicosocial',
   q44: 'Cumple el requisito de marginalidad',
   q45: 'Cumple el requisito de jefatura de hogar',
@@ -183,6 +184,65 @@ function get(record: FormRecord, key: string): string {
   return toText(record[matched]);
 }
 
+function getAny(record: FormRecord, keys: string[]): string {
+  for (const key of keys) {
+    const value = get(record, key);
+    if (isFilled(value)) return value;
+  }
+  return '';
+}
+
+const FECHA_ANALISIS_ALIASES = [
+  'Fecha de análisis jurídico del caso',
+  'Fecha de analisis juridico del caso',
+  'Fecha de análisis jurídico del caso',
+];
+
+const RESUMEN_ANALISIS_ALIASES = [
+  FIELD.q37,
+  'Resumen del análisis jurídico del caso',
+  'Resumen del analisis juridico del caso',
+  'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO',
+  'RESUMEN DEL ANALISIS JURIDICO DEL PRESENTE CASO',
+];
+
+const FECHA_ENTREVISTA_ALIASES = [FIELD.q38, 'Fecha de la entrevista'];
+
+const ACTUACION_ADELANTAR_ALIASES = [
+  FIELD.q40,
+  'Actuación judicial a adelantar',
+  'Actuacion judicial a adelantar',
+  'Tipo de solicitud a tramitar',
+];
+
+const RADICACION_TRAMITE_ALIASES = [
+  FIELD.b5NormalRadicacion,
+  'Fecha de presentación de solicitud a la autoridad',
+  'Fecha de presentacion de solicitud a la autoridad',
+  'Fecha de presentación de solicitud a la autoridad judicial',
+  'Fecha de presentacion de solicitud a la autoridad judicial',
+  'Fecha de presentación de la solicitud a la autoridad judicial',
+  'Fecha de presentacion de la solicitud a la autoridad judicial',
+];
+
+const RADICACION_UTILIDAD_ALIASES = [
+  FIELD.q50,
+  'Fecha de radicación de la solicitud de utilidad pública',
+  'Fecha de radicacion de la solicitud de utilidad publica',
+];
+
+const DECISION_TRAMITE_ALIASES = [
+  FIELD.b5NormalDecision,
+  'Fecha de decisión de la autoridad judicial',
+  'Fecha de decision de la autoridad judicial',
+];
+
+const DECISION_UTILIDAD_ALIASES = [
+  FIELD.q51,
+  'Fecha de decisión de la autoridad judicial',
+  'Fecha de decision de la autoridad judicial',
+];
+
 function includesAnyInsensitive(value: unknown, needles: string[]): boolean {
   const haystack = normalize(value);
   return needles.some((n) => haystack.includes(normalize(n)));
@@ -205,26 +265,93 @@ function isNegativeProcedencia(value: unknown): boolean {
   return false;
 }
 
-function areAllNegativeInProcedencias30a33(record: FormRecord): boolean {
-  const values = [get(record, FIELD.q30), get(record, FIELD.q31), get(record, FIELD.q32), get(record, FIELD.q33)];
+function areAllNegativeInProcedencias30a34(record: FormRecord): boolean {
+  const values = [
+    get(record, FIELD.q30),
+    get(record, FIELD.q31),
+    get(record, FIELD.q32),
+    get(record, FIELD.q33),
+    get(record, FIELD.q34),
+  ];
   if (!values.every((v) => isFilled(v))) return false;
   return values.every((v) => isNegativeProcedencia(v));
 }
 
+function hasPositiveP36Request(record: FormRecord): boolean {
+  const raw = String(get(record, FIELD.q36) ?? '').trim();
+  if (!raw) return false;
+
+  const selections = raw
+    .split(/\r?\n|\s*\|\s*|\s*;\s*/g)
+    .map((item) => String(item ?? '').trim())
+    .filter(Boolean)
+    .map((item) => normalize(item))
+    .filter(
+      (item) =>
+        item &&
+        !(
+          (item.includes('mas de una') && item.includes('opci')) ||
+          (item.includes('resumen') && item.includes('opci'))
+        )
+    );
+
+  return selections.some((item) => item !== 'ninguna');
+}
+
 function isUtilidadPublicaFlow(record: FormRecord): boolean {
-  return includesAnyInsensitive(get(record, FIELD.q40), [
-    'Utilidad pública (solo para mujeres)',
-    'Utilidad pública y prisión domiciliaria',
-    'Utilidad pública y libertad condicional',
+  return includesAnyInsensitive(getAny(record, ACTUACION_ADELANTAR_ALIASES), [
+    'Utilidad pública',
+    'Utilidad publica',
   ]);
 }
 
+function hasAnalisisBase(record: FormRecord): boolean {
+  return (
+    isFilled(getAny(record, FECHA_ANALISIS_ALIASES)) ||
+    isFilled(getAny(record, RESUMEN_ANALISIS_ALIASES))
+  );
+}
+
+function hasAnalisisCompleto(record: FormRecord): boolean {
+  return (
+    isFilled(getAny(record, FECHA_ANALISIS_ALIASES)) &&
+    isFilled(getAny(record, RESUMEN_ANALISIS_ALIASES))
+  );
+}
+
+function hasBloque4Base(record: FormRecord): boolean {
+  return (
+    isFilled(getAny(record, FECHA_ENTREVISTA_ALIASES)) &&
+    isFilled(getAny(record, ACTUACION_ADELANTAR_ALIASES))
+  );
+}
+
+function getFechaRadicacion(record: FormRecord): string {
+  if (isUtilidadPublicaFlow(record)) return getAny(record, RADICACION_UTILIDAD_ALIASES);
+  return getAny(record, RADICACION_TRAMITE_ALIASES);
+}
+
+function getFechaDecision(record: FormRecord): string {
+  if (isUtilidadPublicaFlow(record)) return getAny(record, DECISION_UTILIDAD_ALIASES);
+  return getAny(record, DECISION_TRAMITE_ALIASES);
+}
+
 function decisionUsuarioPermiteContinuar(value: unknown): boolean {
-  return normalize(value).startsWith('si');
+  const v = normalize(value);
+  if (!v) return false;
+  return v.includes('desea que el defensor') && v.includes('avance con la solicitud');
 }
 
 function isNoConcedeSubrogadoPenal(value: unknown): boolean {
-  return equalsInsensitive(value, 'No concede subrogado penal');
+  return equalsAnyInsensitive(value, ['No concede la solicitud', 'No concede subrogado penal']);
+}
+
+function isTramiteNormalNoConcede(record: FormRecord): boolean {
+  return !isUtilidadPublicaFlow(record) && isNoConcedeSubrogadoPenal(get(record, FIELD.q52));
+}
+
+function isRecursoPresentado(value: unknown): boolean {
+  return equalsAnyInsensitive(value, ['Sí', 'Si', 'S?']);
 }
 
 function isFormularioBloqueado(record: FormRecord): boolean {
@@ -233,20 +360,25 @@ function isFormularioBloqueado(record: FormRecord): boolean {
 
 function isCasoCerrado(record: FormRecord): boolean {
   const decisionUsuario = get(record, FIELD.q39);
-  const actuacion = get(record, FIELD.q40);
+  const actuacion = getAny(record, ACTUACION_ADELANTAR_ALIASES);
   const q44 = get(record, FIELD.q44);
   const q45 = get(record, FIELD.q45);
+  const q52 = get(record, FIELD.q52);
   const q54 = get(record, FIELD.q54);
   const q56 = get(record, FIELD.q56);
+  const q51Tramite = get(record, FIELD.b5NormalSentidoResuelveSolicitud);
+  const isUtilidad = isUtilidadPublicaFlow(record);
 
-  if (areAllNegativeInProcedencias30a33(record)) return true;
+  if (areAllNegativeInProcedencias30a34(record) && !hasPositiveP36Request(record)) return true;
   if (decisionUsuario && !decisionUsuarioPermiteContinuar(decisionUsuario)) {
     return true;
   }
-  if (includesAnyInsensitive(actuacion, ['ninguna'])) return true;
+  if (includesAnyInsensitive(actuacion, ['ninguna', 'no procede nada'])) return true;
   if (equalsInsensitive(q44, 'No') || equalsInsensitive(q45, 'No')) return true;
   if (q54 && equalsInsensitive(q54, 'No')) return true;
+  if (!isUtilidad && isFilled(q52) && !isNoConcedeSubrogadoPenal(q52)) return true;
   if (isFilled(q56)) return true;
+  if (isFilled(q51Tramite)) return true;
   return false;
 }
 
@@ -265,7 +397,7 @@ export const mandatoryByBlock: MandatoryByBlock = {
     { key: 'Porcentaje de avance de pena cumplida', label: '23 Porcentaje de avance de pena cumplida' },
     { key: 'Fase de tramiento', label: '24 Fase de tratamiento' },
     { key: '? Cuenta con requerimientos judiciales por otros procesos ?', label: '25 Requerimientos judiciales por otros procesos' },
-    { key: 'Fecha ?ltima calificación ', label: '26 Fecha ?ltima calificación' },
+    { key: 'Fecha última calificación ', label: '26 Fecha última calificación' },
     { key: 'Calificación de conducta', label: '27 Calificación de conducta' },
   ],
   bloque3: [
@@ -376,12 +508,36 @@ export const conditionalBlockVisibility: BlockVariantRule[] = [
 export const lockRules: LockRule[] = [
   {
     id: 'lock_por_actuacion_40_sindicada',
-    description: 'Bloquea resto del formulario si Q40 incluye "Ninguna porque la persona est? sindicada".',
-    when: (record) => includesAnyInsensitive(get(record, FIELD.q40), ['Ninguna porque la persona est? sindicada']),
+    description: 'Bloquea resto del formulario si Q40 incluye "Ninguna porque la persona está sindicada".',
+    when: (record) => includesAnyInsensitive(get(record, FIELD.q40), ['Ninguna porque la persona está sindicada']),
   },
 ];
 
 export const dependencyRules: DependencyRule[] = [
+  // Regla: AURORA.B5B.DEPENDENCIA.5
+  {
+    id: 'dep_q41_no_deshabilita_q43_en_5b',
+    source: { key: FIELD.q41, label: '41 Requiere pruebas' },
+    description: 'En 5B, si Q41 != Sí, deshabilita Q43 (recepción de pruebas aportadas).',
+    when: (record) =>
+      !isUtilidadPublicaFlow(record) &&
+      !equalsAnyInsensitive(get(record, FIELD.q41), ['Sí', 'S?']),
+    effects: {
+      disable: [FIELD.b5NormalRecepcionPruebas],
+    },
+  },
+  // Regla: AURORA.B5B.DEPENDENCIA.6
+  {
+    id: 'dep_q41_si_habilita_q43_en_5b',
+    source: { key: FIELD.q41, label: '41 Requiere pruebas' },
+    description: 'En 5B, si Q41 = Sí, habilita Q43 (recepción de pruebas aportadas).',
+    when: (record) =>
+      !isUtilidadPublicaFlow(record) &&
+      equalsAnyInsensitive(get(record, FIELD.q41), ['Sí', 'S?']),
+    effects: {
+      enable: [FIELD.b5NormalRecepcionPruebas],
+    },
+  },
   // Regla: AURORA.B5A.DEPENDENCIA.1
   {
     id: 'dep_q46_no_deshabilita_47_48',
@@ -431,7 +587,7 @@ export const dependencyRules: DependencyRule[] = [
   {
     id: 'dep_q52_no_concede_subrogado_habilita_q53_q54_en_5b',
     source: { key: FIELD.q52, label: '47 Sentido de la decisión' },
-    description: 'En 5B, si Q47 = No concede subrogado penal, habilita motivo y recurso.',
+    description: 'En 5B, si Q47 = No concede la solicitud, habilita motivo y recurso.',
     when: (record) => !isUtilidadPublicaFlow(record) && isNoConcedeSubrogadoPenal(get(record, FIELD.q52)),
     effects: {
       enable: [FIELD.q53, FIELD.q54],
@@ -441,7 +597,7 @@ export const dependencyRules: DependencyRule[] = [
   {
     id: 'dep_q52_no_concede_subrogado_deshabilita_q53_q54_q55_en_5b',
     source: { key: FIELD.q52, label: '47 Sentido de la decisión' },
-    description: 'En 5B, si Q47 != No concede subrogado penal, deshabilita motivo y campos de recurso.',
+    description: 'En 5B, si Q47 != No concede la solicitud, deshabilita motivo y campos de recurso.',
     when: (record) => !isUtilidadPublicaFlow(record) && !isNoConcedeSubrogadoPenal(get(record, FIELD.q52)),
     effects: {
       disable: [FIELD.q53, FIELD.q54, FIELD.q55, FIELD.b5NormalSentidoResuelveSolicitud],
@@ -482,47 +638,58 @@ export const derivedStatusRules: DerivedStatusRule[] = [
     when: (record) => isCasoCerrado(record),
   },
   {
-    id: 'estado_analizar_el_caso',
-    status: 'Analizar el caso',
-    when: (record) => !isFilled(get(record, 'Fecha de análisis jurídico del caso')) || !isFilled(get(record, FIELD.q37)),
+    id: 'estado_pendiente_decision_recurso_tramite',
+    status: 'Pendiente decisi\u00f3n',
+    when: (record) => {
+      if (!hasAnalisisCompleto(record)) return false;
+      if (!hasBloque4Base(record)) return false;
+      if (!isTramiteNormalNoConcede(record)) return false;
+      if (!isRecursoPresentado(get(record, FIELD.q54))) return false;
+      return !isFilled(get(record, FIELD.b5NormalSentidoResuelveSolicitud));
+    },
   },
   {
-    id: 'estado_entrevistar_al_usuario',
-    status: 'Entrevistar al usuario',
-    when: (record) =>
-      isFilled(get(record, 'Fecha de análisis jurídico del caso')) &&
-      isFilled(get(record, FIELD.q37)) &&
-      (!isFilled(get(record, FIELD.q38)) || !isFilled(get(record, FIELD.q40))),
+    id: 'estado_presentar_solicitud_recurso_tramite',
+    status: 'Presentar solicitud',
+    when: (record) => {
+      if (!hasAnalisisCompleto(record)) return false;
+      if (!hasBloque4Base(record)) return false;
+      if (!isTramiteNormalNoConcede(record)) return false;
+      return !isFilled(get(record, FIELD.q54));
+    },
+  },
+  {
+    id: 'estado_pendiente_decision',
+    status: 'Pendiente decisi\u00f3n',
+    when: (record) => {
+      if (!hasAnalisisCompleto(record)) return false;
+      if (!hasBloque4Base(record)) return false;
+      const tieneRadicacion = isFilled(getFechaRadicacion(record));
+      const tieneDecision = isFilled(getFechaDecision(record));
+      return tieneRadicacion && !tieneDecision;
+    },
   },
   {
     id: 'estado_presentar_solicitud',
     status: 'Presentar solicitud',
     when: (record) => {
-      const baseReady =
-        isFilled(get(record, 'Fecha de análisis jurídico del caso')) &&
-        isFilled(get(record, FIELD.q37)) &&
-        isFilled(get(record, FIELD.q38)) &&
-        isFilled(get(record, FIELD.q40));
-      if (!baseReady) return false;
-      if (isUtilidadPublicaFlow(record)) return !isFilled(get(record, FIELD.q50));
-      return !isFilled(get(record, FIELD.b5NormalRadicacion));
+      if (!hasAnalisisCompleto(record)) return false;
+      if (!hasBloque4Base(record)) return false;
+      return !isFilled(getFechaRadicacion(record));
     },
   },
   {
-    id: 'estado_pendiente_decision',
-    status: 'Pendiente decisión',
+    id: 'estado_entrevistar_al_usuario',
+    status: 'Entrevistar al usuario',
     when: (record) => {
-      const baseReady =
-        isFilled(get(record, 'Fecha de análisis jurídico del caso')) &&
-        isFilled(get(record, FIELD.q37)) &&
-        isFilled(get(record, FIELD.q38)) &&
-        isFilled(get(record, FIELD.q40));
-      if (!baseReady) return false;
-      if (isUtilidadPublicaFlow(record)) {
-        return isFilled(get(record, FIELD.q50)) && !isFilled(get(record, FIELD.q51));
-      }
-      return isFilled(get(record, FIELD.b5NormalRadicacion)) && !isFilled(get(record, FIELD.b5NormalDecision));
+      if (!hasAnalisisCompleto(record)) return false;
+      return !hasBloque4Base(record);
     },
+  },
+  {
+    id: 'estado_analizar_el_caso',
+    status: 'Analizar el caso',
+    when: () => true,
   },
 ];
 

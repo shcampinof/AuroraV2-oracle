@@ -82,7 +82,8 @@ const HEADER_ALIASES = {
   'tiempo efectivo de pena cumplida en dias teniendo en cuenta la redencion': ['tiempo efectivo'],
   'porcentaje de avance de pena cumplida': ['porcentaje'],
   'fase de tramiento': ['fase'],
-  'cuenta con requerimientos judiciales por otros procesos': ['requerimienotosi'],
+  'cuenta con requerimientos judiciales por otros procesos': ['requerimienotosi', 'requerimientos'],
+  requerimientos: ['cuenta con requerimientos judiciales por otros procesos', 'requerimienotosi'],
   'fecha ultima calificacion': ['fecha calificacion'],
   'calificacion de conducta': ['calificacion'],
   'no acta de calificacion de conducta': ['no de acta de calificacion de conducta', 'no acta'],
@@ -109,6 +110,18 @@ const HEADER_ALIASES = {
   'fecha de solicitud de audiencia de control de garantias para sustentar revocatoria': [
     'fecha de solicitud de audiencia de control de garantias para sus',
   ],
+  'fecha de presentacion de la solicitud a la autoridad': [
+    'fecha de presentacion de solicitud a la autoridad',
+    'fecha de presentacion de la solicitud a la autoridad judicial',
+    'fecha de presentacion de solicitud a la autoridad judicial',
+  ],
+  'fecha de presentacion de solicitud a la autoridad': [
+    'fecha de presentacion de la solicitud a la autoridad',
+    'fecha de presentacion de la solicitud a la autoridad judicial',
+    'fecha de presentacion de solicitud a la autoridad judicial',
+  ],
+  'fecha de radicacion de solicitud de utilidad publica': ['fecha de radicacion de la solicitud de utilidad publica'],
+  'fecha de radicacion de la solicitud de utilidad publica': ['fecha de radicacion de solicitud de utilidad publica'],
 };
 
 function maybeDecodeMojibake(value) {
@@ -733,6 +746,10 @@ function updateByDocumento(documento, patch) {
   ensureColumn('MOTIVO DE LA DECISIÓN NEGATIVA', '');
   ensureColumn('¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?', '');
   ensureColumn('Fecha de presentación del recurso', '');
+  ensureColumn('Fecha de presentación de solicitud a la autoridad', '');
+  ensureColumn('Fecha de presentación de la solicitud a la autoridad', '');
+  ensureColumn('Fecha de radicación de solicitud de utilidad pública', '');
+  ensureColumn('Fecha de radicación de la solicitud de utilidad pública', '');
   ensureColumn('SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO', '');
   ensureColumn('Cierre del caso por imposibilidad de avanzar (si aplica)', '');
   ensureColumn('Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública', '');

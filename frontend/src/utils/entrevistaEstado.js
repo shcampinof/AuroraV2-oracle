@@ -20,28 +20,93 @@ export function hasAnyFilled(obj, keys) {
   return (keys || []).some((k) => !isEmptyValue(target?.[k]));
 }
 
-export function pickActiveCase(registro) {
+function toNumberOrNull(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
+}
+
+function parseRowIndexFromIdentifier(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const suffix = text.match(/-(\d+)$/);
+  if (suffix) return toNumberOrNull(suffix[1]);
+  if (/^\d+$/.test(text)) return toNumberOrNull(text);
+  return null;
+}
+
+function parseDateToMs(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const parsed = new Date(text);
+  const ms = parsed.getTime();
+  if (!Number.isFinite(ms)) return null;
+  return ms;
+}
+
+function normalizeCaseCandidates(registro) {
   const casos = Array.isArray(registro?.casos) ? registro.casos : [];
+  const actuaciones = Array.isArray(registro?.actuaciones) ? registro.actuaciones : [];
+
+  const mappedActuaciones = actuaciones.map((item) => ({
+    ...item,
+    caseId: item?.caseId ?? item?.id,
+    data:
+      item?.data && typeof item.data === 'object'
+        ? item.data
+        : item?.registro && typeof item.registro === 'object'
+          ? item.registro
+          : undefined,
+  }));
+
+  return [...casos, ...mappedActuaciones];
+}
+
+export function pickActiveCase(registro) {
+  const casos = normalizeCaseCandidates(registro);
   if (!casos.length) return null;
 
   const activeId = String(registro?.activeCaseId || '').trim();
   if (activeId) {
-    const hit = casos.find((c) => String(c?.caseId) === activeId);
+    const hit = casos.find((c) => {
+      const caseId = String(c?.caseId ?? '').trim();
+      const directId = String(c?.id ?? '').trim();
+      return caseId === activeId || directId === activeId;
+    });
     if (hit) return hit;
   }
 
-  const sorted = [...casos].sort((a, b) =>
-    String(a?.createdAt || '').localeCompare(String(b?.createdAt || ''))
-  );
-  return sorted[sorted.length - 1] || null;
+  const withOrderHint = casos
+    .map((c, index) => ({
+      item: c,
+      index,
+      rowIndex:
+        toNumberOrNull(c?.rowIndex) ??
+        parseRowIndexFromIdentifier(c?.caseId) ??
+        parseRowIndexFromIdentifier(c?.id),
+      createdAtMs: parseDateToMs(c?.createdAt),
+    }))
+    .sort((a, b) => {
+      if (a.rowIndex != null && b.rowIndex != null && a.rowIndex !== b.rowIndex) return a.rowIndex - b.rowIndex;
+      if (a.rowIndex != null && b.rowIndex == null) return 1;
+      if (a.rowIndex == null && b.rowIndex != null) return -1;
+      if (a.createdAtMs != null && b.createdAtMs != null && a.createdAtMs !== b.createdAtMs) {
+        return a.createdAtMs - b.createdAtMs;
+      }
+      if (a.createdAtMs != null && b.createdAtMs == null) return 1;
+      if (a.createdAtMs == null && b.createdAtMs != null) return -1;
+      return a.index - b.index;
+    });
+
+  return withOrderHint[withOrderHint.length - 1]?.item || null;
 }
 
 export function pickActiveCaseData(registro) {
+  const active = pickActiveCase(registro);
+  if (active?.data && typeof active.data === 'object') return active.data;
   if (registro && typeof registro === 'object' && registro.data && typeof registro.data === 'object') {
     return registro.data;
   }
-  const active = pickActiveCase(registro);
-  if (active?.data && typeof active.data === 'object') return active.data;
   return registro && typeof registro === 'object' ? registro : {};
 }
 
@@ -89,6 +154,8 @@ const POST_VISITA_KEYS = {
     'Motivo de la decisión negativa (Prisión domiciliaria si aplica)',
     'Motivo de la decisión negativa (Prisión domiciliaria si aplica)',
     'Fecha de recurso en caso desfavorable',
+    'Fecha de presentación del recurso',
+    'Fecha de la decisión del recurso',
     'Sentido de la decisión que resuelve recurso',
     'Sentido de la decisión que resuelve recurso',
     'Tipo de solicitud a tramitar',

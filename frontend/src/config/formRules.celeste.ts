@@ -31,7 +31,15 @@ export interface JumpRule {
   saveBeforeRedirect: boolean;
 }
 
-export type CelesteDerivedStatus = 'Caso cerrado' | 'En gestion' | 'Pendiente de analisis';
+export type CelesteDerivedStatus =
+  | 'Analizar el caso'
+  | 'Entrevistar al usuario'
+  | 'Pendiente audiencia'
+  | 'Pendiente decisión de audiencia'
+  | 'Presentar solicitud'
+  | 'Presentar recurso'
+  | 'Pendiente decisión'
+  | 'Caso cerrado';
 
 const FIELD = {
   q19: 'Defensor(a) Público(a) Asignado para tramitar la solicitud',
@@ -39,7 +47,16 @@ const FIELD = {
   q21: 'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS',
   q22: 'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO',
   q23: 'Fecha de entrevista',
+  q24: 'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA',
+  q25: 'FECHA DE REALIZACIÓN DE AUDIENCIA',
+  q26: 'SENTIDO DE LA DECISIÓN',
+  q28: '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?',
+  q29: 'Fecha de presentación del recurso',
+  q30: 'Fecha de la decisión del recurso',
+  q31: 'SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO',
 } as const;
+
+const REQUIRED_19_22 = [FIELD.q19, FIELD.q20, FIELD.q21, FIELD.q22];
 
 function text(v: unknown): string {
   return String(v ?? '').trim();
@@ -51,6 +68,48 @@ export function normalizeCelesteValue(v: unknown): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ')
     .toLowerCase();
+}
+
+function normalizeCelesteLoose(v: unknown): string {
+  return normalizeCelesteValue(v)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function normalizeKeyLoose(v: unknown): string {
+  return normalizeCelesteValue(v)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function latin1ToUtf8(value: string): string {
+  try {
+    return decodeURIComponent(escape(value));
+  } catch {
+    return value;
+  }
+}
+
+function utf8ToLatin1(value: string): string {
+  try {
+    return unescape(encodeURIComponent(value));
+  } catch {
+    return value;
+  }
+}
+
+function keyVariants(value: unknown): string[] {
+  const raw = text(value);
+  if (!raw) return [''];
+  const variants = new Set<string>([raw]);
+  for (let i = 0; i < 2; i += 1) {
+    const snapshot = Array.from(variants);
+    for (const v of snapshot) {
+      variants.add(latin1ToUtf8(v));
+      variants.add(utf8ToLatin1(v));
+    }
+  }
+  return Array.from(new Set(Array.from(variants).map((v) => normalizeKeyLoose(v))));
 }
 
 export function equalsInsensitive(a: unknown, b: string): boolean {
@@ -68,24 +127,62 @@ export function normalizeYesNo(v: unknown): 'si' | 'no' | '' {
   if (typeof v === 'boolean') return v ? 'si' : 'no';
   const n = normalizeCelesteValue(v);
   if (n === 'si') return 'si';
-  if (n.startsWith('no')) return 'no';
+  if (n === 'no') return 'no';
   return '';
+}
+
+function getAnswerByKey(answers: CelesteRecord, key: string): unknown {
+  if (Object.prototype.hasOwnProperty.call(answers, key)) return answers[key];
+  const targetVariants = keyVariants(key);
+  const hit = Object.keys(answers || {}).find((k) => {
+    const candidateVariants = keyVariants(k);
+    return candidateVariants.some((candidate) => targetVariants.includes(candidate));
+  });
+  return hit ? answers[hit] : undefined;
+}
+
+function areKeysFilled(answers: CelesteRecord, keys: string[]): boolean {
+  return keys.every((key) => isFilled(getAnswerByKey(answers, key)));
+}
+
+function startsWithNormalized(value: unknown, expected: string): boolean {
+  return normalizeCelesteLoose(value).startsWith(normalizeCelesteLoose(expected));
+}
+
+function isNoSeAvanzaraQ21(answers: CelesteRecord): boolean {
+  return startsWithNormalized(getAnswerByKey(answers, FIELD.q21), 'No se avanzará');
+}
+
+function isSeAvanzaraQ21(answers: CelesteRecord): boolean {
+  return startsWithNormalized(getAnswerByKey(answers, FIELD.q21), 'Se avanzará');
+}
+
+function isRevocaOSustituyeQ26(answers: CelesteRecord): boolean {
+  const n = normalizeCelesteValue(getAnswerByKey(answers, FIELD.q26));
+  return n.includes('revoca medida') || n.includes('sustituye medida');
+}
+
+function isNiegaQ26(answers: CelesteRecord): boolean {
+  return normalizeCelesteValue(getAnswerByKey(answers, FIELD.q26)).includes('niega la solicitud');
 }
 
 export const mandatoryByBlock: Record<CelesteBlockId, FieldRef[]> = {
   bloque1: [],
   bloque2Celeste: [
     { key: 'Autoridad a cargo', label: '14 Autoridad judicial a cargo' },
-    { key: 'Número de proceso', label: '15 Numero de proceso' },
+    { key: 'Número de proceso', label: '15 Número de proceso' },
     { key: 'Delitos', label: '16 Delitos' },
     { key: 'Fecha de captura', label: '17 Fecha de captura' },
-    { key: 'TIEMPO QUE LA PERSONA LLEVA PRIVADA DE LA LIBERTAD (EN MESES)', label: '18 Tiempo privado de la libertad (meses)' },
+    {
+      key: 'TIEMPO QUE LA PERSONA LLEVA PRIVADA DE LA LIBERTAD (EN MESES)',
+      label: '18 Tiempo privado de la libertad (meses)',
+    },
   ],
   bloque3Celeste: [
-    { key: FIELD.q19, label: '19 Defensor(a) publico(a) asignado' },
-    { key: FIELD.q20, label: '20 Fecha de analisis juridico del caso' },
-    { key: FIELD.q21, label: '21 Analisis juridico y actuacion a desplegar' },
-    { key: FIELD.q22, label: '22 Resumen del analisis juridico del caso', optional: true },
+    { key: FIELD.q19, label: '19 Defensor(a) público(a) asignado' },
+    { key: FIELD.q20, label: '20 Fecha de análisis jurídico del caso' },
+    { key: FIELD.q21, label: '21 Análisis jurídico y actuación a desplegar' },
+    { key: FIELD.q22, label: '22 Resumen del análisis jurídico del caso' },
   ],
   bloque4Celeste: [{ key: FIELD.q23, label: '23 Fecha de la entrevista para informar al usuario' }],
   bloque5Celeste: [],
@@ -94,36 +191,65 @@ export const mandatoryByBlock: Record<CelesteBlockId, FieldRef[]> = {
 export const blockOrder: CelesteBlockId[] = ['bloque1', 'bloque2Celeste', 'bloque3Celeste', 'bloque4Celeste', 'bloque5Celeste'];
 export const initialVisibleBlocks: CelesteBlockId[] = ['bloque1', 'bloque2Celeste', 'bloque3Celeste'];
 export const jumpRules: JumpRule[] = [];
-export const closeCaseRules: CloseCaseRule[] = [];
 
-export function getCloseCaseMatch(_answers: CelesteRecord): CloseCaseRule | null {
+export const closeCaseRules: CloseCaseRule[] = [
+  {
+    id: 'SINDICADO.CIERRE.Q21.NO_AVANZA',
+    questionKey: FIELD.q21,
+    description: 'Si Q21 inicia con "No se avanzará...", el caso se cierra.',
+    matches: ['No se avanzará'],
+  },
+];
+
+export function getCloseCaseMatch(answers: CelesteRecord): CloseCaseRule | null {
+  if (isNoSeAvanzaraQ21(answers)) return closeCaseRules[0];
   return null;
 }
 
-export function isCaseClosedCeleste(_answers: CelesteRecord): boolean {
-  return false;
+export function isCaseClosedCeleste(answers: CelesteRecord): boolean {
+  return deriveStatusCeleste(answers) === 'Caso cerrado';
 }
 
 export function areMandatoryFieldsFilledCeleste(answers: CelesteRecord, blockId: CelesteBlockId): boolean {
   const fields = mandatoryByBlock[blockId] || [];
-  return fields.every((f) => f.optional || isFilled(answers?.[f.key]));
+  return fields.every((f) => f.optional || isFilled(getAnswerByKey(answers, f.key)));
 }
 
 export function resolveVisibleBlocksCeleste(answers: CelesteRecord): CelesteBlockId[] {
   const visible: CelesteBlockId[] = [...initialVisibleBlocks];
-  // Regla: CELESTE.B4.VISIBILIDAD.1
+  if (isNoSeAvanzaraQ21(answers)) return visible;
+
+  // Regla: SINDICADO.B4.VISIBILIDAD.1
   if (!areMandatoryFieldsFilledCeleste(answers, 'bloque3Celeste')) return visible;
 
   visible.push('bloque4Celeste');
-  // Regla: CELESTE.B5.VISIBILIDAD.2
+  // Regla: SINDICADO.B5.VISIBILIDAD.2
   if (areMandatoryFieldsFilledCeleste(answers, 'bloque4Celeste')) visible.push('bloque5Celeste');
   return visible;
 }
 
 export function deriveStatusCeleste(answers: CelesteRecord): CelesteDerivedStatus {
-  const visible = resolveVisibleBlocksCeleste(answers);
-  if (visible.includes('bloque5Celeste')) return 'En gestion';
-  return 'Pendiente de analisis';
+  if (isNoSeAvanzaraQ21(answers)) return 'Caso cerrado';
+  if (isFilled(getAnswerByKey(answers, FIELD.q30))) return 'Caso cerrado';
+  if (isFilled(getAnswerByKey(answers, FIELD.q31))) return 'Caso cerrado';
+  if (!areKeysFilled(answers, REQUIRED_19_22)) return 'Analizar el caso';
+  if (!isSeAvanzaraQ21(answers)) return 'Analizar el caso';
+  if (!isFilled(getAnswerByKey(answers, FIELD.q23))) return 'Entrevistar al usuario';
+  if (isFilled(getAnswerByKey(answers, FIELD.q24)) && !isFilled(getAnswerByKey(answers, FIELD.q25))) {
+    return 'Pendiente audiencia';
+  }
+  if (isFilled(getAnswerByKey(answers, FIELD.q25)) && !isFilled(getAnswerByKey(answers, FIELD.q26))) {
+    return 'Pendiente decisión de audiencia';
+  }
+
+  const has24And25 = isFilled(getAnswerByKey(answers, FIELD.q24)) && isFilled(getAnswerByKey(answers, FIELD.q25));
+  if (has24And25 && isRevocaOSustituyeQ26(answers)) return 'Caso cerrado';
+  if (has24And25 && isNiegaQ26(answers)) {
+    if (normalizeYesNo(getAnswerByKey(answers, FIELD.q28)) === 'no') return 'Caso cerrado';
+    if (isFilled(getAnswerByKey(answers, FIELD.q29))) return 'Pendiente decisión';
+    return 'Presentar recurso';
+  }
+  return 'Presentar solicitud';
 }
 
 export const celesteFormRules = {

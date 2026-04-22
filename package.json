@@ -1,0 +1,11 @@
+{
+  "name": "aurora-v1",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "encoding:normalize": "node scripts/normalize-encoding.mjs",
+    "encoding:check": "node scripts/check-encoding.mjs",
+    "qa:smoke": "npm --prefix frontend run lint && npm --prefix frontend run test && npm --prefix frontend run build && npm --prefix backend test",
+    "qa:encoding": "npm run encoding:check"
+  }
+}

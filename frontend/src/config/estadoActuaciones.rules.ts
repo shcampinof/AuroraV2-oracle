@@ -1,4 +1,5 @@
 import { evaluateAuroraRules } from '../utils/evaluateAuroraRules';
+import { evaluateCelesteRules } from '../utils/evaluateCelesteRules';
 import { pickActiveCaseData } from '../utils/entrevistaEstado';
 
 type AnyRecord = Record<string, unknown>;
@@ -20,8 +21,27 @@ export interface EstadoDisplayInfo {
   className: string;
 }
 
+function latin1ToUtf8(value: string): string {
+  try {
+    return decodeURIComponent(escape(value));
+  } catch {
+    return value;
+  }
+}
+
+function decodeMojibakeValue(value: unknown): string {
+  let out = String(value ?? '').trim();
+  for (let i = 0; i < 2; i += 1) {
+    if (!/[\u00C3\u00C2\u00E2]/.test(out)) break;
+    const decoded = latin1ToUtf8(out);
+    if (!decoded || decoded === out) break;
+    out = decoded;
+  }
+  return out;
+}
+
 function toText(value: unknown): string {
-  return String(value ?? '').trim();
+  return decodeMojibakeValue(value).trim();
 }
 
 function firstFilledValue(...values: unknown[]): string {
@@ -34,16 +54,27 @@ function firstFilledValue(...values: unknown[]): string {
 
 function pickFirstValue(source: AnyRecord, keys: string[]): string {
   if (!source || typeof source !== 'object') return '';
-  return firstFilledValue(...keys.map((key) => source?.[key]));
+  const normalizedEntries = Object.entries(source).map(([rawKey, value]) => {
+    const normalizedKey = normalizeEstadoActuacion(rawKey).replace(/[^a-z0-9]+/g, ' ').trim();
+    return { normalizedKey, value };
+  });
+  const values = keys.map((key) => {
+    if (Object.prototype.hasOwnProperty.call(source, key)) return source[key];
+    const normalizedTarget = normalizeEstadoActuacion(key).replace(/[^a-z0-9]+/g, ' ').trim();
+    const hit = normalizedEntries.find((entry) => entry.normalizedKey === normalizedTarget);
+    return hit?.value;
+  });
+  return firstFilledValue(...values);
 }
 
 function resolveEstadoSource(record: unknown): AnyRecord {
   const source = record && typeof record === 'object' ? (record as AnyRecord) : {};
+  const activeData = pickActiveCaseData(source);
   const fromEstadoSource = source?.estadoSource;
   if (fromEstadoSource && typeof fromEstadoSource === 'object') {
-    return fromEstadoSource as AnyRecord;
+    return { ...(activeData || {}), ...(fromEstadoSource as AnyRecord) };
   }
-  return pickActiveCaseData(source);
+  return activeData;
 }
 
 export function normalizeEstadoActuacion(value: unknown): string {
@@ -58,8 +89,14 @@ function canonicalEstadoLabel(value: unknown): string {
   const key = normalizeEstadoActuacion(value);
   if (key === 'analizar el caso') return 'Analizar el caso';
   if (key === 'entrevistar al usuario') return 'Entrevistar al usuario';
+  if (key === 'pendiente audiencia') return 'Pendiente audiencia';
+  if (key === 'pendiente decision de audiencia') return 'Pendiente decisión de audiencia';
   if (key === 'presentar solicitud') return 'Presentar solicitud';
+  if (key === 'presentar recurso') return 'Presentar recurso';
+  if (key.includes('pendiente de presentar solicitud')) return 'Presentar solicitud';
+  if (key.includes('pendiente presentar solicitud')) return 'Presentar solicitud';
   if (key === 'pendiente decision') return 'Pendiente decisi\u00f3n';
+  if (key.includes('pendiente de decision')) return 'Pendiente decisi\u00f3n';
   if (key === 'caso cerrado') return 'Caso cerrado';
   return toText(value);
 }
@@ -68,7 +105,10 @@ export function getEstadoClassByLabel(estado: unknown): string {
   const key = normalizeEstadoActuacion(estado);
   if (key === 'analizar el caso') return 'estado--verde';
   if (key === 'entrevistar al usuario') return 'estado--amarillo';
+  if (key === 'pendiente audiencia') return '';
+  if (key === 'pendiente decision de audiencia') return '';
   if (key === 'presentar solicitud') return 'estado--rojo';
+  if (key === 'presentar recurso') return 'estado--rojo';
   if (key === 'pendiente decision') return 'estado--azul';
   if (key === 'caso cerrado') return 'estado--gris';
   if (key === 'cerrado') return 'estado--gris';
@@ -141,6 +181,37 @@ function getEstadoTramiteValue(record: unknown): string {
   );
 }
 
+function resolveTipoFromText(value: unknown): 'condenado' | 'sindicado' | '' {
+  const text = normalizeEstadoActuacion(value);
+  if (!text || text === '-') return '';
+  if (text.includes('sindicad')) return 'sindicado';
+  if (text.includes('condenad')) return 'condenado';
+  return '';
+}
+
+function resolveFlow(record: AnyRecord, data: AnyRecord): 'condenado' | 'sindicado' {
+  const fromSituacion = resolveTipoFromText(
+    pickFirstValue(data, ['Situación Jurídica', 'SituaciÃ³n JurÃ­dica'])
+  );
+  if (fromSituacion) return fromSituacion;
+  const fromSituacionActualizada = resolveTipoFromText(
+    pickFirstValue(data, [
+      'Situación Jurídica actualizada (de conformidad con la rama judicial)',
+      'SituaciÃ³n JurÃ­dica actualizada (de conformidad con la rama judicial)',
+    ])
+  );
+  if (fromSituacionActualizada) return fromSituacionActualizada;
+
+  const fromHints =
+    resolveTipoFromText(record?.tipo) ||
+    resolveTipoFromText(data?.tipo) ||
+    resolveTipoFromText(data?.tipoPpl) ||
+    resolveTipoFromText(data?.__tipoApi);
+  if (fromHints) return fromHints;
+
+  return 'condenado';
+}
+
 function buildEstadoInfo(
   estadoLogico: string,
   etiqueta: string,
@@ -164,19 +235,37 @@ function buildEstadoInfo(
 export function obtenerEstadoActuacion(record: unknown): EstadoActuacionInfo {
   const safeRecord = record && typeof record === 'object' ? (record as AnyRecord) : {};
   const data = resolveEstadoSource(safeRecord);
-  const derivedStatus = canonicalEstadoLabel(evaluateAuroraRules({ answers: data || {} }).derivedStatus);
+  const flow = resolveFlow(safeRecord, data);
+  const derivedStatus = canonicalEstadoLabel(
+    flow === 'sindicado'
+      ? evaluateCelesteRules({ answers: data || {} }).derivedStatus
+      : evaluateAuroraRules({ answers: data || {} }).derivedStatus
+  );
   const derivedKey = normalizeEstadoActuacion(derivedStatus);
+  const fallbackStatus = canonicalEstadoLabel(getEstadoTramiteValue(safeRecord));
+  const fallbackKey = normalizeEstadoActuacion(fallbackStatus);
+  const canPromoteFallback = new Set([
+    'entrevistar al usuario',
+    'pendiente audiencia',
+    'pendiente decision de audiencia',
+    'presentar solicitud',
+    'presentar recurso',
+    'pendiente decision',
+    'caso cerrado',
+  ]);
+  const estadoKey =
+    derivedKey === 'analizar el caso' && canPromoteFallback.has(fallbackKey) ? fallbackKey : derivedKey;
 
   // Regla: ESTADO.CASO_CERRADO.1
-  if (derivedKey === 'caso cerrado') {
-    return buildEstadoInfo(derivedKey, 'Caso cerrado', 'estado--gris');
+  if (estadoKey === 'caso cerrado') {
+    return buildEstadoInfo(estadoKey, 'Caso cerrado', 'estado--gris');
   }
   // Regla: ESTADO.PENDIENTE_DECISION.1
-  if (derivedKey === 'pendiente decision') {
-    return buildEstadoInfo(derivedKey, 'Pendiente decisi\u00f3n', 'estado--azul');
+  if (estadoKey === 'pendiente decision') {
+    return buildEstadoInfo(estadoKey, 'Pendiente decisi\u00f3n', 'estado--azul');
   }
   // Regla: ESTADO.ANALIZAR.1
-  if (derivedKey === 'analizar el caso') {
+  if (estadoKey === 'analizar el caso') {
     const fechaAsignacionPag = firstFilledValue(
       pickFirstValue(data, [
         'Fecha de asignaci\u00f3n del PAG',
@@ -193,10 +282,10 @@ export function obtenerEstadoActuacion(record: unknown): EstadoActuacionInfo {
     );
     const dias = getDaysSince(fechaAsignacionPag);
     const semaforo = getSemaforoClassByDays(dias);
-    return buildEstadoInfo(derivedKey, 'Analizar el caso', 'estado--verde', semaforo || 'estado--verde', dias);
+    return buildEstadoInfo(estadoKey, 'Analizar el caso', 'estado--verde', semaforo || 'estado--verde', dias);
   }
   // Regla: ESTADO.ENTREVISTAR.1
-  if (derivedKey === 'entrevistar al usuario') {
+  if (estadoKey === 'entrevistar al usuario') {
     const fechaAnalisis = pickFirstValue(data, [
       'Fecha de an\u00e1lisis jur\u00eddico del caso',
       'Fecha de analisis juridico del caso',
@@ -204,14 +293,29 @@ export function obtenerEstadoActuacion(record: unknown): EstadoActuacionInfo {
     ]);
     const dias = getDaysSince(fechaAnalisis);
     const semaforo = getSemaforoClassByDays(dias);
-    return buildEstadoInfo(derivedKey, 'Entrevistar al usuario', 'estado--amarillo', semaforo || 'estado--amarillo', dias);
+    return buildEstadoInfo(
+      estadoKey,
+      'Entrevistar al usuario',
+      'estado--amarillo',
+      semaforo || 'estado--amarillo',
+      dias
+    );
+  }
+  if (estadoKey === 'pendiente audiencia') {
+    return buildEstadoInfo(estadoKey, 'Pendiente audiencia', '');
+  }
+  if (estadoKey === 'pendiente decision de audiencia') {
+    return buildEstadoInfo(estadoKey, 'Pendiente decisión de audiencia', '');
   }
   // Regla: ESTADO.SOLICITUD.1
-  if (derivedKey === 'presentar solicitud') {
+  if (estadoKey === 'presentar solicitud') {
     const fechaEntrevista = pickFirstValue(data, ['Fecha de entrevista']);
     const dias = getDaysSince(fechaEntrevista);
     const semaforo = getSemaforoClassByDays(dias);
-    return buildEstadoInfo(derivedKey, 'Presentar solicitud', 'estado--rojo', semaforo || 'estado--rojo', dias);
+    return buildEstadoInfo(estadoKey, 'Presentar solicitud', 'estado--rojo', semaforo || 'estado--rojo', dias);
+  }
+  if (estadoKey === 'presentar recurso') {
+    return buildEstadoInfo(estadoKey, 'Presentar recurso', 'estado--rojo');
   }
 
   const fallbackLabel = firstFilledValue(getEstadoTramiteValue(safeRecord), derivedStatus);

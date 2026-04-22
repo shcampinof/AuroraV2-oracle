@@ -128,3 +128,26 @@ Codigos de error observables:
 - `400 INVALID_DEFENSOR_NAME`
 - `409 DUPLICATE_DEFENSOR`
 - `500 DEFENSOR_CREATE_ERROR`
+
+## 9. Politica de codificacion UTF-8 (global)
+
+Para evitar mojibake en UI, reglas y fuentes CSV, el repositorio aplica UTF-8 de forma obligatoria.
+
+Controles implementados:
+
+- `.editorconfig` fija `charset = utf-8` y `end_of_line = lf`.
+- `.gitattributes` normaliza fin de linea y marca `.csv`, `.md`, `.js/.ts/.jsx/.tsx`, `.json`, etc. como texto.
+- Scripts de verificacion global en raiz:
+  - `npm run encoding:normalize`
+  - `npm run encoding:check`
+
+Cobertura del control:
+
+- Frontend, backend y docs (`.js/.jsx/.ts/.tsx/.mjs/.cjs/.md/.json/.css/...`).
+- Fuentes de datos: `backend/data/consolidado_ppl.csv` y `backend/data/defensores.csv`.
+
+Flujo operativo recomendado:
+
+1. Antes de commit: ejecutar `npm run encoding:check`.
+2. Si falla por mojibake o archivo no UTF-8: ejecutar `npm run encoding:normalize`.
+3. Volver a ejecutar `npm run encoding:check` y luego pruebas funcionales.

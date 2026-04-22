@@ -2,90 +2,83 @@
 
 ## 1. Objetivo
 
-Definir la logica de la tabla **Historial de actuaciones** del formulario:
+Documentar el comportamiento del historial de actuaciones en formulario:
 
-- De donde salen los datos.
-- Que se considera una actuacion iniciada.
-- Como se comportan los botones `Iniciar actuacion` y `Crear nueva actuacion`.
-- Como se llena cada columna visible.
+- carga de actuaciones,
+- criterio de actuacion iniciada,
+- comportamiento de botones de accion,
+- reglas de creacion de nueva actuacion.
 
-Archivo principal de UI:
+Archivos principales:
 
 - `frontend/src/components/HistorialActuacionesPPL.jsx`
+- `frontend/src/pages/FormularioAtencion.jsx`
 
-Fuentes de estado para "Accion a impulsar":
-
-- `frontend/src/config/estadoActuaciones.rules.ts`
-
-Backend:
-
-- `backend/routes/ppl.js`
-- `backend/db/consolidado.repo.js`
-- `backend/data/consolidado_ppl.csv`
+---
 
 ## 2. Flujo de datos
 
 1. Frontend consulta `GET /api/ppl/:documento/actuaciones`.
-2. Backend filtra todas las filas del CSV `consolidado_ppl.csv` por documento.
-3. Backend devuelve arreglo `actuaciones` con `{ id, rowIndex, registro }`.
-4. Frontend transforma cada fila para la tabla (numero, fecha, resumen, actuacion, estado).
+2. Backend devuelve arreglo `actuaciones` con `{ id, rowIndex, registro }`.
+3. Frontend transforma cada fila para tabla:
+   - numero de actuacion,
+   - fecha de analisis,
+   - resumen,
+   - actuacion judicial,
+   - accion/estado.
 
-## 3. Criterio de "actuacion iniciada"
+---
 
-Una fila cuenta como iniciada si cumple al menos una:
+## 3. Criterio de actuacion iniciada
 
-1. Tiene diligenciado algun campo clave de avance (por ejemplo fecha de analisis, resumen, actuacion, etc.).
-2. Tiene algun campo no-base diligenciado (bloques 3+), excluyendo metadatos que no significan avance funcional.
+Una fila se considera iniciada si:
 
-Con esto se evita:
+1. Tiene algun campo clave de avance diligenciado, o
+2. Tiene algun campo no base diligenciado (bloques 3+).
 
-- Marcar como iniciada una fila solo por datos base (bloques 1-2).
-- Crear multiples filas vacias cuando ya existe una pendiente por diligenciar.
+Esto evita marcar como iniciada una fila que solo trae datos base (bloques 1-2).
 
-## 4. Regla de "sin actuaciones"
+---
 
-`sinActuaciones = true` cuando no hay ninguna fila iniciada.
+## 4. Botones de accion (actualizacion 2026-03-25)
 
-En ese estado:
+### 4.1 Etiqueta de accion principal
 
-- Se muestra mensaje "Sin actuaciones por el momento".
-- El boton de la fila vacia (`Iniciar actuacion`) primero intenta abrir la ultima fila pendiente (no iniciada) y solo crea una nueva si no hay pendientes.
-- El boton inferior `Crear nueva actuacion` tambien evita crear duplicados en este estado si existe una pendiente reutilizable.
+- La accion visible en historial usa texto:
+  - **"Actualizar actuacion"**
 
-## 5. Columnas de la tabla
+### 4.2 Fila vacia (sin actuaciones)
 
-### 5.1 Numero de actuacion
+- Boton de fila vacia:
+  - intenta primero abrir la pendiente mas reciente,
+  - si no existe pendiente, crea una nueva actuacion y abre formulario.
 
-- Se enumera en frontend como secuencia `1..N` sobre las filas **iniciadas** visibles en tabla.
+### 4.3 Boton "Crear nueva actuacion"
 
-### 5.2 Fecha de analisis juridico del caso
+- Ahora siempre intenta crear una nueva actuacion y abrir formulario limpio (`abrirFormulario: true`).
+- Ya no prioriza reutilizar pendiente desde este boton.
 
-- Condenados: pregunta 29 (Bloque 3).
-- Sindicados: pregunta 20 (Bloque 3 Celeste).
-- Ambos flujos usan la misma columna logica de fecha en el registro.
+---
 
-### 5.3 Resumen del analisis del caso
+## 5. Restriccion para crear nueva actuacion (Aurora)
 
-- Condenados: pregunta 37 (Bloque 3).
-- Sindicados: pregunta 22 (Bloque 3 Celeste, resumen juridico del caso).
+En `FormularioAtencion.jsx`:
 
-### 5.4 Actuacion judicial a adelantar
+- No se permite crear nueva actuacion en flujo condenado si la actuacion actual no tiene informacion diligenciada desde la pregunta 29.
 
-- Condenados: pregunta 40 (Bloque 4 Aurora).
-- Sindicados: pregunta 21 (Bloque 3 Celeste: analisis juridico y actuacion a desplegar).
+Referencia funcional (campos minimos considerados):
 
-### 5.5 Accion a impulsar
+- fecha de analisis,
+- procedencias Q30-Q34,
+- Q35,
+- Q36,
+- Q37.
 
-- Proviene del mismo calculo de estado usado en "Usuarios asignados", mediante:
-  - `getEstadoDisplayInfo(record)` en `estadoActuaciones.rules.ts`.
+---
 
 ## 6. Guardado y persistencia
 
-1. `POST /ppl/:documento/actuaciones` crea una nueva fila base (bloques 1-2).
-2. `PUT /ppl/:documento` guarda respuestas sobre la actuacion activa (`actuacionId`).
-3. El backend persiste reescribiendo `consolidado_ppl.csv` con `saveRaw`.
+1. `POST /ppl/:documento/actuaciones` crea fila nueva.
+2. `PUT /ppl/:documento` guarda respuestas sobre actuacion activa (`actuacionId`).
+3. El backend persiste cambios en CSV consolidado.
 
-## 7. Notas de uso
-
-- Si el usuario consulta de nuevo y existe una actuacion pendiente no iniciada, `Iniciar actuacion` debe retomar esa fila, no crear una adicional.
-- Si hay al menos una actuacion iniciada, la tabla muestra historial con columnas completas o `-` donde falte informacion.

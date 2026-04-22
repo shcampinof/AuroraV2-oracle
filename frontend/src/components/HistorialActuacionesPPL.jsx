@@ -455,12 +455,11 @@ export default function HistorialActuacionesPPL({
       onIniciarActuacion();
       return;
     }
-    onCrearNuevaActuacion?.();
+    onCrearNuevaActuacion?.({ abrirFormulario: true });
   }
 
   function handleCrearNuevaActuacionClick() {
-    if (sinActuaciones && seleccionarActuacionPendienteMasReciente()) return;
-    onCrearNuevaActuacion?.();
+    onCrearNuevaActuacion?.({ abrirFormulario: true });
   }
 
   return (

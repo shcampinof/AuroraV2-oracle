@@ -1,219 +1,254 @@
-# AURORA - Matriz de Reglas (Aurora/Celeste)
+# AURORA - Matriz de reglas (Aurora/Celeste)
 
-Fuentes analizadas (implementación actual):
+Fuentes actuales:
 
-- `frontend/src/utils/evaluateAuroraRules.ts`
-- `frontend/src/utils/evaluateCelesteRules.ts`
 - `frontend/src/pages/FormularioAtencion.jsx`
+- `frontend/src/utils/evaluateAuroraRules.ts`
 - `frontend/src/config/formRules.aurora.ts`
-- `frontend/src/config/formRules.celeste.ts`
-- `frontend/src/pages/RegistrosAsignados.jsx`
-- `frontend/src/App.css`
+- `frontend/src/utils/evaluateCelesteRules.ts`
 
 ---
 
-## 0. Convenciones e IDs
+## Actualizacion 2026-04-10
 
-- **ID de regla**: `<FLUJO>.<BLOQUE>.<CATEGORIA>.<N>`  
-  - Ejemplos:
-    - `AURORA.B3.CIERRE.1`
-    - `AURORA.B5A.DEPENDENCIA.1`
-    - `CELESTE.B3.VISIBILIDAD.1`
-    - `ESTADO.SEMAFORO.VERDE.1`
-- **Flujos**:
-  - `AURORA` = condenados.
-  - `CELESTE` = sindicados.
-- **Fuentes**:
-  - `evaluador` = lógica pura (`evaluateAuroraRules` / `evaluateCelesteRules`).
-  - `componente` = lógica en `FormularioAtencion.jsx`.
-  - `formRules.*` = helpers de reglas (`formRules.aurora.ts`, `formRules.celeste.ts`).
-  - `usuariosAsignados` = lógica de la tabla de Usuarios asignados (`RegistrosAsignados.jsx` + CSS).
-- **Qxx**: IDs internos de preguntas (no se redefinen aquí; se documentan en la matriz de preguntas).
+Cambios aplicados y validados:
 
-> **Regla de oro de mantenimiento**  
-> Cualquier cambio de negocio debe actualizar:
-> 1) esta matriz,  
-> 2) la implementación en código,  
-> 3) al menos un test cuyo nombre incluya el ID de la regla.
+1. Q36 en Aurora cambia a multiseleccion (checkbox multiple), obligatoria para avance a bloque 4.
+2. Q36 se serializa en un campo concatenado y agrega marca automatica:
+   - `MAS DE UNA OPCION` cuando hay mas de una seleccion.
+   - Compatibilidad: el evaluador sigue reconociendo la marca historica `MAS DE UNA OPCION (VER RESUMEN ANALISIS DEL CASO)`.
+3. La marca automatica no cuenta como respuesta valida para reglas.
+4. Guardado progresivo por bloques iniciados (no obliga completar bloque 4 para guardar bloque 3).
+5. No se permite guardar bloque 3 sin P37.
+6. Cierre de caso en Aurora alineado a reglas operativas:
+   - Q30-Q34 sin procedencia afirmativa y Q36 sin solicitud positiva,
+   - Q39 en opcion no afirmativa (`No ...`, `El usuario es renuente ...`),
+   - Q40 incluye "NINGUNA" o "NO PROCEDE NADA",
+   - en utilidad publica: Q44 o Q45 = `No`,
+   - recurso en `No` (Q54 utilidad / Q49 tramite),
+   - Q57 (utilidad) o Q52 (tramite) diligenciada,
+   - y en tramite normal Q47 (sentido de decision) diligenciada solo cierra cuando NO es `No concede la solicitud`.
+7. Estado derivado ajustado a matriz de "Accion a impulsar":
+   - `Entrevistar al usuario`: Q29 y Q37 diligenciadas, pero falta Q38 o Q40.
+   - `Presentar solicitud`: Q29, Q37, Q38 y Q40 diligenciadas; falta Q50 (utilidad publica) o Q45 (tramite normal).
+   - `Pendiente decision`: Q29, Q37, Q38 y Q40 diligenciadas; existe Q50 o Q45, y falta Q51 o Q46.
+   - en tramite normal: Q47 = `No concede la solicitud` + Q49 vacia -> `Presentar solicitud`.
+   - en tramite normal: Q47 = `No concede la solicitud` + Q49 = `Si` + Q52 vacia -> `Pendiente decision`.
+8. En bloque 5 (frontend), "Fecha de decision de la autoridad" y "Sentido de la decision" quedan obligatorios.
+9. Historial:
+   - accion visible: "Actualizar actuacion",
+   - "Crear nueva actuacion" crea y abre formulario limpio.
+10. Nuevas opciones intermedias en procedencia:
+   - libertad condicional >57%,
+   - prision domiciliaria >47%,
+   - libertad condicional (90 dias o menos para cumplir tiempo),
+   - prision domiciliaria (90 dias o menos para cumplir tiempo).
+11. Validacion temporal de bloque 5:
+   - secuencia obligatoria de fechas (recepcion -> presentacion/radicacion -> decision),
+   - limite de fecha futura: hoy + 5 dias.
+12. Nuevos campos calculados (bloque 2 Aurora, entre Q23 y Q24):
+   - Dias restantes para requisito temporal de prision domiciliaria.
+   - Dias restantes para requisito temporal de libertad condicional.
+   - No editables; muestran:
+     - `Mas de 90 dias`,
+     - `N dias` (si faltan 90 o menos),
+     - `Ya cumple el tiempo`.
+13. Resumen de calificaciones de conducta (Q26-Q27):
+   - tabla dinamica con 4 filas visibles (actual + calificaciones 2/3/4),
+   - encabezados sin enumeracion, numeracion en etiquetas de fila (26 y 27),
+   - todas las filas editables,
+   - persiste por actuacion cuando la fila corresponde a historial existente,
+   - si falta actuacion asociada, la fila mantiene edicion visual sin persistencia,
+   - las anteriores se ordenan por fecha descendente.
+14. Dependencia en tramite normal (5B):
+   - Q43 (fecha de recepcion de pruebas aportadas) se habilita solo si Q41 = `Si`;
+   - si Q41 != `Si`, Q43 se deshabilita y se limpia.
+15. Q39 Decision del usuario:
+   - se consideran afirmativas ambas opciones que inician por `Si` (incluyendo `Si desea que el defensor presente solicitud...`), por lo que no bloquean el avance.
+16. Q42 Poder en caso de avanzar con la solicitud:
+   - agrega opcion `No requiere poder` sin efectos adicionales de reglas.
+17. Q47 Sentido de la decision (tramite normal 5B):
+   - opciones UI: `Concede la solicitud` / `No concede la solicitud`,
+   - compatibilidad retroactiva con valores historicos `Concede/No concede subrogado penal`.
 
----
+## Actualizacion 2026-04-20
 
-## 1. Matriz de preguntas (resumen funcional)
+Cambios aplicados y validados:
 
-> Plantilla a completar con labels reales. Aquí solo se listan las preguntas que hoy participan en reglas claras.
-
-| ID   | Label actual (resumen)                                  | Flujo  | Bloque | Tipo    | Obligatoria | Participa en…                                      |
-|------|---------------------------------------------------------|--------|--------|---------|------------|----------------------------------------------------|
-| Q28  | Pregunta bloque 3 – 28                                  | Aurora | 3      | select  | Sí         | Requisito para habilitar bloque 4                  |
-| Q29  | Pregunta bloque 3 – 29                                  | Aurora | 3      | select  | Sí         | Requisito para habilitar bloque 4                  |
-| Q30  | Condición bloque 3 – 30                                 | Aurora | 3      | select  | Sí         | Cierre B3 / habilitar B4                           |
-| Q31  | Condición bloque 3 – 31                                 | Aurora | 3      | select  | Sí         | Cierre B3 / habilitar B4                           |
-| Q32  | Condición bloque 3 – 32                                 | Aurora | 3      | select  | No         | Cierre B3 / habilitar B4                           |
-| Q33  | Condición bloque 3 – 33                                 | Aurora | 3      | select  | Sí         | Cierre B3 / habilitar B4                           |
-| Q34  | Condición que habilita Q35                              | Aurora | 3      | select  | Sí         | Dependencia (`AURORA.BX.DEPENDENCIA.1`)            |
-| Q35  | Pregunta dependiente de Q34                             | Aurora | 3      | texto   | No         | Limpieza (`AURORA.BX.LIMPIEZA.1`)                  |
-| Q36  | Pregunta bloque 3 – 36                                  | Aurora | 3      | select  | Sí         | Requisito para habilitar bloque 4                  |
-| Q37  | Pregunta bloque 3 – 37                                  | Aurora | 3      | select  | Sí         | Requisito para habilitar bloque 4                  |
-| Q38  | Fecha de entrevista                                     | Aurora | 4      | fecha   | Sí         | Requisito de estado (`STATUS.ENTREVISTAR/SOLICITUD`)|
-| Q39  | Decisión del usuario sobre avance                       | Aurora | 4      | select  | Sí         | Habilita resto de bloque 4 y puede cerrar caso     |
-| Q40  | Actuación a adelantar                                   | Aurora | 4      | select  | Sí         | Ruta 5A/5B y cierre (`AURORA.B5*.RUTA/BLOQUEO_*`)  |
-| Q44  | Condición utilidad/trámite – 1                          | Aurora | 5A/5B  | select  | No         | Cierre (`AURORA.B5.CIERRE.2`)                      |
-| Q45  | Condición utilidad/trámite – 2                          | Aurora | 5A/5B  | select  | No         | Cierre (`AURORA.B5.CIERRE.2`)                      |
-| Q46  | Requisito misión de trabajo                             | Aurora | 5A     | select  | Sí         | Dependencia (`AURORA.B5A.DEPENDENCIA.1`)           |
-| Q47  | Detalle misión de trabajo 1 / sentido subrogado (5B)    | Aurora | 5A/5B  | select  | No         | Dependencias en 5A y 5B                            |
-| Q48  | Detalle misión de trabajo 2                             | Aurora | 5A     | texto   | No         | Dependencia (`AURORA.B5A.DEPENDENCIA.1`)           |
-| Q52  | Sentido de la decisión (utilidad pública)               | Aurora | 5A     | select  | Sí         | Cierre y negativa (`AURORA.B5A.CIERRE.*`)          |
-| Q53–Q55 | Campos de motivo / recurso en utilidad pública       | Aurora | 5A     | varios  | No         | Negativa y recurso (`AURORA.B5A.DEPENDENCIA.*`)    |
-| Q56  | Campo final que implica cierre                          | Aurora | 5A/5B  | varios  | No         | Cierre (`AURORA.B5.CIERRE.3`)                      |
-| Q57  | Cierre por imposibilidad de avanzar (utilidad pública)  | Aurora | 5A     | select  | No         | Cierre (`AURORA.B5A.CIERRE.2`)                     |
-| C_Q26| Sentido de la decisión (Celeste, bloque 5)              | Celeste| 5      | select  | Sí         | Dependencia (`CELESTE.B5.DEPENDENCIA.2`)           |
-| C_Q27| Motivo de la decisión negativa (Celeste, bloque 5)      | Celeste| 5      | texto   | No         | Dependencia (`CELESTE.B5.DEPENDENCIA.2/3`)         |
-| C_Q28| ¿Se presenta recurso? (Celeste, bloque 5)               | Celeste| 5      | select  | No         | Dependencia (`CELESTE.B5.DEPENDENCIA.4/5`)         |
-| C_Q29| Fecha de presentación del recurso (Celeste)             | Celeste| 5      | fecha   | No         | Dependencia (`CELESTE.B5.DEPENDENCIA.4/5`)         |
-| C_Q30| Sentido de la decisión que resuelve el recurso (Celeste)| Celeste| 5      | select  | No         | Dependencia (`CELESTE.B5.DEPENDENCIA.4/5`)         |
-| C_DEF| Defensor asignado                                       | Celeste| 3      | select  | Sí         | Visibilidad (`CELESTE.B3.VISIBILIDAD.*`)           |
-| C_FAN| Fecha de análisis                                       | Celeste| 3      | fecha   | Sí         | Visibilidad (`CELESTE.B3.VISIBILIDAD.*`)           |
-| C_PRO| Procedencia del caso                                    | Celeste| 3      | select  | Sí         | Visibilidad (`CELESTE.B3.VISIBILIDAD.*`)           |
-
-Nota de catalogo Q40 (Aurora):
-- Se agrega la opcion `Reiterar solicitud de subrogado penal ya radicada` en "Actuacion a adelantar".
-
-> **TODO**: completar la matriz con todos los Qxx y labels exactos a partir de `formRules.aurora.ts` y `formRules.celeste.ts`.
-
----
-
-## 2. Reglas de visibilidad por bloque
-
-### 2.1 Aurora (condenados)
-
-| Regla ID                     | Flujo  | Fuente    | Condición                                                                                       | Efecto                                                       |
-|------------------------------|--------|-----------|-------------------------------------------------------------------------------------------------|--------------------------------------------------------------|
-| AURORA.B1_2.VISIBILIDAD.1    | Aurora | evaluador | Siempre                                                                                         | `visibleBlocks` incluye `bloque1` y `bloque2Aurora`         |
-| AURORA.B3.VISIBILIDAD.1      | Aurora | evaluador | No hay `lockRules` activas (no bloqueos por Q40 ni cierres previos)                            | Se agrega `bloque3`                                         |
-| AURORA.B4.VISIBILIDAD.1      | Aurora | evaluador | Preguntas obligatorias de bloque 3 completas (Q32 opcional)                                     | Habilita en general el bloque 4                             |
-| AURORA.B4.VISIBILIDAD.2      | Aurora | evaluador | Preguntas obligatorias de bloque 3 completas (Q32 opcional) **y** al menos un "Sí" entre Q30–Q34 | Se agrega `bloque4` a `visibleBlocks`                       |
-| AURORA.B5.VISIBILIDAD.1      | Aurora | evaluador | Preguntas obligatorias de `bloque4` completas                                                   | Bloque 5 puede mostrarse (alguna variante)                  |
-| AURORA.B5A.VISIBILIDAD.1     | Aurora | evaluador | `conditionalBlockVisibility.when = true` (actuación de Q40 de utilidad pública)                | Variante `bloque5UtilidadPublica` activa (5A)               |
-| AURORA.B5B.VISIBILIDAD.1     | Aurora | evaluador | No se cumple condición de variante 5A y no aplica bloqueo por Q40                              | Variante `bloque5TramiteNormal` activa (5B)                 |
-| AURORA.BLOCK.LOCK.1          | Aurora | evaluador | `lock_por_actuacion_40_sindicada` (Q40 contiene actuación de sindicado)                        | No se agrega `bloque3`; visibles solo `bloque1` y `bloque2` |
-
-### 2.2 Celeste (sindicados)
-
-| Regla ID                         | Flujo   | Fuente    | Condición                                           | Efecto                                                          |
-|----------------------------------|---------|-----------|----------------------------------------------------|-----------------------------------------------------------------|
-| CELESTE.B1_3.VISIBILIDAD.1       | Celeste | evaluador | Siempre                                            | `visibleBlocks` incluye bloques 1, 2Celeste y 3Celeste         |
-| CELESTE.B4.VISIBILIDAD.1         | Celeste | evaluador | Preguntas obligatorias del bloque 3 completas      | Se agrega `bloque4Celeste`                                     |
-| CELESTE.B5.VISIBILIDAD.2         | Celeste | evaluador | `bloque4Celeste` completo y fecha de bloque 4 llena| Se agrega `bloque5Celeste`                                     |
-
----
-
-## 3. Reglas de deshabilitación
-
-### 3.1 Aurora
-
-| Regla ID                      | Flujo  | Fuente      | Condición                                                                 | Campos / efecto                                                                                   |
-|-------------------------------|--------|-------------|---------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
-| AURORA.B5A.DEPENDENCIA.1      | Aurora | evaluador   | Bloque 5A activo y Q46 = "No"                                            | Deshabilita Q47 y Q48                                                                              |
-| AURORA.B5A.DEPENDENCIA.2      | Aurora | evaluador   | Bloque 5A activo y Q52 = "Niega utilidad pública"                        | Habilita campos de motivo y recurso (Q53–Q55, Q56 según diseño)                                   |
-| AURORA.B5A.DEPENDENCIA.3      | Aurora | evaluador   | Bloque 5A activo y Q52 ≠ "Niega utilidad pública"                        | Deshabilita y limpia Q53–Q55 (y Q56 si aplica)                                                    |
-| AURORA.B5A.DEPENDENCIA.4      | Aurora | evaluador   | Bloque 5A activo, Q52 = "Niega utilidad pública" y Q54 = "Sí se presenta recurso" | Habilita campos de recurso adicional (p.ej. Q55 y Q56)                               |
-| AURORA.B5B.DEPENDENCIA.1      | Aurora | evaluador   | Bloque 5B activo y campo “¿Se presenta recurso?” ≠ "Sí"                  | Deshabilita y limpia campos de recurso (fecha y sentido de la decisión que resuelve solicitud)    |
-| AURORA.B5B.DEPENDENCIA.2      | Aurora | evaluador   | Bloque 5B activo y “¿Se presenta recurso?” = "Sí"                         | Habilita fecha y sentido de la decisión que resuelve solicitud                                    |
-| AURORA.B5B.DEPENDENCIA.3      | Aurora | evaluador   | Bloque 5B activo y Q47 = "No concede subrogado penal"                    | Habilita motivo y recurso; el resto depende de la respuesta de recurso                            |
-| AURORA.B5B.DEPENDENCIA.4      | Aurora | evaluador   | Bloque 5B activo y Q47 ≠ "No concede subrogado penal"                    | Deshabilita motivo y campos de recurso (incluye sentido que resuelve solicitud)                   |
-| AURORA.BX.DEPENDENCIA.1       | Aurora | componente  | Q34 distinto de "Sí"                                                      | Deshabilita Q35                                                                                    |
-| AURORA.B4.DEPENDENCIA.1       | Aurora | componente  | Q39 ∈ { opciones de avance definidas para el usuario }                   | Habilita el resto de preguntas del bloque 4                                                       |
-| AURORA.B4.LOCK_UI.1           | Aurora | componente  | `cierreRegla1Bloque3`                                                     | Deshabilita Q38, Q39 y contribuye al bloqueo de bloque 5                                          |
-| AURORA.B4.LOCK_UI.2           | Aurora | componente  | `cierreRegla1Bloque3` o `decisionUsuarioBloquea`                          | Deshabilita Q40                                                                                    |
-| AURORA.B4.LOCK_UI.3           | Aurora | componente  | `cierreRegla1Bloque3` o `decisionUsuarioBloquea` o actuación "Ninguna"   | Deshabilita campos posteriores de bloque 4 (por ejemplo Q41 y Q42)                                |
-| AURORA.B5.LOCK_UI.1           | Aurora | componente  | `bloquearBloque5 = true`                                                 | Deshabilita la mayoría de campos de bloque 5                                                      |
-| AURORA.B5A.LOCK_UI.2          | Aurora | componente  | Bloque 5A activo y no aplica negativa de utilidad pública                | Deshabilita Q53 y Q54                                                                              |
-| AURORA.B5A.LOCK_UI.3          | Aurora | componente  | Bloque 5A activo y Q54 ≠ "Sí"                                            | Deshabilita Q55 y Q56                                                                              |
-| AURORA.B5B.LOCK_UI.2          | Aurora | componente  | Bloque 5B activo y “¿Se presenta recurso?” ≠ "Sí"                        | Deshabilita fecha de recurso y sentido que resuelve solicitud                                     |
-
-### 3.2 Celeste
-
-| Regla ID                      | Flujo   | Fuente      | Condición                                                            | Campos / efecto                                             |
-|-------------------------------|---------|-------------|------------------------------------------------------------------------|-------------------------------------------------------------|
-| CELESTE.B5.DEPENDENCIA.1      | Celeste | componente  | Pregunta "¿Se recurrió en caso de decisión negativa?" ≠ "Sí"          | Deshabilita (y limpia) fecha y sentido de la decisión del recurso (si aplica) |
-| CELESTE.B5.DEPENDENCIA.2      | Celeste | componente  | C_Q26 = "Niega la solicitud"                                         | Habilita C_Q27                                              |
-| CELESTE.B5.DEPENDENCIA.3      | Celeste | componente  | C_Q26 ≠ "Niega la solicitud"                                         | Deshabilita y limpia C_Q27                                 |
-| CELESTE.B5.DEPENDENCIA.4      | Celeste | componente  | C_Q28 indica que se presenta recurso (por ejemplo "Sí se presenta recurso") | Habilita C_Q29 y C_Q30                               |
-| CELESTE.B5.DEPENDENCIA.5      | Celeste | componente  | C_Q28 no indica recurso (por ejemplo cualquier valor distinto de "Sí")| Deshabilita y limpia C_Q29 y C_Q30                         |
+1. Aurora bloque 2:
+   - nuevo campo no editable antes de Q18:
+     - `17A. Fecha de actualizaciÃƒÆ’Ã‚Â³n de los datos (corte)`.
+   - valor temporal actual: `15/04/2026`.
+2. Aurora bloque 3:
+   - Q30, Q31 y Q32 ahora renderizan opciones numeradas en el orden existente.
+   - Q30, Q31, Q32 y Q34 incluyen:
+     - `No aplica porque estÃƒÆ’Ã‚Â¡ en trÃƒÆ’Ã‚Â¡mite solicitud de acumulaciÃƒÆ’Ã‚Â³n de penas`.
+3. Flujo sindicados:
+   - opciÃƒÆ’Ã‚Â³n nueva en Q21:
+     - `No se avanzarÃƒÆ’Ã‚Â¡ porque ya no soy el defensor en este caso`.
+   - texto de bloques actualizado de `(CELESTE)` a `(SINDICADOS)`.
+   - Q29 renombrada:
+     - `Fecha de presentaci�n del recurso`.
+   - Q30 (nueva):
+     - `Fecha de la decisi�n del recurso`.
+   - la pregunta de sentido de la decisi�n que resuelve recurso se corre a Q31.
+4. Estado derivado en sindicados (acci�n a impulsar) implementado:
+   - Q19-Q22 incompletas -> `Analizar el caso`.
+   - Q21 `No se avanzar�...` -> `Caso cerrado`.
+   - Q21 `Se avanzar�...` y Q23 vac�a -> `Entrevistar al usuario`.
+   - Q23 diligenciada -> `Presentar solicitud`.
+   - Q24 diligenciada y Q25 vac�a -> `Pendiente audiencia` (sin sem�foro verde/amarillo/rojo).
+   - Q25 diligenciada y Q26 vac�a -> `Pendiente decisi�n de audiencia` (sin sem�foro verde/amarillo/rojo).
+   - Q24+Q25 y Q26 `Revoca.../Sustituye...` -> `Caso cerrado`.
+   - Q24+Q25 y Q26 `Niega la solicitud` -> `Presentar recurso`.
+   - Q28 `No` -> `Caso cerrado`.
+   - Q28 `Si` -> `Presentar recurso`.
+   - Q29 con fecha -> `Pendiente decisi�n`.
+   - Q30 o Q31 con respuesta -> `Caso cerrado`.
 
 ---
 
-## 4. Reglas de limpieza automática
+## 1. Preguntas clave (Aurora)
 
-| Regla ID                     | Flujo   | Fuente      | Condición                                                    | Limpieza                                                                                   |
-|------------------------------|---------|-------------|--------------------------------------------------------------|-------------------------------------------------------------------------------------------|
-| AURORA.BX.LIMPIEZA.1         | Aurora  | componente  | Q34 no habilita Q35 (no es "Sí")                            | Limpia ambas claves de Q35 (`KEY_Q35_LEGACY`, `KEY_Q35_UTF8`)                            |
-| AURORA.B5A.LIMPIEZA.1        | Aurora  | componente  | Bloque 5A activo y Q52 ≠ "Niega utilidad pública"           | Limpia: Motivo de la decisión negativa, Se presenta recurso, Fecha de recurso            |
-| AURORA.B5B.LIMPIEZA.1        | Aurora  | componente  | Bloque 5B activo y Q47 ≠ "No concede subrogado penal"       | Limpia: Motivo, Se presenta recurso, Fecha de recurso, Sentido que resuelve solicitud    |
-| AURORA.B5B.LIMPIEZA.2        | Aurora  | componente  | Bloque 5B activo, Q47 = "No concede..." y recurso ≠ "Sí"    | Limpia: Fecha de recurso y Sentido que resuelve solicitud                                  |
-| CELESTE.B5.LIMPIEZA.1        | Celeste | componente  | Pregunta "¿Se recurrió en caso de decisión negativa?" ≠ "Sí"| Limpia: Fecha de presentación del recurso y Sentido de la decisión que resuelve el recurso |
-
----
-
-## 5. Reglas de cierre de caso
-
-### 5.1 Aurora
-
-| Regla ID                       | Flujo  | Fuente                  | Condición (resumen Qxx)                                                              | Efecto                                          |
-|--------------------------------|--------|-------------------------|--------------------------------------------------------------------------------------|-------------------------------------------------|
-| AURORA.B3.CIERRE.1             | Aurora | `isCasoCerrado`         | Q30–Q33 completas y todas en { "No", "No aplica", "No cumple" }                     | `casoCerrado = true`                           |
-| AURORA.B4.CIERRE.1             | Aurora | `isCasoCerrado`         | Q39 con decisión que implica no continuar                                           | `casoCerrado = true`                           |
-| AURORA.B4.CIERRE.2             | Aurora | `isCasoCerrado`         | Q40 contiene actuaciones que no permiten continuar (p.ej. "ninguna" general)        | `casoCerrado = true`                           |
-| AURORA.B4.CIERRE.3             | Aurora | `isCasoCerrado` / comp. | Q39 no es alguna de las opciones válidas de avance                                  | `casoCerrado = true`; bloque 5 no visible      |
-| AURORA.B5.CIERRE.2             | Aurora | `isCasoCerrado`         | Q44 = "No" o Q45 = "No"                                                              | `casoCerrado = true`                           |
-| AURORA.B5.CIERRE.3             | Aurora | `isCasoCerrado`         | Q54 = "No"                                                                           | `casoCerrado = true`                           |
-| AURORA.B5.CIERRE.4             | Aurora | `isCasoCerrado`         | Q56 diligenciada                                                                     | `casoCerrado = true`                           |
-| AURORA.B5A.CIERRE.1            | Aurora | componente              | Bloque 5A: Q52 diligenciada y (según combinación de respuesta y recurso)            | Contribuye a marcar cierre final del caso      |
-| AURORA.B5A.CIERRE.2            | Aurora | componente              | Bloque 5A: Q57 (Cierre del caso por imposibilidad de avanzar) tiene algún valor     | `casoCerrado = true`                           |
-| AURORA.B5B.CIERRE.1            | Aurora | componente              | Bloque 5B: recurso = "No" o sentido que resuelve solicitud diligenciado             | `casoCerrado = true`                           |
-| AURORA.B5B.CIERRE.2            | Aurora | componente              | Bloque 5B: campo "Cierre del caso por imposibilidad de avanzar" (p.ej. P52) con valor| `casoCerrado = true`                          |
-| AURORA.GLOBAL.CIERRE.1         | Aurora | `FormularioAtencion`    | Regla 30–33 negativas (`cierreRegla1Bloque3`)                                       | `casoCerrado = true`                           |
-| AURORA.GLOBAL.CIERRE.2         | Aurora | `FormularioAtencion`    | Decisión del usuario en bloque 4 que no permite avanzar                             | `casoCerrado = true`                           |
-| AURORA.GLOBAL.CIERRE.3         | Aurora | `FormularioAtencion`    | Actuación de Q40 inicia por "Ninguna..." (cualquiera de las opciones de cierre)     | `casoCerrado = true`                           |
-| AURORA.B5.CIERRE_FINAL.1       | Aurora | `FormularioAtencion`    | `cierrePorDecisionFinalBloque5` (decisión final o imposibilidad registrada)        | Marca cierre final de bloque 5                 |
-| AURORA.B5.CIERRE_FINAL.2       | Aurora | `FormularioAtencion`    | `cierrePorDecisionFinalBloque5` y Estado del caso aún no marcado como cerrado      | Guarda automáticamente `Estado del caso = Cerrado` vía `updatePpl` |
-
-### 5.2 Celeste
-
-| Regla ID                       | Flujo   | Fuente                 | Condición                                      | Efecto                             |
-|--------------------------------|---------|------------------------|-----------------------------------------------|------------------------------------|
-| CELESTE.GLOBAL.CIERRE.1        | Celeste | `formRules.celeste.ts` | `closeCaseRules = []`, `isCaseClosedCeleste` siempre `false` | No hay cierre automático definido |
+| ID | Campo | Tipo | Obligatoria | Nota |
+|---|---|---|---|---|
+| Q30 | Procedencia libertad condicional | select | Si | Incluye opciones intermedias (>57% y 90 dias o menos) |
+| Q31 | Procedencia prision domiciliaria | select | Si | Incluye opciones intermedias (>47% y 90 dias o menos) |
+| Q26-Q27 | Resumen de calificaciones de conducta | tabla dinamica | Si | 4 filas visibles editables; encabezados sin numeracion |
+| Q32 | Procedencia utilidad publica | select | No | Opcional en bloque 3 |
+| Q33 | Procedencia pena cumplida | select | Si | |
+| Q34 | Procedencia acumulacion de penas | select | Si | |
+| Q35 | Campo dependiente de Q34 | texto | No | Se limpia si Q34 no habilita |
+| C1 | Dias restantes para requisito temporal de prision domiciliaria | calculado | No editable | Entre Q23 y Q24 |
+| C2 | Dias restantes para requisito temporal de libertad condicional | calculado | No editable | Entre Q23 y Q24 |
+| Q36 | Otras solicitudes a tramitar | checkbox multiple | Si | Serializacion concatenada |
+| Q37 | Resumen analisis del caso | textarea | Si | Requerida para guardar bloque 3 |
+| Q40 | Actuacion a adelantar | select | Si | Define variante 5A/5B |
+| Q51 | Fecha de decision de la autoridad | date | Si (frontend) | En 5A/5B |
+| Q52 | Sentido de la decision | select | Si (frontend) | En 5A/5B |
 
 ---
 
-## 6. Reglas que afectan el estado del trámite
+## 2. Visibilidad de bloques (Aurora)
 
-| Regla ID                       | Flujo   | Fuente               | Condición                                           | Resultado / efecto                                     |
-|--------------------------------|---------|----------------------|-----------------------------------------------------|--------------------------------------------------------|
-| AURORA.STATUS.CERRADO.1       | Aurora  | `derivedStatusRules` | `isCasoCerrado(record)`                            | `derivedStatus = "Caso cerrado"`                      |
-| AURORA.STATUS.ANALIZAR.1      | Aurora  | `derivedStatusRules` | Falta fecha de análisis o resumen                  | `derivedStatus = "Analizar el caso"`                  |
-| AURORA.STATUS.ENTREVISTAR.1   | Aurora  | `derivedStatusRules` | Análisis completo pero falta entrevista o actuación| `derivedStatus = "Entrevistar al usuario"`            |
-| AURORA.STATUS.SOLICITUD.1     | Aurora  | `derivedStatusRules` | Base completa y falta radicación                   | `derivedStatus = "Presentar solicitud"`               |
-| AURORA.STATUS.PENDIENTE.1     | Aurora  | `derivedStatusRules` | Radicación hecha y falta decisión                  | `derivedStatus = "Pendiente decisión"`                |
-| AURORA.STATUS.WRITE_FORM.1    | Aurora  | `FormularioAtencion` | `auroraActivo` y cambio en `derivedStatus`         | Escribe `Estado del trámite` en el registro           |
-| AURORA.STATUS.WRITE_CASE.1    | Aurora  | `FormularioAtencion` | Cambio en `casoCerrado`                            | Escribe `Estado del caso` (`Activo` / `Cerrado`)      |
-| CELESTE.STATUS.ACTUAL.1       | Celeste | `evaluateCelesteRules` | Estado actual                                      | `locked = false`, `jumpToAurora = false`              |
-| CELESTE.STATUS.HELPER.1       | Celeste | `formRules.celeste.ts` | `deriveStatusCeleste` (no usado hoy en UI)        | Candidato a integrarse a `Estado del trámite`         |
+| Regla ID | Condicion | Efecto |
+|---|---|---|
+| `AURORA.B1_2.VISIBILIDAD.1` | Siempre | visibles `bloque1` y `bloque2Aurora` |
+| `AURORA.B3.VISIBILIDAD.1` | Sin lock activo | agrega `bloque3` |
+| `AURORA.B4.VISIBILIDAD.2` | bloque 3 obligatorio completo (Q32 opcional), Q36 valida y (al menos un "Si" entre Q30-Q34 o solicitud positiva en Q36) | agrega `bloque4` |
+| `AURORA.B5.VISIBILIDAD.1` | bloque 4 obligatorio completo | agrega variante de bloque 5 |
+| `AURORA.BLOCK.LOCK.1` | Q40 contiene actuacion de sindicado | no agrega `bloque3` |
 
 ---
 
-## 7. Reglas de estado de la actuación
+## 3. Guardado y validacion
 
-Las reglas de estado y semáforo de la tabla de Usuarios asignados se documentan en:
+| Regla ID | Condicion | Efecto |
+|---|---|---|
+| `AURORA.GUARDADO.PROGRESIVO.1` | Guardado en Aurora | valida solo bloques iniciados |
+| `AURORA.B3.GUARDADO.1` | bloque 3 iniciado y P37 vacia | bloquea guardado |
+| `AURORA.OBLIGATORIOS.GLOBAL.1` | faltan obligatorios en bloques iniciados | bloquea guardado y reporta campos |
+| `AURORA.B5.FECHAS.SEQ.1` | Q43/Q45/Q46 (o Q49/Q50/Q51) fuera de orden cronologico | bloquea guardado |
+| `AURORA.B5.FECHAS.FUTURO.1` | fecha de secuencia bloque 5 mayor a hoy + 5 dias | bloquea guardado |
+| `AURORA.B5B.DEPENDENCIA.5` | en 5B, Q41 != `Si` | deshabilita Q43 y limpia valor |
+| `AURORA.B5B.DEPENDENCIA.6` | en 5B, Q41 = `Si` | habilita Q43 |
 
-- `docs/07_estado_actuaciones.md`
+---
 
-Estas reglas dependen del avance del caso (Aurora/Celeste) y del tiempo transcurrido desde ciertos hitos.
+## 4. Cierre de caso (Aurora)
 
-## 8. TODO de matriz de reglas
+| Regla ID | Condicion | Efecto |
+|---|---|---|
+| `AURORA.B3.CIERRE.1` | Q30-Q34 sin procedencia afirmativa y Q36 sin solicitud positiva | `casoCerrado = true` |
+| `AURORA.B4.CIERRE.1` | Q39 en opcion no afirmativa (`Si ...` mantiene continuidad) | `casoCerrado = true` |
+| `AURORA.B4.CIERRE.2` | Q40 incluye "Ninguna..." o "NO PROCEDE NADA" | `casoCerrado = true` |
+| `AURORA.B5.CIERRE.1` | en utilidad publica, Q44 o Q45 = `No` | `casoCerrado = true` |
+| `AURORA.B5.CIERRE.2` | `Se presenta recurso` = `No` (Q54 utilidad / Q49 tramite) | `casoCerrado = true` |
+| `AURORA.B5.CIERRE.3` | Q57 (utilidad) o Q52 (tramite) diligenciada | `casoCerrado = true` |
+| `AURORA.B5.CIERRE.4` | en tramite normal, Q47 diligenciada con valor distinto de `No concede la solicitud` | `casoCerrado = true` |
+| `AURORA.B5.CIERRE_FINAL.1` | cierre por decision final/imposibilidad en bloque 5 | `casoCerrado = true` |
+| `AURORA.STATUS.WRITE_CASE.1` | guardado en Aurora | persiste `Estado del caso = Activo/Cerrado` |
 
-- Completar la tabla de **matriz de preguntas (Qxx)** con labels y tipos exactos desde `formRules.aurora.ts` y `formRules.celeste.ts`.
-- Resolver y documentar de forma definitiva la equivalencia de numeración entre Q47/Q52 en bloque 5B (sentido de la decisión) para evitar ambigüedad entre documento y labels de UI.
-- Afinar los textos de condición de Q39 y Q40 con las opciones reales (“Sí, desea que el defensor…”, “Utilidad pública (solo para mujeres)”, etc.).
-- Añadir, si aparecen en el código, reglas adicionales de cierre o bloqueo no listadas aquí.
-- Alinear nombres de tests unitarios con los `Regla ID` definidos en esta matriz.
+---
+
+## 5. Estado derivado del tramite (Aurora)
+
+| Regla ID | Condicion | Estado |
+|---|---|---|
+| `AURORA.STATUS.ANALIZAR.1` | falta analisis o resumen | `Analizar el caso` |
+| `AURORA.STATUS.ENTREVISTAR.1` | Q29 y Q37 diligenciadas, pero falta Q38 o Q40 | `Entrevistar al usuario` |
+| `AURORA.STATUS.PENDIENTE.RECURSO.1` | tramite normal: Q47 = `No concede la solicitud`, Q49 = `Si`, Q52 vacia | `Pendiente decision` |
+| `AURORA.STATUS.SOLICITUD.RECURSO.1` | tramite normal: Q47 = `No concede la solicitud`, Q49 vacia | `Presentar solicitud` |
+| `AURORA.STATUS.SOLICITUD.1` | Q29/Q37/Q38/Q40 diligenciadas y falta Q50 (utilidad) o Q45 (tramite) | `Presentar solicitud` |
+| `AURORA.STATUS.PENDIENTE.1` | Q29/Q37/Q38/Q40 diligenciadas, existe Q50 (utilidad) o Q45 (tramite), y falta Q51 o Q46 | `Pendiente decision` |
+| `AURORA.STATUS.CERRADO.1` | reglas de cierre cumplidas | `Caso cerrado` |
+
+---
+
+## 6. Historial de actuaciones
+
+| Regla ID | Condicion | Efecto |
+|---|---|---|
+| `AURORA.HISTORIAL.BOTONES.1` | accion visible en historial | texto "Actualizar actuacion" |
+| `AURORA.HISTORIAL.CREAR.1` | click en "Crear nueva actuacion" | crea actuacion y abre formulario limpio |
+| `AURORA.HISTORIAL.CREAR.2` | flujo condenado sin datos desde P29 | bloquea creacion de nueva actuacion |
+| `AURORA.HISTORIAL.GUARDADO.1` | guardar actuacion con `actuacionId` | actualiza la actuacion seleccionada |
+| `AURORA.HISTORIAL.GUARDADO.2` | guardar sin `actuacionId` | actualiza la ultima actuacion del documento |
+
+---
+
+## 7. Preguntas clave (Sindicado)
+
+| ID | Campo | Tipo | Obligatoria | Nota |
+|---|---|---|---|---|
+| Q19 | Defensor(a) pÃƒÆ’Ã‚Âºblico(a) asignado para tramitar la solicitud | datalist | Si | |
+| Q20 | Fecha de anÃƒÆ’Ã‚Â¡lisis jurÃƒÆ’Ã‚Â­dico del caso | date | Si | |
+| Q21 | AnÃƒÆ’Ã‚Â¡lisis jurÃƒÆ’Ã‚Â­dico y actuaciÃƒÆ’Ã‚Â³n a desplegar | select | Si | Incluye opciÃƒÆ’Ã‚Â³n de no avance por cambio de defensor |
+| Q22 | Resumen del anÃƒÆ’Ã‚Â¡lisis jurÃƒÆ’Ã‚Â­dico del caso | textarea | Si | |
+| Q23 | Fecha de la entrevista para informar al usuario | date | Si | Habilita bloque 5 |
+| Q24 | Fecha de presentaciÃƒÆ’Ã‚Â³n de la solicitud de audiencia | date | No | |
+| Q25 | Fecha de realizaciÃƒÆ’Ã‚Â³n de la audiencia | date | No | |
+| Q26 | Sentido de la decisiÃƒÆ’Ã‚Â³n | select | No | |
+| Q28 | Se presenta recurso | select | No | |
+| Q29 | Fecha de presentaciÃƒÆ’Ã‚Â³n del recurso | date | No | Si tiene fecha, pasa a pendiente decisiÃƒÆ’Ã‚Â³n |
+| Q30 | Fecha de la decisiÃƒÂ³n del recurso | date | No | Si tiene respuesta, cierra caso |
+| Q31 | Sentido de la decisiÃƒÂ³n que resuelve recurso | select | No | Si tiene respuesta, cierra caso |
+
+---
+
+## 8. Visibilidad de bloques (Sindicado)
+
+| Regla ID | Condicion | Efecto |
+|---|---|---|
+| `SINDICADO.B1_3.VISIBILIDAD.1` | Siempre | visibles `bloque1`, `bloque2Celeste`, `bloque3Celeste` |
+| `SINDICADO.B3.CIERRE.LOCK.1` | Q21 inicia con `No se avanzarÃƒÆ’Ã‚Â¡...` | lock activo, sin bloque 4 ni 5 |
+| `SINDICADO.B4.VISIBILIDAD.1` | bloque 3 obligatorio completo | agrega `bloque4Celeste` |
+| `SINDICADO.B5.VISIBILIDAD.2` | bloque 4 completo (Q23) | agrega `bloque5Celeste` |
+
+---
+
+## 9. Estado derivado del trÃƒÆ’Ã‚Â¡mite (Sindicado)
+
+| Regla ID | Condicion | Estado |
+|---|---|---|
+| `SINDICADO.STATUS.ANALIZAR.1` | faltan Q19-Q22 | `Analizar el caso` |
+| `SINDICADO.STATUS.CIERRE.Q21.1` | Q21 inicia con `No se avanzarÃƒÆ’Ã‚Â¡...` | `Caso cerrado` |
+| `SINDICADO.STATUS.ENTREVISTAR.1` | Q21 inicia con `Se avanzarÃƒÆ’Ã‚Â¡...` y Q23 vacÃƒÆ’Ã‚Â­a | `Entrevistar al usuario` |
+| `SINDICADO.STATUS.SOLICITUD.1` | Q23 diligenciada y sin resultado de audiencia | `Presentar solicitud` |
+| `SINDICADO.STATUS.PENDIENTE_AUDIENCIA.Q24.1` | Q24 diligenciada y Q25 vac�a | `Pendiente audiencia` |
+| `SINDICADO.STATUS.PENDIENTE_DECISION_AUDIENCIA.Q25.1` | Q25 diligenciada y Q26 vac�a | `Pendiente decisi�n de audiencia` |
+| `SINDICADO.STATUS.CIERRE.Q26.1` | Q24+Q25 y Q26 = `Revoca...` o `Sustituye...` | `Caso cerrado` |
+| `SINDICADO.STATUS.RECURSO.1` | Q24+Q25 y Q26 = `Niega la solicitud` | `Presentar recurso` |
+| `SINDICADO.STATUS.CIERRE.Q28.1` | en flujo de recurso, Q28 = `No` | `Caso cerrado` |
+| `SINDICADO.STATUS.RECURSO.Q28.2` | en flujo de recurso, Q28 = `Si` | `Presentar recurso` |
+| `SINDICADO.STATUS.PENDIENTE.Q29.1` | Q29 diligenciada | `Pendiente decisi�n` |
+| `SINDICADO.STATUS.CIERRE.Q30_31.1` | Q30 o Q31 con respuesta | `Caso cerrado` |
+
+## 10. Validacion tecnica (2026-04-20)
+
+| Comando | Resultado |
+|---|---|
+| `npm --prefix frontend run lint` | OK |
+| `npm --prefix frontend test -- --run src/utils/evaluateCelesteRules.test.ts` | OK |
+| `npm --prefix frontend run build` | OK |
+

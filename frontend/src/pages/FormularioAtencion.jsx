@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createPplActuacion,
   getDefensoresCatalogo,
@@ -10,20 +10,24 @@ import Toast from '../components/Toast.jsx';
 import HistorialActuacionesPPL from '../components/HistorialActuacionesPPL.jsx';
 import { evaluateAuroraRules } from '../utils/evaluateAuroraRules.ts';
 import { evaluateCelesteRules } from '../utils/evaluateCelesteRules.ts';
+import auroraFormRules from '../config/formRules.aurora.ts';
 import { AURORA_FIELD_IDS } from '../config/auroraFieldIds.ts';
 import { reportError } from '../utils/reportError.js';
 import { getLabelAccionCaso } from '../utils/actuacionesLabels.js';
 
 const OPCIONES_TIPO_IDENTIFICACION = ['CC', 'CE', 'PASAPORTE', 'OTRA'];
-const OPCIONES_SI_NO = ['SÃ­', 'No'];
-const OPCIONES_PODER = ['SÃ­ se requiere', 'Ya se cuenta con poder'];
+const OPCIONES_SI_NO = ['Sí', 'No'];
+const OPCIONES_PODER = ['Sí se requiere', 'Ya se cuenta con poder', 'No requiere poder'];
 const KEY_Q35_LEGACY = 'Con qu? proceso(s) debe acumular penas (si aplica)';
-const KEY_Q35_UTF8 = 'Con quÃ© proceso(s) debe acumular penas (si aplica)';
-const KEY_FECHA_ULTIMA_CALIFICACION = 'Fecha ?ltima calificaciÃ³n';
-const KEY_ACTA_CALIFICACION = 'No.Acta de calificaciÃ³n de conducta';
-const KEY_EVALUACION_DESDE = 'EvaluaciÃ³n de conducta desde';
-const KEY_EVALUACION_HASTA = 'EvaluaciÃ³n de conducta hasta';
-const KEY_CALIFICACION_CONDUCTA = 'CalificaciÃ³n de conducta';
+const KEY_Q35_UTF8 = 'Con qué proceso(s) debe acumular penas (si aplica)';
+const KEY_FECHA_ULTIMA_CALIFICACION = 'Fecha última calificación';
+const KEY_ACTA_CALIFICACION = 'No.Acta de calificación de conducta';
+const KEY_EVALUACION_DESDE = 'Evaluación de conducta desde';
+const KEY_EVALUACION_HASTA = 'Evaluación de conducta hasta';
+const KEY_CALIFICACION_CONDUCTA = 'Calificación de conducta';
+const KEY_FECHA_RECURSO_AURORA_LEGACY = 'Fecha de recurso en caso desfavorable';
+const KEY_FECHA_PRESENTACION_RECURSO = 'Fecha de presentación del recurso';
+const KEY_FECHA_DECISION_RECURSO = 'Fecha de la decisión del recurso';
 
 // AURORA (PPL CONDENADOS)
 const OPCIONES_SITUACION_JURIDICA = ['Condenado', 'Sindicado'];
@@ -43,14 +47,14 @@ const OPCIONES_ENFOQUE_ETNICO = [
   'Raizal',
   'Palenquero',
   'Gitano (a) o Rrom',
-  'IndÃ­gena',
+  'Indígena',
 ];
 const OPCIONES_LUGAR_PRIVACION = ['CDT', 'ERON'];
 const OPCIONES_FASE_TRATAMIENTO = [
-  'ObservaciÃ³n',
+  'Observación',
   'Alta',
   'Mediana',
-  'MÃ­nima',
+  'Mínima',
   'Confianza',
   'No reporta',
 ];
@@ -63,147 +67,182 @@ const OPCIONES_CALIFICACION_CONDUCTA = [
   'Pendiente',
   'Sin registro',
 ];
+const FECHA_CORTE_DATOS_REFERENCIA = '15/04/2026';
 
 const OPCIONES_PROCEDENCIA_LIBERTAD_CONDICIONAL = [
-  'SÃ­ procede solicitud de libertad condicional',
-  'No aplica porque ya hay solicitud de libertad o subrogado penal en trÃ¡mite',
-  'No aplica porque ya est? en libertad por pena cumplida',
-  'No aplica porque ya se concediÃ³ libertad condicional',
-  'No aplica porque ya se concediÃ³ prisiÃ³n domiciliaria',
-  'No aplica porque ya se concediÃ³ utilidad pÃºblica',
+
+  'Sí procede solicitud de libertad condicional',
+  'Sí procederá proximamente libertad condicional (>57% de pena cumplida)',
+  'Sí procederá proximamente libertad condicional (90 días o menos para cumplir tiempo)',
+  'No aplica porque ya hay solicitud de libertad o subrogado penal en trámite',
+  'No aplica porque ya está en libertad por pena cumplida',
+  'No aplica porque ya se concedió libertad condicional',
+  'No aplica porque ya se concedió prisión domiciliaria',
+  'No aplica porque ya se concedió utilidad pública',
   'No aplica porque el proceso no ha sido asignado a JEPMS',
-  'No aplica porque el proceso est? en otro circuito judicial (falta trasladar el proceso al actual)',
-  'No aplica porque la condena est? por delito excluido del subrogado',
-  'No aplica porque recientemente se le revocÃ³ subrogado penal',
-  'No aplica porque recientemente se le negÃ³ subrogado penal',
-  'No aplica porque la evaluaciÃ³n de conducta es negativa',
-  'No aplica porque se determinÃ³ que no ha cumplido requisito temporal para acceder',
-  'No aplica porque tiene acumulaciÃ³n de penas',
+  'No aplica porque el proceso está en otro circuito judicial (falta trasladar el proceso al actual)',
+  'No aplica porque la condena está por delito excluido del subrogado',
+  'No aplica porque recientemente se le revocó subrogado penal',
+  'No aplica porque recientemente se le negó subrogado penal',
+  'No aplica porque la evaluación de conducta es negativa',
+  'No aplica porque se determinó que no ha cumplido requisito temporal para acceder',
+  'No aplica porque tiene acumulación de penas',
   'No aplica porque la persona fue trasladada a otro ERON',
-  'No aplica porque la persona est? sindicada',
-  'No aplica porque la cartilla biogrÃ¡fica no est? actualizada',
-  'RevisiÃ³n suspendida porque se requiere primero trÃ¡mite de acumulaciÃ³n de penas',
+  'No aplica porque la persona está sindicada',
+  'No aplica porque la cartilla biográfica no está actualizada',
+  'Revisión suspendida porque se requiere primero trámite de acumulación de penas',
   'No aplica porque el usuario no puede demostrar arraigo',
+  'No aplica porque est\u00E1 en tr\u00E1mite solicitud de acumulaci\u00F3n de penas',
 ];
+const OPCIONES_PROCEDENCIA_LIBERTAD_CONDICIONAL_NUMERADAS =
+  OPCIONES_PROCEDENCIA_LIBERTAD_CONDICIONAL.map((option, index) => ({
+    value: option,
+    label: `${index + 1}. ${option}`,
+  }));
 
 const OPCIONES_PROCEDENCIA_PRISION_DOMICILIARIA = [
-  'SÃ­ procede solicitud de prisiÃ³n domiciliaria de mitad de pena',
-  'No aplica porque ya hay solicitud de libertad o subrogado penal en trÃ¡mite',
-  'No aplica porque ya est? en libertad por pena cumplida',
-  'No aplica porque ya se concediÃ³ libertad condicional',
-  'No aplica porque ya se concediÃ³ prisiÃ³n domiciliaria',
-  'No aplica porque ya se concediÃ³ utilidad pÃºblica',
+
+  'Sí procede solicitud de prisión domiciliaria de mitad de pena',
+  'Sí procederá proximamente prisión domiciliaria (>47% de pena cumplida)',
+  'Sí procederá proximamente prisión domiciliaria (90 días o menos para cumplir tiempo)',
+  'No aplica porque ya hay solicitud de libertad o subrogado penal en trámite',
+  'No aplica porque ya está en libertad por pena cumplida',
+  'No aplica porque ya se concedió libertad condicional',
+  'No aplica porque ya se concedió prisión domiciliaria',
+  'No aplica porque ya se concedió utilidad pública',
   'No aplica porque el proceso no ha sido asignado a jepms',
-  'No aplica porque el proceso est? en otro circuito judicial (falta trasladar el proceso al actual)',
-  'No aplica porque la condena est? por delito excluido del subrogado',
-  'No aplica porque recientemente se le revocÃ³ un subrogado penal',
-  'No aplica porque recientemente se le negÃ³ subrogado penal',
-  'No aplica porque la evaluaciÃ³n de conducta es negativa',
-  'No aplica porque se determinÃ³ que no ha cumplido requisito temporal para acceder',
-  'No aplica porque tiene acumulaciÃ³n de penas',
+  'No aplica porque el proceso está en otro circuito judicial (falta trasladar el proceso al actual)',
+  'No aplica porque la condena está por delito excluido del subrogado',
+  'No aplica porque recientemente se le revocó un subrogado penal',
+  'No aplica porque recientemente se le negó subrogado penal',
+  'No aplica porque la evaluación de conducta es negativa',
+  'No aplica porque se determinó que no ha cumplido requisito temporal para acceder',
+  'No aplica porque tiene acumulación de penas',
   'No aplica porque la persona fue trasladada a otro ERON',
-  'No aplica porque la persona est? sindicada',
-  'No aplica porque la cartilla biogrÃ¡fica no est? actualizada',
-  'RevisiÃ³n suspendida porque se requiere primero trÃ¡mite de acumulaciÃ³n de penas',
+  'No aplica porque la persona está sindicada',
+  'No aplica porque la cartilla biográfica no está actualizada',
+  'Revisión suspendida porque se requiere primero trámite de acumulación de penas',
   'No aplica porque el usuario no puede demostrar arraigo',
+  'No aplica porque est\u00E1 en tr\u00E1mite solicitud de acumulaci\u00F3n de penas',
 ];
+const OPCIONES_PROCEDENCIA_PRISION_DOMICILIARIA_NUMERADAS =
+  OPCIONES_PROCEDENCIA_PRISION_DOMICILIARIA.map((option, index) => ({
+    value: option,
+    label: `${index + 1}. ${option}`,
+  }));
 
 const OPCIONES_PROCEDENCIA_UTILIDAD_PUBLICA = [
-  'SÃ­ cumple requisitos objetivos',
+
+  'Sí cumple requisitos objetivos',
   'No cumple por tipo de delito',
   'No cumple monto de pena',
   'No cumple por reincidencia',
   'No cumple por delito excluido',
+  'No aplica porque est\u00E1 en tr\u00E1mite solicitud de acumulaci\u00F3n de penas',
+];
+const OPCIONES_PROCEDENCIA_UTILIDAD_PUBLICA_NUMERADAS = OPCIONES_PROCEDENCIA_UTILIDAD_PUBLICA.map(
+  (option, index) => ({
+    value: option,
+    label: `${index + 1}. ${option}`,
+  })
+);
+
+const OPCIONES_PROCEDENCIA_ACUMULACION_PENAS = [
+  ...OPCIONES_SI_NO,
+  'No aplica porque est\u00E1 en tr\u00E1mite solicitud de acumulaci\u00F3n de penas',
 ];
 
 const OPCIONES_OTRAS_SOLICITUDES = [
   'Ninguna',
-  'Solicitud de actualizaciÃ³n de conducta',
-  'Solicitud de asignaciÃ³n de JEPMS',
+  'Solicitud de actualización de conducta',
+  'Solicitud de asignación de JEPMS',
   'Solicitud de traslado del proceso al distrito judicial correspondiente',
-  'Solicitud de actualizaciÃ³n de cartilla biogrÃ¡fica',
-  'Solicitud de redenciÃ³n de pena 2x3 trabajo',
-  'Solicitud de redenciÃ³n de pena 2x3 analÃ³gica en actividades distintas a trabajo',
+  'Solicitud de actualización de cartilla biográfica',
+  'Solicitud de redención de pena 2x3 trabajo',
+  'Solicitud de redención de pena 2x3 analógica en actividades distintas a trabajo',
   'Permiso de 72 horas',
   'Otra',
 ];
+const OPCION_MULTIPLE_P36 = 'MAS DE UNA OPCION';
+const OPCION_MULTIPLE_P36_LEGACY = 'MAS DE UNA OPCION (VER RESUMEN ANALISIS DEL CASO)';
 
 const OPCIONES_AURORA_DECISION_USUARIO = [
-  'SÃ­, desea que el defensor(a) pÃºblico(a) avance con la solicitud',
-  'SÃ­ desea que el defensor presente solicitud, pero suscrita por la persona privada de la Libertad.',
-  'No, porque desea tramitar la solicitud a travÃ©s de su defensor de confianza',
+  'Sí, desea que el defensor(a) público(a) avance con la solicitud',
+  'Sí desea que el defensor presente solicitud, pero suscrita por la persona privada de la Libertad.',
+  'No, porque desea tramitar la solicitud a través de su defensor de confianza',
   'No desea tramitar la solicitud',
-  'No avanzar? porque no puede demostar arraigo fuera de prisiÃ³n',
-  'El usuario es renuente a la atenciÃ³n',
+  'No avanzará porque no puede demostar arraigo fuera de prisión',
+  'El usuario es renuente a la atención',
 ];
 
 const OPCIONES_AURORA_ACTUACION_A_ADELANTAR = [
   'Libertad condicional',
-  'PrisiÃ³n domiciliaria',
-  'Utilidad pÃºblica (solo para mujeres)',
-  'Utilidad pÃºblica y prisiÃ³n domiciliaria',
-  'Utilidad pÃºblica y libertad condicional',
-  'RedenciÃ³n de pena y libertad condicional',
-  'RedenciÃ³n de pena y prisiÃ³n domiciliaria',
-  'Libertad condicional y en subsidio prisiÃ³n domiciliaria',
-  'AcumulaciÃ³n de penas',
+  'Prisión domiciliaria',
+  'Utilidad pública (solo mujeres)',
+  'Utilidad pública (solo mujeres) y prisión domiciliaria',
+  'Utilidad pública (solo mujeres) y libertad condicional',
+  'Redención de pena y libertad condicional',
+  'Redención de pena y prisión domiciliaria',
+  'Libertad condicional y en subsidio prisión domiciliaria',
+  'Acumulación de penas',
   'Libertad por pena cumplida',
-  'RedenciÃ³n de pena y libertad por pena cumplida',
-  'RedenciÃ³n de pena',
+  'Redención de pena y libertad por pena cumplida',
+  'Redención de pena',
   'Permiso de 72 horas',
-  'Solicitud de actualizaciÃ³n de conducta',
-  'Solicitud de asginaciÃ³n de JEPMS',
+  'Solicitud de actualización de conducta',
+  'Solicitud de asginación de JEPMS',
   'Solicitud de traslado del proceso al distrito judicial correspondiente',
   'Reiterar solicitud de subrogado penal ya radicada',
-  'Solicitud de actualizaciÃ³n de cartilla biogrÃ¡fica',
+  'Solicitud de actualización de cartilla biográfica',
   'Otra',
-  'Ninguna porque la persona est? sindicada',
-  'Ninguna porque est? en trÃ¡mite una solicitud de subrogado penal o pena cumplida',
+  'Ninguna porque la persona está sindicada',
+  'Ninguna porque está en trámite una solicitud de subrogado penal o pena cumplida',
   'Ninguna porque no procede subrogado penal en este momento por falta de cumplimiento de requisitos',
-  'Ninguna porque no procede subrogado penal por exclusiÃ³n de delito',
-  'Ninguna porque ya no est? en prisiÃ³n',
+  'Ninguna porque no procede subrogado penal por exclusión de delito',
+  'Ninguna porque ya no está en prisión',
 ];
 
 const ACTUACIONES_UTILIDAD_PUBLICA = new Set([
-  'Utilidad pÃºblica (solo para mujeres)',
-  'Utilidad pÃºblica y prisiÃ³n domiciliaria',
-  'Utilidad pÃºblica y libertad condicional',
+  'Utilidad pública (solo mujeres)',
+  'Utilidad pública (solo para mujeres)',
+  'Utilidad pública (solo mujeres) y prisión domiciliaria',
+  'Utilidad pública (solo mujeres) y libertad condicional',
 ]);
 const ACTUACIONES_UTILIDAD_PUBLICA_NORMALIZADAS = new Set(
   Array.from(ACTUACIONES_UTILIDAD_PUBLICA).map((v) => norm(maybeDecodeUtf8Mojibake(v)))
 );
 
-const OPCIONES_BLOQUE_5A_SENTIDO_DECISION = ['Otorga utilidad pÃºblica', 'Niega utilidad pÃºblica'];
+const OPCIONES_BLOQUE_5A_SENTIDO_DECISION = ['Otorga utilidad pública', 'Niega utilidad pública'];
 const OPCIONES_BLOQUE_5A_MOTIVO_DECISION_NEGATIVA = [
   'No concede por requisito objetivo',
-  'No concende por requisito subjetivo',
+  'No concede por requisito subjetivo',
   'No concede por requisitos objetivos y subjetivos',
   'Niega por falta de pruebas',
   'Concede otro beneficio',
   'Pena cumplida',
 ];
 const OPCIONES_BLOQUE_5A_SENTIDO_DECISION_RESUELVE_RECURSO = [
-  'Otorga utilidad pÃºblica',
-  'Niega utilidad pÃºblica',
+  'Otorga utilidad pública',
+  'Niega utilidad pública',
 ];
 
-const OPCIONES_BLOQUE_5B_SENTIDO_DECISION = ['Concede subrogado penal', 'No concede subrogado penal'];
+const OPCIONES_BLOQUE_5B_SENTIDO_DECISION = ['Concede la solicitud', 'No concede la solicitud'];
 const OPCIONES_BLOQUE_5B_MOTIVO_DECISION_NEGATIVA = [
-  'Porque no cumple aÃºn con el tiempo para aplicar al subrogado',
-  'Porque falta documentaciÃ³n a remitir por parte del Inpec',
-  'Porque la autoridad judicial no tuvo en cuenta todo el tiempo de privaciÃ³n de libertad de la persona en otros ERON o centro de detenciÃ³n transitoria',
-  'Por la valoraciÃ³n de la conducta punible contenida en la sentencia',
-  'Porque el juez encuentra que el avance en el tratamiento penitenciario de la persona aÃºn no es suficiente',
+  'Porque no cumple aún con el tiempo para aplicar al subrogado',
+  'Porque falta documentación a remitir por parte del Inpec',
+  'Porque la autoridad judicial no tuvo en cuenta todo el tiempo de privación de libertad de la persona en otros ERON o centro de detención transitoria',
+  'Por la valoración de la conducta punible contenida en la sentencia',
+  'Porque el juez encuentra que el avance en el tratamiento penitenciario de la persona aún no es suficiente',
   'Porque tiene calificaciones de conducta negativa de periodos anteriores',
-  'Porque no se demostrÃ³ el arraigo familiar o social de la persona privada de la libertad',
-  'Porque no se ha reparado a la vÃ­ctima o asegurado el pago de la indemnizaciÃ³n a esta a travÃ©s de garantÃ­a personal, real, bancaria o acuerdo de pago y tampoco se ha demostrado la insolvencia del condenado',
-  'Porque determinÃ³ que hay un delito excluido que impide concesiÃ³n',
-  'Porque la persona privada de la libertad pertenece al grupo familiar de la vÃ­ctima',
-  'Porque no se demostrÃ³ el arraigo familiar o social de la persona privada de la libertad',
-  'Porque la persona no tiene un lugar al que ir por fuera de prisiÃ³n (no tiene arraigo)',
-  'Porque no cumple requisito de jefatura de hogar para utilidad pÃºblica',
-  'Porque no cumple requisito de marginalidad para utilidad pÃºblica',
-  'Se considerÃ³ que no cumple algÃºn requisito para su procedencia',
+  'Porque no se demostró el arraigo familiar o social de la persona privada de la libertad',
+  'Porque no se ha reparado a la víctima o asegurado el pago de la indemnización a esta a través de garantía personal, real, bancaria o acuerdo de pago y tampoco se ha demostrado la insolvencia del condenado',
+  'Porque determinó que hay un delito excluido que impide concesión',
+  'Porque la persona privada de la libertad pertenece al grupo familiar de la víctima',
+  'Porque no se demostró el arraigo familiar o social de la persona privada de la libertad',
+  'Porque la persona no tiene un lugar al que ir por fuera de prisión (no tiene arraigo)',
+  'Porque no cumple requisito de jefatura de hogar para utilidad pública',
+  'Porque no cumple requisito de marginalidad para utilidad pública',
+  'Se consideró que no cumple algún requisito para su procedencia',
 ];
 const OPCIONES_BLOQUE_5B_SENTIDO_DECISION_RESUELVE_SOLICITUD = ['Favorable', 'Desfavorable'];
 const OPCIONES_CIERRE_CASO_IMPOSIBILIDAD_AVANZAR = [
@@ -215,13 +254,15 @@ const OPCIONES_CIERRE_CASO_IMPOSIBILIDAD_AVANZAR = [
 // CELESTE (PPL SINDICADOS)
 const OPCIONES_SITUACION_JURIDICA_ACTUALIZADA = ['Condenado', 'Sindicado'];
 const OPCIONES_CELESTE_ANALISIS_ACTUACION = [
-  'Se avanzar? con solicitud de revocatoria o sustituciÃ³n de la medida',
-  'No se avanzar? con la revocatoria porque la persona ya fue condenada',
-  'No se avanzar? con la revocatoria porque aÃºn no reÃºne el tiempo exigido por la norma para solicitar el levantamiento de la detenciÃ³n preventiva',
-  'No se avanzar? con la revocatoria porque la persona est? procesada por delitos en los que procede prÃ³rroga de la detenciÃ³n preventiva y aÃºn no cumple ese tiempo',
-  'No se avanzar? con la revocatoria porque son tres o mÃ¡s los acusados y aÃºn no se cumple el tiempo para solicitar el levantamiento de la detenciÃ³n preventiva en este supuesto',
-  'No se avanzar? con la revocatoria porque la persona est? procesada por delitos atribuibles a Grupos Delictivos Organizados (GDO) o Grupos Armados Organizados (GAO) y aÃºn no cumple el tiempo permitido',
-  'No se avanzar? con la revocatoria porque ya hay una solicitud en trÃ¡mite',
+
+  'Se avanzará con solicitud de revocatoria o sustitución de la medida',
+  'No se avanzará con la revocatoria porque la persona ya fue condenada',
+  'No se avanzará con la revocatoria porque aún no reúne el tiempo exigido por la norma para solicitar el levantamiento de la detención preventiva',
+  'No se avanzará con la revocatoria porque la persona está procesada por delitos en los que procede prórroga de la detención preventiva y aún no cumple ese tiempo',
+  'No se avanzará con la revocatoria porque son tres o más los acusados y aún no se cumple el tiempo para solicitar el levantamiento de la detención preventiva en este supuesto',
+  'No se avanzará con la revocatoria porque la persona está procesada por delitos atribuibles a Grupos Delictivos Organizados (GDO) o Grupos Armados Organizados (GAO) y aún no cumple el tiempo permitido',
+  'No se avanzará con la revocatoria porque ya hay una solicitud en trámite',
+  'No se avanzar\u00E1 porque ya no soy el defensor en este caso',
 ];
 const OPCIONES_SENTIDO_DECISION_CELESTE = [
   'Revoca medida de aseguramiento privativa de la libertad',
@@ -229,13 +270,148 @@ const OPCIONES_SENTIDO_DECISION_CELESTE = [
   'Niega la solicitud',
 ];
 const OPCIONES_MOTIVO_DECISION_NEGATIVA_CELESTE = [
-  'Porque no cumple aÃºn con los tÃ©rminos exigidos',
-  'Porque est? procesado por causales en las que procede la prÃ³rroga de la medida',
+  'Porque no cumple aún con los términos exigidos',
+  'Porque está procesado por causales en las que procede la prórroga de la medida',
   'Otra',
 ];
 const OPCIONES_SENTIDO_DECISION_RECURSO_CELESTE = [
   'Concede levantamiento de medida de aseguramiento',
   'No concede levantamiento de medida de aseguramiento',
+];
+
+const EXPORT_FIELDS_BLOQUE_1 = [
+  { label: '1. Nombre', key: 'Nombre' },
+  { label: '2. Tipo de identificación', key: 'Tipo de indentificación' },
+  { label: '3. Número de identificación', key: 'Número de identificación', aliases: ['Numero de identificacion'] },
+  { label: '4. Situación Jurídica', key: 'Situación Jurídica' },
+  { label: '5. Género', key: 'Género' },
+  { label: '6. Enfoque Étnico/Racial/Cultural', key: 'Enfoque Étnico/Racial/Cultural' },
+  { label: '7. Nacionalidad', key: 'Nacionalidad' },
+  { label: '8. Fecha de nacimiento', key: 'Fecha de nacimiento', isDate: true },
+  { label: '9. Edad', key: 'Edad' },
+  { label: '10. Lugar de privación de la libertad', key: 'Lugar de privación de la libertad' },
+  { label: '11. Nombre del lugar de privación de la libertad', key: 'Nombre del lugar de privación de la libertad' },
+  { label: '12. Departamento del lugar de privación de la libertad', key: 'Departamento del lugar de privación de la libertad' },
+  { label: '13. Distrito/municipio del lugar de privación de la libertad', key: 'Distrito/municipio del lugar de privación de la libertad' },
+];
+
+const EXPORT_FIELDS_AURORA_BLOQUE_2 = [
+  { label: '14. Autoridad a cargo', key: 'Autoridad a cargo' },
+  { label: '15. Número de proceso', key: 'Número de proceso' },
+  { label: '16. Delitos', key: 'Delitos' },
+  { label: '17. Fecha de captura', key: 'Fecha de captura', isDate: true },
+  { label: '18. Pena (años, meses y días)', key: 'Pena (años, meses y días)' },
+  { label: '19. Pena total en días', key: 'Pena total en días' },
+  { label: '20. Tiempo que la persona lleva privada de la libertad (en días)', key: 'Tiempo que la persona lleva privada de la libertad (en días)' },
+  { label: '21. Redención total acumulada en días', key: 'Redención total acumulada en días' },
+  { label: '22. Tiempo efectivo de pena cumplida en días (teniendo en cuenta la redención)', key: 'Tiempo efectivo de pena cumplida en días (teniendo en cuenta la redención)' },
+  { label: '23. Porcentaje de avance de pena cumplida', key: 'Porcentaje de avance de pena cumplida', isPercentage: true },
+  { label: '24. Fase de tratamiento', key: 'Fase de tramiento', aliases: ['Fase de tratamiento'] },
+  {
+    label: '25. ¿Cuenta con requerimientos judiciales por otros procesos?',
+    key: '¿ Cuenta con requerimientos judiciales por otros procesos ?',
+    aliases: ['¿Cuenta con requerimientos judiciales por otros procesos?'],
+  },
+];
+
+const EXPORT_FIELDS_AURORA_BLOQUE_3 = [
+  { label: '28. Defensor(a) público(a) asignado para tramitar la solicitud', key: 'Defensor(a) Público(a) Asignado para tramitar la solicitud' },
+  { label: '29. Fecha de análisis jurídico del caso', key: 'Fecha de análisis jurídico del caso', isDate: true },
+  { label: '30. Procedencia de libertad condicional', key: 'Procedencia de libertad condicional' },
+  { label: '31. Procedencia de prisión domiciliaria de mitad de pena', key: 'Procedencia de prisión domiciliaria de mitad de pena' },
+  { label: '32. Procedencia de utilidad pública (solo para mujeres)', key: 'Procedencia de utilidad pública (solo para mujeres)' },
+  { label: '33. Procedencia de pena cumplida', key: 'Procedencia de pena cumplida' },
+  { label: '34. Procedencia de acumulación de penas', key: 'Procedencia de acumulación de penas' },
+  { label: '35. Con qué proceso(s) debe acumular penas (si aplica)', key: KEY_Q35_UTF8, aliases: [KEY_Q35_LEGACY] },
+  { label: '36. Otras solicitudes a tramitar', key: 'Otras solicitudes a tramitar' },
+  { label: '37. Resumen del análisis del caso', key: 'Resumen del análisis del caso' },
+];
+
+const EXPORT_FIELDS_AURORA_BLOQUE_4 = [
+  { label: '38. Fecha de la entrevista', key: 'Fecha de entrevista', isDate: true },
+  { label: '39. Decisión del usuario', key: 'Decisión del usuario' },
+  { label: '40. Actuación a adelantar', key: 'Actuación a adelantar' },
+  { label: '41. Requiere pruebas', key: 'Requiere pruebas' },
+  { label: '42. Poder en caso de avanzar con la solicitud', key: 'Poder en caso de avanzar con la solicitud' },
+];
+
+const EXPORT_FIELDS_AURORA_BLOQUE_5_UTILIDAD = [
+  { label: '43. Fecha de entrevista psicosocial', key: 'Fecha de entrevista psicosocial', isDate: true },
+  { label: '44. Cumple el requisito de marginalidad', key: 'Cumple el requisito de marginalidad' },
+  { label: '45. Cumple el requisito de jefatura de hogar', key: 'Cumple el requisito de jefatura de hogar' },
+  { label: '46. Se requiere misión de trabajo', key: 'Se requiere misión de trabajo' },
+  { label: '47. Fecha de solicitud de misión de trabajo', key: 'Fecha de solicitud de misión de trabajo', isDate: true },
+  { label: '48. Fecha de asignación de investigador', key: 'Fecha de asignación de investigador', isDate: true },
+  { label: '49. Fecha en la que se reciben todas las pruebas', key: 'Fecha en la que se reciben todas las pruebas', isDate: true },
+  { label: '50. Fecha de radicación de solicitud de utilidad pública', key: 'Fecha de radicación de solicitud de utilidad pública', isDate: true },
+  { label: '51. Fecha de decisión de la autoridad', key: 'Fecha de decisión de la autoridad', isDate: true },
+  { label: '52. Sentido de la decisión', key: 'Sentido de la decisión' },
+  { label: '53. Motivo de la decisión negativa', key: 'Motivo de la decisión negativa' },
+  { label: '54. Se presenta recurso', key: 'Se presenta recurso' },
+  {
+    label: '55. Fecha de presentación del recurso',
+    key: KEY_FECHA_PRESENTACION_RECURSO,
+    aliases: [KEY_FECHA_RECURSO_AURORA_LEGACY],
+    isDate: true,
+  },
+  { label: '56. Fecha de la decisión del recurso', key: KEY_FECHA_DECISION_RECURSO, isDate: true },
+  { label: '57. Sentido de la decisión que resuelve recurso', key: 'Sentido de la decisión que resuelve recurso' },
+  { label: '58. Cierre del caso por imposibilidad de avanzar (si aplica)', key: 'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública' },
+];
+
+const EXPORT_FIELDS_AURORA_BLOQUE_5_TRAMITE = [
+  {
+    label: '43. Fecha de recepción de pruebas aportadas por el usuario (si aplica)',
+    key: 'Fecha de recepción de pruebas aportadas por el usuario (si aplica)',
+    isDate: true,
+  },
+  { label: '44. Fecha de solicitud de documentos al Inpec (si aplica)', key: 'Fecha de solicitud de documentos al Inpec (si aplica)', isDate: true },
+  { label: '45. Fecha de presentación de la solicitud a la autoridad', key: 'Fecha de presentación de la solicitud a la autoridad', isDate: true },
+  { label: '46. Fecha de decisión de la autoridad', key: 'Fecha de decisión de la autoridad', isDate: true },
+  { label: '47. Sentido de la decisión', key: 'Sentido de la decisión' },
+  { label: '48. Motivo de la decisión negativa', key: 'Motivo de la decisión negativa' },
+  { label: '49. Se presenta recurso', key: 'Se presenta recurso' },
+  {
+    label: '50. Fecha de presentación del recurso',
+    key: KEY_FECHA_PRESENTACION_RECURSO,
+    aliases: [KEY_FECHA_RECURSO_AURORA_LEGACY],
+    isDate: true,
+  },
+  { label: '51. Fecha de la decisión del recurso', key: KEY_FECHA_DECISION_RECURSO, isDate: true },
+  { label: '52. Sentido de la decisión que resuelve recurso', key: 'Sentido de la decisión que resuelve la solicitud' },
+  { label: '53. Cierre del caso por imposibilidad de avanzar (si aplica)', key: 'Cierre del caso por imposibilidad de avanzar (si aplica)' },
+];
+
+const EXPORT_FIELDS_CELESTE_BLOQUE_2 = [
+  { label: '14. Autoridad a cargo', key: 'Autoridad a cargo' },
+  { label: '15. Número de proceso', key: 'Número de proceso' },
+  { label: '16. Delitos', key: 'Delitos' },
+  { label: '17. Fecha de captura', key: 'Fecha de captura', isDate: true },
+  { label: '18. Tiempo que la persona lleva privada de la libertad (en meses)', key: 'TIEMPO QUE LA PERSONA LLEVA PRIVADA DE LA LIBERTAD (EN MESES)' },
+];
+
+const EXPORT_FIELDS_CELESTE_BLOQUE_3 = [
+  { label: '19. Defensor(a) público(a) asignado para tramitar la solicitud', key: 'Defensor(a) Público(a) Asignado para tramitar la solicitud' },
+  { label: '20. Fecha de análisis jurídico del caso', key: 'Fecha de análisis jurídico del caso', isDate: true },
+  { label: '21. Análisis jurídico y actuación a desplegar', key: 'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS' },
+  { label: '22. Resumen del análisis jurídico del presente caso', key: 'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO' },
+];
+
+const EXPORT_FIELDS_CELESTE_BLOQUE_4 = [{ label: '23. Fecha de la entrevista para informar al usuario', key: 'Fecha de entrevista', isDate: true }];
+
+const EXPORT_FIELDS_CELESTE_BLOQUE_5 = [
+  {
+    label: '24. Fecha de presentación de la solicitud de audiencia',
+    key: 'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA',
+    isDate: true,
+  },
+  { label: '25. Fecha de realización de la audiencia', key: 'FECHA DE REALIZACIÓN DE AUDIENCIA', isDate: true },
+  { label: '26. Sentido de la decisión', key: 'SENTIDO DE LA DECISIÓN' },
+  { label: '27. Motivo de la decisión negativa', key: 'MOTIVO DE LA DECISIÓN NEGATIVA' },
+  { label: '28. Se presenta recurso', key: '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?' },
+  { label: '29. Fecha de presentación del recurso', key: 'Fecha de presentación del recurso', isDate: true },
+  { label: '30. Fecha de la decisión del recurso', key: 'Fecha de la decisión del recurso', isDate: true },
+  { label: '31. Sentido de la decisión que resuelve recurso', key: 'SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO' },
 ];
 
 function norm(value) {
@@ -248,7 +424,10 @@ function norm(value) {
 }
 
 function isFilled(value) {
-  return String(value ?? '').trim() !== '';
+  const text = String(value ?? '').trim();
+  if (!text) return false;
+  const normalized = normalizeFieldName(text);
+  return normalized !== '-' && normalized !== '--' && normalized !== 'null' && normalized !== 'undefined' && normalized !== 'seleccione' && normalized !== 'todos';
 }
 
 function isCierreImposibilidadSeleccionado(value) {
@@ -267,11 +446,11 @@ function resolveTipoFromText(value) {
 
 function computeFlow(formData, fallbackTipo = '') {
   // Regla principal: flujo por "Situación Jurídica"; fallback por tipo informado por API cuando el CSV viene vacío.
-  const fromSituacion = resolveTipoFromText(formData?.['SituaciÃ³n JurÃ­dica']);
+  const fromSituacion = resolveTipoFromText(formData?.['Situación Jurídica']);
   if (fromSituacion) return fromSituacion;
 
   const fromSituacionActualizada = resolveTipoFromText(
-    formData?.['SituaciÃ³n JurÃ­dica actualizada (de conformidad con la rama judicial)']
+    formData?.['Situación Jurídica actualizada (de conformidad con la rama judicial)']
   );
   if (fromSituacionActualizada) return fromSituacionActualizada;
 
@@ -285,13 +464,64 @@ function computeFlow(formData, fallbackTipo = '') {
   return null;
 }
 
-function isEquivalenteNo(valor) {
-  const v = norm(valor);
-  if (!v) return false;
-  if (v === 'no') return true;
-  if (v.startsWith('no aplica')) return true;
-  if (v.startsWith('no cumple')) return true;
-  return false;
+function parseP36Selections(rawValue) {
+  const text = String(rawValue ?? '').trim();
+  if (!text) return [];
+
+  const parts = text
+    .split(/\r?\n|\s*\|\s*|\s*;\s*/g)
+    .map((item) => String(item ?? '').trim())
+    .filter(Boolean);
+
+  const seen = new Set();
+  const selected = [];
+  const isP36MultipleMarker = (normalizedValue) =>
+    (normalizedValue.includes('mas de una') && normalizedValue.includes('opci')) || (normalizedValue.includes('resumen') && normalizedValue.includes('opci'));
+  for (const part of parts) {
+    const normalized = normalizeFieldName(part);
+    if (!normalized) continue;
+    if (
+      isP36MultipleMarker(normalized) ||
+      normalized === normalizeFieldName(OPCION_MULTIPLE_P36) ||
+      normalized === normalizeFieldName(OPCION_MULTIPLE_P36_LEGACY)
+    ) {
+      continue;
+    }
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    selected.push(part);
+  }
+  return selected;
+}
+
+function serializeP36Selections(values) {
+  const input = Array.isArray(values) ? values : [];
+  const selected = [];
+  const seen = new Set();
+  const isP36MultipleMarker = (normalizedValue) =>
+    (normalizedValue.includes('mas de una') && normalizedValue.includes('opci')) || (normalizedValue.includes('resumen') && normalizedValue.includes('opci'));
+  for (const value of input) {
+    const text = String(value ?? '').trim();
+    const normalized = normalizeFieldName(text);
+    if (!normalized) continue;
+    if (
+      isP36MultipleMarker(normalized) ||
+      normalized === normalizeFieldName(OPCION_MULTIPLE_P36) ||
+      normalized === normalizeFieldName(OPCION_MULTIPLE_P36_LEGACY)
+    ) {
+      continue;
+    }
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    selected.push(text);
+  }
+
+  if (selected.length > 1) selected.push(OPCION_MULTIPLE_P36);
+  return selected.join('\n');
+}
+
+function hasValidP36Selection(rawValue) {
+  return parseP36Selections(rawValue).length > 0;
 }
 
 function isEquivalenteSi(valor) {
@@ -300,8 +530,30 @@ function isEquivalenteSi(valor) {
   return v === 'si' || v === 's?';
 }
 
+function isEquivalenteNo(valor) {
+  const decoded = maybeDecodeUtf8Mojibake(decodeUnicodeEscapes(String(valor ?? '')));
+  return norm(decoded) === 'no';
+}
+
+function isProcedenciaAfirmativa(valor) {
+  const decoded = maybeDecodeUtf8Mojibake(decodeUnicodeEscapes(String(valor ?? '')));
+  const v = norm(decoded);
+  if (!v || v === '-') return false;
+  return v.startsWith('si');
+}
+
 function isNoConcedeSubrogadoPenal(valor) {
-  return norm(valor) === norm('No concede subrogado penal');
+  const v = norm(valor);
+  return v === norm('No concede la solicitud') || v === norm('No concede subrogado penal');
+}
+
+function normalizeSentidoDecisionTramite(valor) {
+  const raw = String(valor ?? '').trim();
+  const v = norm(raw);
+  if (!v) return raw;
+  if (v === norm('Concede subrogado penal')) return 'Concede la solicitud';
+  if (v === norm('No concede subrogado penal')) return 'No concede la solicitud';
+  return raw;
 }
 
 function decisionUsuarioPermiteAvance(valor) {
@@ -309,7 +561,7 @@ function decisionUsuarioPermiteAvance(valor) {
   if (!v) return false;
   if (v.startsWith('si')) return true;
   if (v.includes('desea que el defensor') && v.includes('avance con la solicitud')) return true;
-  if (v.includes('desea que el defensor presente solicitud')) return true;
+  if (v.includes('desea que el defensor') && v.includes('presente solicitud')) return true;
   return false;
 }
 
@@ -414,11 +666,32 @@ function isDefensorLikeFieldName(value) {
   return normalized.includes('defensor');
 }
 
+function setFieldValueAcrossAliases(base, name, value) {
+  const normalizedName = normalizeFieldName(name);
+  const matchingKeys = Object.keys(base).filter((key) => normalizeFieldName(key) === normalizedName);
+
+  if (!matchingKeys.length) {
+    base[name] = value;
+    return;
+  }
+
+  matchingKeys.forEach((key) => {
+    base[key] = value;
+  });
+  if (!matchingKeys.includes(name)) base[name] = value;
+}
+
+function isMeaningfullyFilled(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return false;
+  const normalized = normalizeFieldName(text);
+  return normalized !== '-' && normalized !== '--' && normalized !== 'null' && normalized !== 'undefined' && normalized !== 'seleccione';
+}
+
 const DEFENSOR_DIRECT_KEYS = [
   'Defensor(a) Público(a) Asignado para tramitar la solicitud',
-  'Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud',
+  'Defensor(a) P?blico(a) Asignado para tramitar la solicitud',
   'Defensor(a) Publico(a) Asignado para tramitar la solicitud',
-  'Defensor(a) PÃƒÂºblico(a) Asignado para tramitar la solicitud',
   'Defensor',
   'defensorAsignado',
 ];
@@ -457,7 +730,6 @@ function hydrateDefensorAliases(registro) {
   return {
     ...source,
     'Defensor(a) Público(a) Asignado para tramitar la solicitud': defensor,
-    'Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud': defensor,
     'Defensor(a) Publico(a) Asignado para tramitar la solicitud': defensor,
     Defensor: defensor,
     defensorAsignado: defensor,
@@ -521,11 +793,19 @@ function displayText(value) {
   let out = decodeUnicodeEscapes(String(value ?? ''));
   out = maybeDecodeUtf8Mojibake(out);
   out = out
-    .replace(/\u00C2(?=[Â¿Â¡])/g, '')
+    .replace(/\u00C2(?=[¿¡])/g, '')
     .replace(/\best\?/gi, 'est\u00e1')
     .replace(/\bavanzar\?/gi, 'avanzar\u00e1')
     .replace(/\bdemostar\b/gi, 'demostrar')
-    .replace(/\?ltima/gi, '\u00faltima');
+    .replace(/\?ltima/gi, '\u00faltima')
+    .replace(/Calificaci[\uFFFD?]n/g, 'Calificaci\u00f3n')
+    .replace(/calificaci[\uFFFD?]n/g, 'calificaci\u00f3n')
+    .replace(/Decisi[\uFFFD?]n/g, 'Decisi\u00f3n')
+    .replace(/decisi[\uFFFD?]n/g, 'decisi\u00f3n')
+    .replace(/Actuaci[\uFFFD?]n/g, 'Actuaci\u00f3n')
+    .replace(/actuaci[\uFFFD?]n/g, 'actuaci\u00f3n')
+    .replace(/Evaluaci[\uFFFD?]n/g, 'Evaluaci\u00f3n')
+    .replace(/evaluaci[\uFFFD?]n/g, 'evaluaci\u00f3n');
   return out;
 }
 
@@ -583,14 +863,15 @@ function hasCalificacionSnapshotData(snapshot) {
   );
 }
 
-function formatCalificacionDate(value) {
-  const normalized = toDateInputValue(value);
-  if (!normalized) {
-    const raw = String(value ?? '').trim();
-    return raw || '\u2014';
-  }
-  const [year, month, day] = normalized.split('-');
-  return `${day}/${month}/${year}`;
+function applyCalificacionSnapshotToRecord(record, snapshot) {
+  const target = record && typeof record === 'object' ? record : {};
+  const source = snapshot && typeof snapshot === 'object' ? snapshot : {};
+  setFieldValueAcrossAliases(target, KEY_FECHA_ULTIMA_CALIFICACION, source.fechaUltimaCalificacion ?? '');
+  setFieldValueAcrossAliases(target, KEY_ACTA_CALIFICACION, source.numeroActa ?? '');
+  setFieldValueAcrossAliases(target, KEY_EVALUACION_DESDE, source.evaluacionDesde ?? '');
+  setFieldValueAcrossAliases(target, KEY_EVALUACION_HASTA, source.evaluacionHasta ?? '');
+  setFieldValueAcrossAliases(target, KEY_CALIFICACION_CONDUCTA, source.calificacionConducta ?? '');
+  return target;
 }
 
 function parseRowIndexFromActuacionId(value) {
@@ -670,6 +951,43 @@ function parseDateValue(rawValue) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function formatDateForExport(rawValue) {
+  const parts = parseDateParts(rawValue);
+  if (!parts) return String(rawValue ?? '').trim();
+  const month = String(parts.month).padStart(2, '0');
+  const day = String(parts.day).padStart(2, '0');
+  return `${day}/${month}/${parts.year}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function toIsoDateString(rawValue) {
+  return toDateInputValue(rawValue);
+}
+
+function buildTodayPlusDaysIso(days) {
+  const now = new Date();
+  const base = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  base.setDate(base.getDate() + Number(days || 0));
+  const month = String(base.getMonth() + 1).padStart(2, '0');
+  const day = String(base.getDate()).padStart(2, '0');
+  return `${base.getFullYear()}-${month}-${day}`;
+}
+
+function isIsoDateAfter(left, right) {
+  const a = String(left ?? '').trim();
+  const b = String(right ?? '').trim();
+  if (!a || !b) return false;
+  return a > b;
+}
+
 function parsePercentageValue(rawValue) {
   const text = String(rawValue ?? '').trim().replace(',', '.');
   if (!text) return null;
@@ -695,6 +1013,25 @@ function formatPercentageDisplayValue(rawValue) {
   const rounded = Number(parsed.toFixed(2));
   const text = Number.isInteger(rounded) ? String(rounded) : String(rounded);
   return `${text}%`;
+}
+
+function parseDayCount(rawValue) {
+  const text = String(rawValue ?? '').trim();
+  if (!text) return null;
+  const normalized = text.replace(',', '.');
+  const match = normalized.match(/-?\d+(\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number.parseFloat(match[0]);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
+}
+
+function getRemainingDaysStatus(remainingDays) {
+  if (!Number.isFinite(remainingDays)) return '';
+  const rounded = Math.ceil(Number(remainingDays));
+  if (rounded <= 0) return 'Ya cumple el tiempo';
+  if (rounded > 90) return 'Más de 90 días';
+  return `${rounded} días`;
 }
 
 const META_REGISTRO_KEYS = new Set(['casos', 'activeCaseId', 'caseId']);
@@ -737,6 +1074,24 @@ const CAMPOS_BASE_NUEVA_ACTUACION = new Set([
   'pag',
   '__rowindex',
 ]);
+
+const CAMPOS_AURORA_DESDE_P29 = [
+  'Fecha de análisis jurídico del caso',
+  'Fecha de analisis juridico del caso',
+  'Procedencia de libertad condicional',
+  'Procedencia de prisión domiciliaria de mitad de pena',
+  'Procedencia de prision domiciliaria de mitad de pena',
+  'Procedencia de utilidad pública (solo para mujeres)',
+  'Procedencia de utilidad publica (solo para mujeres)',
+  'Procedencia de pena cumplida',
+  'Procedencia de acumulación de penas',
+  'Procedencia de acumulacion de penas',
+  KEY_Q35_LEGACY,
+  KEY_Q35_UTF8,
+  'Otras solicitudes a tramitar',
+  'Resumen del análisis del caso',
+  'Resumen del analisis del caso',
+];
 
 function normalizeFieldKey(value) {
   return String(value ?? '')
@@ -822,6 +1177,7 @@ const CAMPOS_LIMPIABLES_DESDE_BLOQUE_3 = new Set(
     'MOTIVO DE LA DECISIÓN NEGATIVA',
     '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?',
     'Fecha de presentación del recurso',
+    'Fecha de la decisión del recurso',
     'SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO',
   ].map((field) => normalizeFieldName(field))
 );
@@ -841,6 +1197,8 @@ function Campo({
   disabled = false,
   required = true,
   showObligatoria = false,
+  minDate = '',
+  maxDate = '',
 }) {
   const isDisabled = Boolean(readOnly || disabled);
   const canClear = isCampoLimpiableDesdeBloque3(name);
@@ -962,6 +1320,8 @@ function Campo({
 
   if (type === 'date') {
     const normalizedDateValue = toDateInputValue(value);
+    const normalizedMin = toDateInputValue(minDate);
+    const normalizedMax = toDateInputValue(maxDate);
     const hasValue = String(normalizedDateValue ?? '').trim() !== '';
     return (
       <div className={`form-field${isDisabled ? ' is-disabled' : ''}`}>
@@ -976,6 +1336,8 @@ function Campo({
           readOnly={isDisabled}
           disabled={isDisabled}
           required={required}
+          min={normalizedMin || undefined}
+          max={normalizedMax || undefined}
           title={String(value ?? '').trim() || undefined}
         />
         {canClear && !isDisabled && hasValue && (
@@ -1011,6 +1373,79 @@ function Campo({
   );
 }
 
+function CampoCheckboxMultiple({
+  label,
+  name,
+  value,
+  onChange,
+  options,
+  readOnly = false,
+  disabled = false,
+  showObligatoria = false,
+  exclusiveOption = '',
+}) {
+  const isDisabled = Boolean(readOnly || disabled);
+  const selected = Array.isArray(value) ? value.map((item) => String(item ?? '').trim()).filter(Boolean) : [];
+  const selectedSet = new Set(selected.map((item) => normalizeFieldName(item)));
+  const normalizedExclusive = normalizeFieldName(exclusiveOption);
+
+  const toggleOption = (option, checked) => {
+    const text = String(option ?? '').trim();
+    const normalized = normalizeFieldName(text);
+    let next = [...selected];
+
+    if (checked) {
+      if (normalizedExclusive && normalized === normalizedExclusive) {
+        next = [text];
+      } else {
+        next = next.filter((item) => normalizeFieldName(item) !== normalizedExclusive);
+        if (!selectedSet.has(normalized)) next.push(text);
+      }
+    } else {
+      next = next.filter((item) => normalizeFieldName(item) !== normalized);
+    }
+
+    onChange(name, next);
+  };
+
+  return (
+    <div className={`form-field${isDisabled ? ' is-disabled' : ''}`} style={{ gridColumn: '1 / -1' }}>
+      <label>
+        {displayText(label)}
+        {showObligatoria && <span className="required-note"> *Obligatoria*</span>}
+      </label>
+      <div style={{ display: 'grid', gap: '0.35rem' }}>
+        {(options || []).map((opt, idx) => {
+          const optionText = String(opt ?? '').trim();
+          const normalizedOption = normalizeFieldName(optionText);
+          return (
+            <label
+              key={`${idx}-${optionText}`}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'auto minmax(0, 1fr)',
+                alignItems: 'start',
+                justifyContent: 'flex-start',
+                columnGap: '0.45rem',
+                cursor: isDisabled ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={selectedSet.has(normalizedOption)}
+                disabled={isDisabled}
+                onChange={(e) => toggleOption(optionText, e.target.checked)}
+                style={{ marginTop: '0.12rem' }}
+              />
+              <span style={{ textAlign: 'left' }}>{displayText(optionText)}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function FormularioAtencion({ numeroInicial }) {
   const [numeroBusqueda, setNumeroBusqueda] = useState(numeroInicial || '');
   const [registro, setRegistro] = useState(null);
@@ -1029,7 +1464,31 @@ export default function FormularioAtencion({ numeroInicial }) {
   const [mostrarFormularioDetalle, setMostrarFormularioDetalle] = useState(false);
   const [defensoresCatalogo, setDefensoresCatalogo] = useState([]);
   const [actuacionesCalificacion, setActuacionesCalificacion] = useState([]);
+  const [calificacionesDraft, setCalificacionesDraft] = useState({});
   const bloque2AuroraRef = useRef(null);
+  const formularioDetalleRef = useRef(null);
+
+  const triggerFormularioAutoScroll = useCallback(() => {
+    if (typeof window === 'undefined') return;
+
+    const scrollAttempt = (attempt = 0) => {
+      const target = formularioDetalleRef.current;
+      if (!target) {
+        if (attempt < 5) {
+          window.setTimeout(() => scrollAttempt(attempt + 1), 70);
+        }
+        return;
+      }
+
+      const targetTop = window.scrollY + target.getBoundingClientRect().top + 68;
+      window.scrollTo({
+        top: Math.max(0, targetTop),
+        behavior: 'smooth',
+      });
+    };
+
+    window.requestAnimationFrame(() => scrollAttempt(0));
+  }, []);
 
   useEffect(() => {
     if (numeroInicial) buscarRegistro(numeroInicial);
@@ -1062,10 +1521,14 @@ export default function FormularioAtencion({ numeroInicial }) {
   }, [defensoresCatalogo]);
 
   const flow = useMemo(() => (registro ? computeFlow(registro, tipoRegistro) : null), [registro, tipoRegistro]);
+  const tieneInfoDesdePregunta29 = useMemo(() => {
+    if (!registro) return false;
+    return CAMPOS_AURORA_DESDE_P29.some((alias) => isMeaningfullyFilled(readRegistroTextByAliases(registro, [alias])));
+  }, [registro]);
   const tiempoPrivacionMeses = useMemo(() => {
     if (!registro) return '';
 
-    const rawDays = String(registro['Tiempo que la persona lleva privada de la libertad (en dÃ­as)'] ?? '').trim();
+    const rawDays = String(registro['Tiempo que la persona lleva privada de la libertad (en días)'] ?? '').trim();
     const days = Number(rawDays.replace(/[^\d.-]/g, ''));
     if (Number.isFinite(days)) return String(Math.floor(days / 30));
 
@@ -1081,7 +1544,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   const getDocumentoActual = useCallback(
     (fromRegistro = registro) => {
       const source = fromRegistro && typeof fromRegistro === 'object' ? fromRegistro : {};
-      const explicit = source.numeroIdentificacion ?? source['NÃºmero de identificaciÃ³n'] ?? source['Numero de identificacion'];
+      const explicit = source.numeroIdentificacion ?? source['Número de identificación'] ?? source['Numero de identificacion'];
       if (String(explicit ?? '').trim()) return String(explicit).trim();
 
       const docKey = Object.keys(source).find((k) => {
@@ -1223,12 +1686,27 @@ export default function FormularioAtencion({ numeroInicial }) {
       }
 
       const normalizedName = normalizeFieldName(name);
-      const existingKey = Object.keys(base).find((k) => normalizeFieldName(k) === normalizedName);
-      if (existingKey) {
-        base[existingKey] = value;
-      } else {
-        base[name] = value;
+      const isP36 = normalizedName === normalizeFieldName('Otras solicitudes a tramitar');
+      if (isP36) {
+        const rawSelections = Array.isArray(value) ? value : parseP36Selections(value);
+        const sanitizedSelections = rawSelections
+          .map((item) => String(item ?? '').trim())
+          .filter(Boolean)
+          .filter((item, idx, arr) => {
+            const normalizedItem = normalizeFieldName(item);
+            return arr.findIndex((candidate) => normalizeFieldName(candidate) === normalizedItem) === idx;
+          });
+        const hasNinguna = sanitizedSelections.some((item) => normalizeFieldName(item) === normalizeFieldName('Ninguna'));
+        const nextSelections =
+          hasNinguna && sanitizedSelections.length > 1
+            ? sanitizedSelections.filter((item) => normalizeFieldName(item) !== normalizeFieldName('Ninguna'))
+            : sanitizedSelections;
+        const serialized = serializeP36Selections(nextSelections);
+        setFieldValueAcrossAliases(base, name, serialized);
+        return wrapRegistroForLookup(base);
       }
+
+      setFieldValueAcrossAliases(base, name, value);
       return wrapRegistroForLookup(base);
     });
   }
@@ -1246,6 +1724,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     setRegistro(wrapRegistroForLookup({ ...selectedRegistro, __tipoApi: tipoRegistro }));
     setActuacionActivaId(String(actuacion?.id ?? ''));
     setMostrarFormularioDetalle(true);
+    triggerFormularioAutoScroll();
   }
 
   async function handleCrearNuevaActuacion(options = {}) {
@@ -1257,6 +1736,14 @@ export default function FormularioAtencion({ numeroInicial }) {
     const doc = getDocumentoActual(registro);
     if (!doc) {
       setError('Debe cargar un usuario antes de crear una nueva actuacion.');
+      return;
+    }
+    if (flow === 'condenado' && !tieneInfoDesdePregunta29) {
+      const mensajeBloqueo =
+        'No se puede crear una nueva actuacion porque la ultima actuacion disponible para actualizacion aun no tiene datos desde la pregunta 29. Por favor actualice o diligencie primero ese formulario y luego cree una nueva actuacion.';
+      setError(mensajeBloqueo);
+      setToastMessage(mensajeBloqueo);
+      setToastOpen(true);
       return;
     }
 
@@ -1282,6 +1769,7 @@ export default function FormularioAtencion({ numeroInicial }) {
       setToastMessage('Nueva actuacion iniciada. Complete el formulario y guarde cuando finalice.');
       setToastOpen(true);
       setMostrarFormularioDetalle(Boolean(options?.abrirFormulario));
+      if (options?.abrirFormulario) triggerFormularioAutoScroll();
       setHistorialRefreshToken((prev) => prev + 1);
     } catch (e) {
       reportError(e, 'formulario-entrevista:crear-actuacion');
@@ -1292,23 +1780,37 @@ export default function FormularioAtencion({ numeroInicial }) {
   }
 
   const habilitarPregunta35 = useMemo(() => {
-    return isEquivalenteSi(registro?.['Procedencia de acumulaciÃ³n de penas']);
+    return isEquivalenteSi(registro?.['Procedencia de acumulación de penas']);
   }, [registro]);
 
   const cierreRegla1Bloque3 = useMemo(() => {
     if (!registro) return false;
+    const solicitudesP36 = parseP36Selections(
+      readRegistroTextByAliases(registro, ['Otras solicitudes a tramitar']) || registro?.['Otras solicitudes a tramitar']
+    );
+    const tieneSolicitudesPositivasP36 = solicitudesP36.some(
+      (item) => normalizeFieldName(item) !== normalizeFieldName('Ninguna')
+    );
+    if (tieneSolicitudesPositivasP36) return false;
 
-    const respuestas30a33 = [
+    const respuestasConProcedencia = [
       registro['Procedencia de libertad condicional'],
-      registro['Procedencia de prisiÃ³n domiciliaria de mitad de pena'],
-      registro['Procedencia de utilidad pÃºblica (solo para mujeres)'],
+      registro['Procedencia de prisión domiciliaria de mitad de pena'],
+      registro['Procedencia de utilidad pública (solo para mujeres)'],
       registro['Procedencia de pena cumplida'],
+      registro['Procedencia de acumulación de penas'],
+    ];
+    const preguntasClaveRespondidas = [
+      registro['Procedencia de libertad condicional'],
+      registro['Procedencia de prisión domiciliaria de mitad de pena'],
+      registro['Procedencia de pena cumplida'],
+      registro['Procedencia de acumulación de penas'],
     ];
 
-    const todasRespondidas = respuestas30a33.every((v) => isFilled(v));
+    const todasRespondidas = preguntasClaveRespondidas.every((v) => isMeaningfullyFilled(v));
     if (!todasRespondidas) return false;
 
-    return respuestas30a33.every((v) => isEquivalenteNo(v));
+    return !respuestasConProcedencia.some((v) => isProcedenciaAfirmativa(v));
   }, [registro]);
 
   const decisionUsuario = useMemo(
@@ -1326,12 +1828,66 @@ export default function FormularioAtencion({ numeroInicial }) {
     [registro]
   );
   const actuacionBloqueaPorNinguna = useMemo(
-    () => Boolean(actuacionAdelantar && actuacionAdelantar.startsWith('Ninguna')),
+    () => {
+      const actuacion = norm(actuacionAdelantar);
+      if (!actuacion) return false;
+      return actuacion.includes('ninguna') || actuacion.includes('no procede nada');
+    },
     [actuacionAdelantar]
   );
   const actuacionIncluyeUtilidadPublica = useMemo(
     () => ACTUACIONES_UTILIDAD_PUBLICA_NORMALIZADAS.has(norm(maybeDecodeUtf8Mojibake(actuacionAdelantar))),
     [actuacionAdelantar]
+  );
+  const otrasSolicitudesSeleccionadas = useMemo(
+    () =>
+      parseP36Selections(
+        readRegistroTextByAliases(registro, ['Otras solicitudes a tramitar']) || registro?.['Otras solicitudes a tramitar']
+      ),
+    [registro]
+  );
+  const requierePruebasBloque4 = useMemo(() => readRegistroTextByAliases(registro, ['Requiere pruebas']), [registro]);
+  const habilitarRecepcionPruebasTramite = useMemo(
+    () => isEquivalenteSi(requierePruebasBloque4),
+    [requierePruebasBloque4]
+  );
+  const sePresentaRecursoBloque5 = useMemo(
+    () => readRegistroTextByAliases(registro, ['Se presenta recurso']),
+    [registro]
+  );
+  const fechaPresentacionRecursoBloque5 = useMemo(
+    () =>
+      readRegistroTextByAliases(registro, [
+        KEY_FECHA_PRESENTACION_RECURSO,
+        KEY_FECHA_RECURSO_AURORA_LEGACY,
+        'Fecha de presentacion del recurso',
+      ]),
+    [registro]
+  );
+  const fechaDecisionRecursoBloque5 = useMemo(
+    () =>
+      readRegistroTextByAliases(registro, [
+        KEY_FECHA_DECISION_RECURSO,
+        'Fecha de la decision del recurso',
+      ]),
+    [registro]
+  );
+  const recursoNoPresentadoBloque5 = useMemo(() => isEquivalenteNo(sePresentaRecursoBloque5), [sePresentaRecursoBloque5]);
+  const sentidoResuelveRecursoBloque5 = useMemo(
+    () => readRegistroTextByAliases(registro, ['Sentido de la decisión que resuelve recurso', 'Sentido de la decision que resuelve recurso']),
+    [registro]
+  );
+  const sentidoResuelveSolicitudBloque5 = useMemo(
+    () =>
+      readRegistroTextByAliases(registro, [
+        'Sentido de la decisión que resuelve la solicitud',
+        'Sentido de la decision que resuelve la solicitud',
+      ]),
+    [registro]
+  );
+  const motivoDecisionNegativaBloque5 = useMemo(
+    () => readRegistroTextByAliases(registro, ['Motivo de la decisión negativa', 'Motivo de la decision negativa']),
+    [registro]
   );
   const cierreImposibilidadTramite = useMemo(
     () => readRegistroTextByAliases(registro, ['Cierre del caso por imposibilidad de avanzar (si aplica)']),
@@ -1349,11 +1905,124 @@ export default function FormularioAtencion({ numeroInicial }) {
     () => readRegistroTextByAliases(registro, ['Sentido de la decisión', 'Sentido de la decision']),
     [registro]
   );
+  const saltoAuroraDesdeCeleste = false;
+  const auroraActivo = useMemo(() => flow === 'condenado' || saltoAuroraDesdeCeleste, [flow, saltoAuroraDesdeCeleste]);
+  const maxAllowedFutureDateIso = useMemo(() => buildTodayPlusDaysIso(5), []);
+  const fechaRecepcionPruebasTramite = useMemo(
+    () =>
+      readRegistroTextByAliases(registro, [
+        'Fecha de recepción de pruebas aportadas por el usuario (si aplica)',
+        'Fecha de recepcion de pruebas aportadas por el usuario (si aplica)',
+      ]),
+    [registro]
+  );
+  const fechaPresentacionSolicitudTramite = useMemo(
+    () =>
+      readRegistroTextByAliases(registro, [
+        'Fecha de presentación de la solicitud a la autoridad',
+        'Fecha de presentacion de la solicitud a la autoridad',
+        'Fecha de presentación de solicitud a la autoridad',
+        'Fecha de presentacion de solicitud a la autoridad',
+      ]),
+    [registro]
+  );
+  const fechaDecisionAutoridadBloque5 = useMemo(
+    () => readRegistroTextByAliases(registro, ['Fecha de decisión de la autoridad', 'Fecha de decision de la autoridad']),
+    [registro]
+  );
+  const fechaRecepcionPruebasUtilidad = useMemo(
+    () => readRegistroTextByAliases(registro, ['Fecha en la que se reciben todas las pruebas']),
+    [registro]
+  );
+  const fechaPresentacionSolicitudUtilidad = useMemo(
+    () =>
+      readRegistroTextByAliases(registro, [
+        'Fecha de radicación de solicitud de utilidad pública',
+        'Fecha de radicacion de solicitud de utilidad publica',
+        'Fecha de radicación de la solicitud de utilidad pública',
+        'Fecha de radicacion de la solicitud de utilidad publica',
+      ]),
+    [registro]
+  );
+  const minFechaPresentacionTramiteIso = useMemo(
+    () => toIsoDateString(fechaRecepcionPruebasTramite),
+    [fechaRecepcionPruebasTramite]
+  );
+  const minFechaDecisionTramiteIso = useMemo(
+    () => toIsoDateString(fechaPresentacionSolicitudTramite),
+    [fechaPresentacionSolicitudTramite]
+  );
+  const minFechaPresentacionUtilidadIso = useMemo(
+    () => toIsoDateString(fechaRecepcionPruebasUtilidad),
+    [fechaRecepcionPruebasUtilidad]
+  );
+  const minFechaDecisionUtilidadIso = useMemo(
+    () => toIsoDateString(fechaPresentacionSolicitudUtilidad),
+    [fechaPresentacionSolicitudUtilidad]
+  );
+  const getDateValidationError = useCallback(() => {
+    if (!auroraActivo) return '';
+
+    const secuenciaTramite = [
+      {
+        label: '43. Fecha de recepción de pruebas aportadas por el usuario (si aplica)',
+        iso: toIsoDateString(fechaRecepcionPruebasTramite),
+      },
+      {
+        label: '45. Fecha de presentación de la solicitud a la autoridad',
+        iso: toIsoDateString(fechaPresentacionSolicitudTramite),
+      },
+      {
+        label: '46. Fecha de decisión de la autoridad',
+        iso: toIsoDateString(fechaDecisionAutoridadBloque5),
+      },
+    ];
+
+    const secuenciaUtilidad = [
+      { label: '49. Fecha en la que se reciben todas las pruebas', iso: toIsoDateString(fechaRecepcionPruebasUtilidad) },
+      { label: '50. Fecha de radicación de solicitud de utilidad pública', iso: toIsoDateString(fechaPresentacionSolicitudUtilidad) },
+      { label: '51. Fecha de decisión de la autoridad', iso: toIsoDateString(fechaDecisionAutoridadBloque5) },
+    ];
+
+    const fechas = [...secuenciaTramite, ...secuenciaUtilidad].filter((item) => item.iso);
+    const futura = fechas.find((item) => isIsoDateAfter(item.iso, maxAllowedFutureDateIso));
+    if (futura) {
+      return `${futura.label} no puede superar ${maxAllowedFutureDateIso} (hoy + 5 días).`;
+    }
+
+    for (let i = 1; i < secuenciaTramite.length; i += 1) {
+      const prev = secuenciaTramite[i - 1];
+      const curr = secuenciaTramite[i];
+      if (!prev.iso || !curr.iso) continue;
+      if (isIsoDateAfter(prev.iso, curr.iso)) {
+        return `${curr.label} debe ser igual o posterior a ${prev.label}.`;
+      }
+    }
+
+    for (let i = 1; i < secuenciaUtilidad.length; i += 1) {
+      const prev = secuenciaUtilidad[i - 1];
+      const curr = secuenciaUtilidad[i];
+      if (!prev.iso || !curr.iso) continue;
+      if (isIsoDateAfter(prev.iso, curr.iso)) {
+        return `${curr.label} debe ser igual o posterior a ${prev.label}.`;
+      }
+    }
+
+    return '';
+  }, [
+    auroraActivo,
+    fechaRecepcionPruebasTramite,
+    fechaPresentacionSolicitudTramite,
+    fechaDecisionAutoridadBloque5,
+    fechaRecepcionPruebasUtilidad,
+    fechaPresentacionSolicitudUtilidad,
+    maxAllowedFutureDateIso,
+  ]);
 
   const calificacionActual = useMemo(() => buildCalificacionSnapshot(registro), [registro]);
-  const calificacionAnterior = useMemo(() => {
+  const calificacionesAnteriores = useMemo(() => {
     const rows = Array.isArray(actuacionesCalificacion) ? actuacionesCalificacion : [];
-    if (!rows.length) return buildCalificacionSnapshot(null);
+    if (!rows.length) return [];
 
     const sortedRows = [...rows].sort((a, b) => {
       const left = Number.isFinite(Number(a?.rowIndex)) ? Number(a.rowIndex) : 0;
@@ -1372,41 +2041,108 @@ export default function FormularioAtencion({ numeroInicial }) {
     }
     if (activeIndex < 0) activeIndex = sortedRows.length - 1;
 
+    const anteriores = [];
     for (let idx = activeIndex - 1; idx >= 0; idx -= 1) {
       const snapshot = buildCalificacionSnapshot(sortedRows[idx]?.registro);
-      if (hasCalificacionSnapshotData(snapshot)) return snapshot;
+      if (!hasCalificacionSnapshotData(snapshot)) continue;
+      const rowIndex = Number.isFinite(Number(sortedRows[idx]?.rowIndex)) ? Number(sortedRows[idx].rowIndex) : idx;
+      const fechaDate = parseDateValue(snapshot.fechaUltimaCalificacion);
+      const fechaMs = fechaDate ? fechaDate.getTime() : Number.NEGATIVE_INFINITY;
+      const sourceActuacionId = String(sortedRows[idx]?.id ?? '').trim();
+      anteriores.push({
+        snapshot,
+        rowIndex,
+        fechaMs,
+        sourceActuacionId,
+      });
     }
 
-    return buildCalificacionSnapshot(null);
+    anteriores.sort((a, b) => {
+      if (a.fechaMs !== b.fechaMs) return b.fechaMs - a.fechaMs;
+      return b.rowIndex - a.rowIndex;
+    });
+
+    return anteriores.slice(0, 3).map((item) => ({
+      ...item.snapshot,
+      sourceActuacionId: item.sourceActuacionId,
+    }));
   }, [actuacionesCalificacion, actuacionActivaId]);
 
-  const calificacionesCompactas = useMemo(
-    () => [
+  const calificacionesCompactas = useMemo(() => {
+    const items = [
       {
-        id: 'actual',
-        label: 'Calificación actual',
-        editable: true,
+        id: 'calificacion-1',
+        label: '26. Calificación actual (más reciente)',
+        sourceActuacionId: String(actuacionActivaId ?? '').trim(),
         ...calificacionActual,
       },
-      {
-        id: 'anterior',
-        label: hasCalificacionSnapshotData(calificacionAnterior) ? 'Calificación anterior' : 'Calificación anterior (sin registro)',
-        editable: false,
-        ...calificacionAnterior,
-      },
-    ],
-    [calificacionActual, calificacionAnterior]
+    ];
+
+    for (let index = 0; index < 3; index += 1) {
+      const snapshot = calificacionesAnteriores[index] || { ...buildCalificacionSnapshot(null), sourceActuacionId: '' };
+      items.push({
+        id: `calificacion-${index + 2}`,
+        label: `Calificación ${index + 2}`,
+        ...snapshot,
+      });
+    }
+
+    return items;
+  }, [calificacionActual, calificacionesAnteriores, actuacionActivaId]);
+
+  useEffect(() => {
+    const nextDraft = {};
+    calificacionesCompactas.forEach((item) => {
+      nextDraft[item.id] = {
+        sourceActuacionId: String(item.sourceActuacionId ?? '').trim(),
+        fechaUltimaCalificacion: String(item.fechaUltimaCalificacion ?? ''),
+        numeroActa: String(item.numeroActa ?? ''),
+        evaluacionDesde: String(item.evaluacionDesde ?? ''),
+        evaluacionHasta: String(item.evaluacionHasta ?? ''),
+        calificacionConducta: String(item.calificacionConducta ?? ''),
+      };
+    });
+    setCalificacionesDraft(nextDraft);
+  }, [calificacionesCompactas]);
+
+  const getCalificacionDraftValue = useCallback(
+    (item, key) => {
+      const rowId = String(item?.id ?? '');
+      if (!rowId) return String(item?.[key] ?? '');
+      const draft = calificacionesDraft?.[rowId];
+      if (draft && Object.prototype.hasOwnProperty.call(draft, key)) return String(draft?.[key] ?? '');
+      return String(item?.[key] ?? '');
+    },
+    [calificacionesDraft]
   );
 
-  const saltoAuroraDesdeCeleste = false;
-  const auroraActivo = useMemo(() => flow === 'condenado' || saltoAuroraDesdeCeleste, [flow, saltoAuroraDesdeCeleste]);
+  const handleCalificacionDraftChange = useCallback((rowId, key, value) => {
+    const safeRowId = String(rowId ?? '').trim();
+    const safeKey = String(key ?? '').trim();
+    if (!safeRowId || !safeKey) return;
+    setCalificacionesDraft((prev) => {
+      const currentRow = prev?.[safeRowId] && typeof prev[safeRowId] === 'object' ? prev[safeRowId] : {};
+      return {
+        ...(prev || {}),
+        [safeRowId]: {
+          ...currentRow,
+          [safeKey]: value,
+        },
+      };
+    });
+  }, []);
+
   const cierrePorDecisionFinalBloque5 = useMemo(() => {
     if (!auroraActivo) return false;
     const cierrePorQ57 =
       isCierreImposibilidadSeleccionado(cierreImposibilidadTramite) ||
       isCierreImposibilidadSeleccionado(cierreImposibilidadUtilidad);
     const cierrePorQ52Utilidad = actuacionIncluyeUtilidadPublica && isFilled(sentidoDecisionBloque5);
-    return cierrePorQ57 || cierrePorQ52Utilidad;
+    const cierrePorQ47Tramite =
+      !actuacionIncluyeUtilidadPublica &&
+      isFilled(sentidoDecisionBloque5) &&
+      !isNoConcedeSubrogadoPenal(sentidoDecisionBloque5);
+    return cierrePorQ57 || cierrePorQ52Utilidad || cierrePorQ47Tramite;
   }, [
     auroraActivo,
     cierreImposibilidadTramite,
@@ -1426,8 +2162,14 @@ export default function FormularioAtencion({ numeroInicial }) {
     () => new Set(auroraRuleState?.disabledFields || []),
     [auroraRuleState]
   );
-  const isAuroraFieldDisabled = (name, base = false) =>
-    Boolean(base || auroraDisabledFields.has(String(name || '')));
+  const auroraDisabledFieldsNormalized = useMemo(
+    () => new Set(Array.from(auroraDisabledFields).map((field) => normalizeFieldName(field))),
+    [auroraDisabledFields]
+  );
+  const isAuroraFieldDisabled = useCallback(
+    (name, base = false) => Boolean(base || auroraDisabledFieldsNormalized.has(normalizeFieldName(name))),
+    [auroraDisabledFieldsNormalized]
+  );
   const celesteRuleState = useMemo(
     () => evaluateCelesteRules({ answers: registro || {} }),
     [registro]
@@ -1436,19 +2178,59 @@ export default function FormularioAtencion({ numeroInicial }) {
     () => new Set(celesteRuleState?.visibleBlocks || []),
     [celesteRuleState]
   );
-  const bloque4IncompletoParaAlertaGuardado = useMemo(() => {
-    if (!auroraActivo) return false;
-    if (!auroraVisibleBlocks.has('bloque4')) return false;
-    if (!isFilled(decisionUsuario)) return true;
-    if (!decisionUsuarioDesbloquea) return false;
-    return !isFilled(actuacionAdelantar);
-  }, [
-    auroraActivo,
-    auroraVisibleBlocks,
-    decisionUsuario,
-    decisionUsuarioDesbloquea,
-    actuacionAdelantar,
-  ]);
+  const getMissingRequiredAuroraByBlock = useCallback(
+    (blockId) => {
+      if (!registro) return [];
+      const fields = auroraFormRules?.mandatoryByBlock?.[blockId] || [];
+      const normalizedQ36 = normalizeFieldName('Otras solicitudes a tramitar');
+      return fields
+        .filter((field) => !field.optional)
+        .filter((field) => !isAuroraFieldDisabled(field.key))
+        .filter((field) => {
+          const value = readRegistroTextByAliases(registro, [field.key]);
+          if (normalizeFieldName(field.key) === normalizedQ36) return !hasValidP36Selection(value);
+          return !isMeaningfullyFilled(value);
+        })
+        .map((field) => String(field?.label || field?.key || '').trim())
+        .filter(Boolean);
+    },
+    [registro, isAuroraFieldDisabled]
+  );
+  const hasAnyAuroraDataInBlock = useCallback(
+    (blockId) => {
+      if (!registro) return false;
+      const fields = auroraFormRules?.mandatoryByBlock?.[blockId] || [];
+      const normalizedQ36 = normalizeFieldName('Otras solicitudes a tramitar');
+      return fields.some((field) => {
+        const value = readRegistroTextByAliases(registro, [field.key]);
+        if (normalizeFieldName(field.key) === normalizedQ36) return hasValidP36Selection(value);
+        return isMeaningfullyFilled(value);
+      });
+    },
+    [registro]
+  );
+  const missingRequiredAuroraOnSave = useMemo(() => {
+    if (!auroraActivo) return [];
+
+    const blocksToValidate = [];
+    if (hasAnyAuroraDataInBlock('bloque3')) blocksToValidate.push('bloque3');
+    if (auroraVisibleBlocks.has('bloque4') && hasAnyAuroraDataInBlock('bloque4')) blocksToValidate.push('bloque4');
+    if (
+      auroraVisibleBlocks.has('bloque5UtilidadPublica') &&
+      hasAnyAuroraDataInBlock('bloque5UtilidadPublica')
+    ) {
+      blocksToValidate.push('bloque5UtilidadPublica');
+    }
+    if (
+      auroraVisibleBlocks.has('bloque5TramiteNormal') &&
+      hasAnyAuroraDataInBlock('bloque5TramiteNormal')
+    ) {
+      blocksToValidate.push('bloque5TramiteNormal');
+    }
+
+    const missing = blocksToValidate.flatMap((blockId) => getMissingRequiredAuroraByBlock(blockId));
+    return Array.from(new Set(missing));
+  }, [auroraActivo, auroraVisibleBlocks, hasAnyAuroraDataInBlock, getMissingRequiredAuroraByBlock]);
 
   const defensorAsignadoBloque3 = useMemo(() => getDefensorAsignadoValue(registro), [registro]);
 
@@ -1456,11 +2238,24 @@ export default function FormularioAtencion({ numeroInicial }) {
     if (!registro || !auroraActivo) return '';
     if (!auroraVisibleBlocks.has('bloque3') || auroraVisibleBlocks.has('bloque4')) return '';
     if (auroraRuleState?.locked) return '';
+    if (cierreRegla1Bloque3) return '';
+    const missingBloque3 = getMissingRequiredAuroraByBlock('bloque3');
+    if (!missingBloque3.length) {
+      return 'No se puede avanzar al Bloque 4 porque no hay una procedencia positiva o solicitud a tramitar en el Bloque 3.';
+    }
     if (!defensorAsignadoBloque3) {
       return 'No se puede avanzar al Bloque 4. Falta completar la pregunta 28 (Defensor(a) publico(a) asignado para tramitar la solicitud).';
     }
     return 'No se puede avanzar al Bloque 4. Completa los campos obligatorios del Bloque 3.';
-  }, [registro, auroraActivo, auroraVisibleBlocks, auroraRuleState, defensorAsignadoBloque3]);
+  }, [
+    registro,
+    auroraActivo,
+    auroraVisibleBlocks,
+    auroraRuleState,
+    cierreRegla1Bloque3,
+    defensorAsignadoBloque3,
+    getMissingRequiredAuroraByBlock,
+  ]);
 
   const casoCerrado = useMemo(() => {
     if (auroraActivo && cierrePorDecisionFinalBloque5) return true;
@@ -1477,23 +2272,15 @@ export default function FormularioAtencion({ numeroInicial }) {
     const cumpleJefatura = String(registro?.['Cumple el requisito de jefatura de hogar'] ?? '').trim();
     if (auroraActivo && actuacionIncluyeUtilidadPublica) {
       if (cumpleMarginalidad === 'No' || cumpleJefatura === 'No') return true;
-
-      const sePresentaRecurso = String(registro?.['Se presenta recurso'] ?? '').trim();
-      if (sePresentaRecurso === 'No') return true;
-
-      const sentidoResuelveRecurso = String(registro?.['Sentido de la decisiÃ³n que resuelve recurso'] ?? '').trim();
-      if (sentidoResuelveRecurso) return true;
+      if (recursoNoPresentadoBloque5) return true;
+      if (sentidoResuelveRecursoBloque5) return true;
     }
 
     // BLOQUE 5B
     if (auroraActivo && !actuacionIncluyeUtilidadPublica) {
-      const sePresentaRecurso = String(registro?.['Se presenta recurso'] ?? '').trim();
-      if (sePresentaRecurso === 'No') return true;
-
-      const sentidoResuelveSolicitud = String(
-        registro?.['Sentido de la decisiÃ³n que resuelve la solicitud'] ?? ''
-      ).trim();
-      if (sentidoResuelveSolicitud) return true;
+      if (isFilled(sentidoDecisionBloque5) && !isNoConcedeSubrogadoPenal(sentidoDecisionBloque5)) return true;
+      if (recursoNoPresentadoBloque5) return true;
+      if (sentidoResuelveSolicitudBloque5) return true;
     }
     return false;
   }, [
@@ -1504,6 +2291,10 @@ export default function FormularioAtencion({ numeroInicial }) {
     cierreRegla1Bloque3,
     auroraActivo,
     cierrePorDecisionFinalBloque5,
+    sentidoDecisionBloque5,
+    recursoNoPresentadoBloque5,
+    sentidoResuelveRecursoBloque5,
+    sentidoResuelveSolicitudBloque5,
   ]);
 
   const motivoCierre = useMemo(() => {
@@ -1518,10 +2309,17 @@ export default function FormularioAtencion({ numeroInicial }) {
       if (actuacionIncluyeUtilidadPublica && isFilled(sentidoDecisionBloque5)) {
         return `Caso cerrado por decisión final de la autoridad: ${sentidoDecisionBloque5}.`;
       }
+      if (
+        !actuacionIncluyeUtilidadPublica &&
+        isFilled(sentidoDecisionBloque5) &&
+        !isNoConcedeSubrogadoPenal(sentidoDecisionBloque5)
+      ) {
+        return `Caso cerrado por decisión de la autoridad (pregunta 47): ${sentidoDecisionBloque5}.`;
+      }
       return 'Caso cerrado por resultado final del bloque 5.';
     }
     if (auroraActivo && cierreRegla1Bloque3) {
-      return 'Caso cerrado: en las preguntas 30 a 33 se marcó que no procede la solicitud (No/No aplica/No cumple).';
+      return 'Caso cerrado: en las preguntas 30 a 34 no se marcó procedencia para la solicitud.';
     }
     if (auroraActivo && decisionUsuarioBloquea) {
       return decisionUsuario
@@ -1539,22 +2337,19 @@ export default function FormularioAtencion({ numeroInicial }) {
       if (cumpleMarginalidad === 'No' || cumpleJefatura === 'No') {
         return 'Caso cerrado: no cumple requisitos de marginalidad o jefatura de hogar.';
       }
-      const sePresentaRecurso = String(registro?.['Se presenta recurso'] ?? '').trim();
-      if (sePresentaRecurso === 'No') return 'Caso cerrado: no se presenta recurso.';
-      const sentidoResuelveRecurso = String(registro?.['Sentido de la decisiÃ³n que resuelve recurso'] ?? '').trim();
-      if (sentidoResuelveRecurso) {
-        return `Caso cerrado: decisión que resuelve recurso = ${sentidoResuelveRecurso}.`;
+      if (recursoNoPresentadoBloque5) return 'Caso cerrado: no se presenta recurso.';
+      if (sentidoResuelveRecursoBloque5) {
+        return `Caso cerrado: decisión que resuelve recurso = ${sentidoResuelveRecursoBloque5}.`;
       }
     }
 
     if (auroraActivo && !actuacionIncluyeUtilidadPublica) {
-      const sePresentaRecurso = String(registro?.['Se presenta recurso'] ?? '').trim();
-      if (sePresentaRecurso === 'No') return 'Caso cerrado: no se presenta recurso.';
-      const sentidoResuelveSolicitud = String(
-        registro?.['Sentido de la decisiÃ³n que resuelve la solicitud'] ?? ''
-      ).trim();
-      if (sentidoResuelveSolicitud) {
-        return `Caso cerrado: decisión que resuelve la solicitud = ${sentidoResuelveSolicitud}.`;
+      if (isFilled(sentidoDecisionBloque5) && !isNoConcedeSubrogadoPenal(sentidoDecisionBloque5)) {
+        return `Caso cerrado por decisión de la autoridad (pregunta 47): ${sentidoDecisionBloque5}.`;
+      }
+      if (recursoNoPresentadoBloque5) return 'Caso cerrado: no se presenta recurso.';
+      if (sentidoResuelveSolicitudBloque5) {
+        return `Caso cerrado: decisión que resuelve la solicitud = ${sentidoResuelveSolicitudBloque5}.`;
       }
     }
 
@@ -1572,6 +2367,9 @@ export default function FormularioAtencion({ numeroInicial }) {
     sentidoDecisionBloque5,
     decisionUsuario,
     actuacionAdelantar,
+    recursoNoPresentadoBloque5,
+    sentidoResuelveRecursoBloque5,
+    sentidoResuelveSolicitudBloque5,
   ]);
 
   const bloqueCierre = useMemo(() => {
@@ -1585,19 +2383,14 @@ export default function FormularioAtencion({ numeroInicial }) {
     const cumpleJefatura = String(registro?.['Cumple el requisito de jefatura de hogar'] ?? '').trim();
     if (auroraActivo && actuacionIncluyeUtilidadPublica) {
       if (cumpleMarginalidad === 'No' || cumpleJefatura === 'No') return 'bloque5';
-      const sePresentaRecurso = String(registro?.['Se presenta recurso'] ?? '').trim();
-      if (sePresentaRecurso === 'No') return 'bloque5';
-      const sentidoResuelveRecurso = String(registro?.['Sentido de la decisiÃ³n que resuelve recurso'] ?? '').trim();
-      if (sentidoResuelveRecurso) return 'bloque5';
+      if (recursoNoPresentadoBloque5) return 'bloque5';
+      if (sentidoResuelveRecursoBloque5) return 'bloque5';
     }
 
     if (auroraActivo && !actuacionIncluyeUtilidadPublica) {
-      const sePresentaRecurso = String(registro?.['Se presenta recurso'] ?? '').trim();
-      if (sePresentaRecurso === 'No') return 'bloque5';
-      const sentidoResuelveSolicitud = String(
-        registro?.['Sentido de la decisiÃ³n que resuelve la solicitud'] ?? ''
-      ).trim();
-      if (sentidoResuelveSolicitud) return 'bloque5';
+      if (isFilled(sentidoDecisionBloque5) && !isNoConcedeSubrogadoPenal(sentidoDecisionBloque5)) return 'bloque5';
+      if (recursoNoPresentadoBloque5) return 'bloque5';
+      if (sentidoResuelveSolicitudBloque5) return 'bloque5';
     }
 
     return '';
@@ -1609,10 +2402,14 @@ export default function FormularioAtencion({ numeroInicial }) {
     actuacionBloqueaPorNinguna,
     auroraActivo,
     cierrePorDecisionFinalBloque5,
+    sentidoDecisionBloque5,
+    recursoNoPresentadoBloque5,
+    sentidoResuelveRecursoBloque5,
+    sentidoResuelveSolicitudBloque5,
   ]);
 
   useEffect(() => {
-    if (!registro) return;
+    if (!registro || !auroraActivo) return;
     const next = casoCerrado ? 'Cerrado' : 'Activo';
     const current = String(registro['Estado del caso'] ?? '').trim();
     if (current === next) return;
@@ -1622,7 +2419,7 @@ export default function FormularioAtencion({ numeroInicial }) {
       if (cur === next) return prev;
       return wrapRegistroForLookup({ ...unwrapRegistro(prev), 'Estado del caso': next });
     });
-  }, [registro, casoCerrado]);
+  }, [registro, auroraActivo, casoCerrado]);
 
   useEffect(() => {
     if (!registro || !auroraActivo || !cierrePorDecisionFinalBloque5) return;
@@ -1653,20 +2450,20 @@ export default function FormularioAtencion({ numeroInicial }) {
     if (!registro || !auroraActivo) return;
     const next = String(auroraRuleState?.derivedStatus || '').trim();
     if (!next) return;
-    const current = String(registro['Estado del trÃ¡mite'] ?? '').trim();
+    const current = String(registro['Estado del trámite'] ?? '').trim();
     if (current === next) return;
     setRegistro((prev) => {
       if (!prev) return prev;
-      const cur = String(prev['Estado del trÃ¡mite'] ?? '').trim();
+      const cur = String(prev['Estado del trámite'] ?? '').trim();
       if (cur === next) return prev;
-      return wrapRegistroForLookup({ ...unwrapRegistro(prev), 'Estado del trÃ¡mite': next });
+      return wrapRegistroForLookup({ ...unwrapRegistro(prev), 'Estado del trámite': next });
     });
   }, [registro, auroraActivo, auroraRuleState]);
 
   useEffect(() => {
     if (!registro || !auroraActivo) return;
     if (!auroraRuleState?.locked) return;
-    const reason = String(auroraRuleState.lockReason || 'El formulario est? bloqueado por reglas de negocio.');
+    const reason = String(auroraRuleState.lockReason || 'El formulario está bloqueado por reglas de negocio.');
     setError(reason);
   }, [registro, auroraActivo, auroraRuleState]);
 
@@ -1678,7 +2475,27 @@ export default function FormularioAtencion({ numeroInicial }) {
   }, [registro, flow, celesteRuleState]);
 
   useEffect(() => {
-    // REGLA: P35 solo se habilita si P34 = "SÃ­". Si no, queda deshabilitada y vacÃ­a.
+    if (!registro || flow !== 'sindicado') return;
+    const estadoTramiteSindicado = String(celesteRuleState?.derivedStatus || '').trim();
+    if (!estadoTramiteSindicado) return;
+
+    setRegistro((prev) => {
+      if (!prev) return prev;
+      const currentTramite = String(prev['Estado del trámite'] ?? '').trim();
+      const nextCaso = estadoTramiteSindicado === 'Caso cerrado' ? 'Cerrado' : 'Activo';
+      const currentCaso = String(prev['Estado del caso'] ?? '').trim();
+      if (currentTramite === estadoTramiteSindicado && currentCaso === nextCaso) return prev;
+
+      return wrapRegistroForLookup({
+        ...unwrapRegistro(prev),
+        'Estado del trámite': estadoTramiteSindicado,
+        'Estado del caso': nextCaso,
+      });
+    });
+  }, [registro, flow, celesteRuleState]);
+
+  useEffect(() => {
+    // REGLA: P35 solo se habilita si P34 = "Sí". Si no, queda deshabilitada y vacía.
     if (habilitarPregunta35) return;
     setRegistro((prev) => {
       if (!prev) return prev;
@@ -1690,25 +2507,48 @@ export default function FormularioAtencion({ numeroInicial }) {
   }, [habilitarPregunta35]);
 
   const habilitarNegativaUtilidadPublica = useMemo(() => {
-    const sentido = String(registro?.['Sentido de la decisiÃ³n'] ?? '').trim();
-    const sentidoResuelve = String(registro?.['Sentido de la decisiÃ³n que resuelve recurso'] ?? '').trim();
-    return sentido === 'Niega utilidad pÃºblica' || sentidoResuelve === 'Niega utilidad pÃºblica';
-  }, [registro]);
+    const sentido = String(sentidoDecisionBloque5 ?? '').trim();
+    const sentidoResuelve = String(sentidoResuelveRecursoBloque5 ?? '').trim();
+    return sentido === 'Niega utilidad pública' || sentidoResuelve === 'Niega utilidad pública';
+  }, [sentidoDecisionBloque5, sentidoResuelveRecursoBloque5]);
 
   const habilitarNegativaTramiteNormal = useMemo(() => {
     if (!auroraActivo) return false;
     if (actuacionIncluyeUtilidadPublica) return false;
-    const sentido = String(registro?.['Sentido de la decisiÃ³n'] ?? '').trim();
+    const sentido = String(sentidoDecisionBloque5 ?? '').trim();
     return isNoConcedeSubrogadoPenal(sentido);
-  }, [auroraActivo, actuacionIncluyeUtilidadPublica, registro]);
+  }, [auroraActivo, actuacionIncluyeUtilidadPublica, sentidoDecisionBloque5]);
+
+  useEffect(() => {
+    // Regla: AURORA.B5B.DEPENDENCIA.5
+    // En trámite normal, si Q41 != "Sí", limpiar Q43 (recepción de pruebas aportadas).
+    if (!registro || !auroraActivo || actuacionIncluyeUtilidadPublica) return;
+    if (habilitarRecepcionPruebasTramite) return;
+
+    const key = 'Fecha de recepción de pruebas aportadas por el usuario (si aplica)';
+    setRegistro((prev) => {
+      if (!prev) return prev;
+      const current = readRegistroTextByAliases(prev, [key, 'Fecha de recepcion de pruebas aportadas por el usuario (si aplica)']);
+      if (!current) return prev;
+      const next = { ...unwrapRegistro(prev) };
+      setFieldValueAcrossAliases(next, key, '');
+      return wrapRegistroForLookup(next);
+    });
+  }, [registro, auroraActivo, actuacionIncluyeUtilidadPublica, habilitarRecepcionPruebasTramite]);
 
   useEffect(() => {
     // Regla: AURORA.B5A.LIMPIEZA.1
     // Si no aplica negativa de utilidad publica, limpiar campos de motivo/recurso en 5A.
-    if (!registro) return;
+    if (!registro || !auroraActivo || !actuacionIncluyeUtilidadPublica) return;
     if (habilitarNegativaUtilidadPublica) return;
 
-    const keys = ['Motivo de la decisiÃ³n negativa', 'Se presenta recurso', 'Fecha de recurso en caso desfavorable'];
+    const keys = [
+      'Motivo de la decisión negativa',
+      'Se presenta recurso',
+      KEY_FECHA_RECURSO_AURORA_LEGACY,
+      KEY_FECHA_PRESENTACION_RECURSO,
+      KEY_FECHA_DECISION_RECURSO,
+    ];
     setRegistro((prev) => {
       if (!prev) return prev;
       let changed = false;
@@ -1721,19 +2561,37 @@ export default function FormularioAtencion({ numeroInicial }) {
       }
       return changed ? wrapRegistroForLookup(next) : prev;
     });
-  }, [registro, habilitarNegativaUtilidadPublica]);
+  }, [registro, auroraActivo, actuacionIncluyeUtilidadPublica, habilitarNegativaUtilidadPublica]);
+
+  useEffect(() => {
+    // Compatibilidad retroactiva: migra etiquetas históricas de Q47 a las nuevas.
+    if (!registro || !auroraActivo || actuacionIncluyeUtilidadPublica) return;
+    const current = readRegistroTextByAliases(registro, ['Sentido de la decisión', 'Sentido de la decision']);
+    const normalized = normalizeSentidoDecisionTramite(current);
+    if (!normalized || normalized === String(current ?? '').trim()) return;
+    setRegistro((prev) => {
+      if (!prev) return prev;
+      const now = readRegistroTextByAliases(prev, ['Sentido de la decisión', 'Sentido de la decision']);
+      if (normalized === String(now ?? '').trim()) return prev;
+      const next = { ...unwrapRegistro(prev) };
+      setFieldValueAcrossAliases(next, 'Sentido de la decisión', normalized);
+      return wrapRegistroForLookup(next);
+    });
+  }, [registro, auroraActivo, actuacionIncluyeUtilidadPublica]);
 
   useEffect(() => {
     // Regla: AURORA.B5B.DEPENDENCIA.4
-    // Si en tramite normal Q47 != "No concede subrogado penal", limpiar motivo y campos de recurso.
+    // Si en tramite normal Q47 != "No concede la solicitud", limpiar motivo y campos de recurso.
     if (!registro || !auroraActivo || actuacionIncluyeUtilidadPublica) return;
     if (habilitarNegativaTramiteNormal) return;
 
     const keys = [
-      'Motivo de la decisiÃ³n negativa',
+      'Motivo de la decisión negativa',
       'Se presenta recurso',
-      'Fecha de recurso en caso desfavorable',
-      'Sentido de la decisiÃ³n que resuelve la solicitud',
+      KEY_FECHA_RECURSO_AURORA_LEGACY,
+      KEY_FECHA_PRESENTACION_RECURSO,
+      KEY_FECHA_DECISION_RECURSO,
+      'Sentido de la decisión que resuelve la solicitud',
     ];
 
     setRegistro((prev) => {
@@ -1755,9 +2613,14 @@ export default function FormularioAtencion({ numeroInicial }) {
     // Si no hay recurso en 5B, limpiar fecha y sentido que resuelve la solicitud.
     if (!registro || !auroraActivo || actuacionIncluyeUtilidadPublica) return;
     if (!habilitarNegativaTramiteNormal) return;
-    if (isEquivalenteSi(registro?.['Se presenta recurso'])) return;
+    if (isEquivalenteSi(sePresentaRecursoBloque5)) return;
 
-    const keys = ['Fecha de recurso en caso desfavorable', 'Sentido de la decisiÃ³n que resuelve la solicitud'];
+    const keys = [
+      KEY_FECHA_RECURSO_AURORA_LEGACY,
+      KEY_FECHA_PRESENTACION_RECURSO,
+      KEY_FECHA_DECISION_RECURSO,
+      'Sentido de la decisión que resuelve la solicitud',
+    ];
     setRegistro((prev) => {
       if (!prev) return prev;
       let changed = false;
@@ -1770,15 +2633,15 @@ export default function FormularioAtencion({ numeroInicial }) {
       }
       return changed ? wrapRegistroForLookup(next) : prev;
     });
-  }, [registro, auroraActivo, actuacionIncluyeUtilidadPublica, habilitarNegativaTramiteNormal]);
+  }, [registro, auroraActivo, actuacionIncluyeUtilidadPublica, habilitarNegativaTramiteNormal, sePresentaRecursoBloque5]);
 
   const habilitarCelesteMotivoNegativa = useMemo(() => {
-    const sentido = String(registro?.['SENTIDO DE LA DECISIÃ“N'] ?? '').trim();
+    const sentido = String(registro?.['SENTIDO DE LA DECISIÓN'] ?? '').trim();
     return norm(sentido) === norm('Niega la solicitud');
   }, [registro]);
 
   const habilitarCelesteRecurso = useMemo(() => {
-    const v = String(registro?.['Â¿SE RECURRIÃ“ EN CASO DE DECISIÃ“N NEGATIVA?'] ?? '').trim();
+    const v = String(registro?.['¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?'] ?? '').trim();
     return isEquivalenteSi(v);
   }, [registro]);
 
@@ -1788,7 +2651,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     if (!registro || flow !== 'sindicado') return;
     if (habilitarCelesteMotivoNegativa) return;
 
-    const key = 'MOTIVO DE LA DECISIÃ“N NEGATIVA';
+    const key = 'MOTIVO DE LA DECISIÓN NEGATIVA';
     setRegistro((prev) => {
       if (!prev) return prev;
       const cur = String(prev[key] ?? '');
@@ -1800,11 +2663,15 @@ export default function FormularioAtencion({ numeroInicial }) {
   useEffect(() => {
     // Regla: CELESTE.B5.LIMPIEZA.1
     // Si no se presenta recurso, limpiar fecha y sentido de recurso.
-    if (!registro) return;
+    if (!registro || flow !== 'sindicado') return;
     if (habilitarCelesteRecurso) return;
     setRegistro((prev) => {
       if (!prev) return prev;
-      const keys = ['Fecha de presentaciÃ³n del recurso', 'SENTIDO DE LA DECISIÃ“N QUE RESUELVE RECURSO'];
+      const keys = [
+        'Fecha de presentación del recurso',
+        'Fecha de la decisión del recurso',
+        'SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO',
+      ];
       let changed = false;
       const next = { ...unwrapRegistro(prev) };
       for (const k of keys) {
@@ -1815,7 +2682,264 @@ export default function FormularioAtencion({ numeroInicial }) {
       }
       return changed ? wrapRegistroForLookup(next) : prev;
     });
-  }, [registro, habilitarCelesteRecurso]);
+  }, [registro, flow, habilitarCelesteRecurso]);
+
+  function handleGenerarPdfCasoActual() {
+    if (!registro) {
+      setError('Debe cargar un caso antes de generar el PDF.');
+      return;
+    }
+
+    const getRawValue = (field) => {
+      if (Object.prototype.hasOwnProperty.call(field, 'value')) return field.value;
+      const aliases = [field.key, ...(Array.isArray(field.aliases) ? field.aliases : [])].filter(Boolean);
+      if (!aliases.length) return '';
+      if (isDefensorFieldName(field.key)) return getDefensorAsignadoValue(registro);
+      return readRegistroTextByAliases(registro, aliases);
+    };
+
+    const formatExportValue = (rawValue, field = {}) => {
+      const fallback = 'Sin dato';
+      if (Array.isArray(rawValue)) {
+        const joined = rawValue.map((item) => String(item ?? '').trim()).filter(Boolean).join(', ');
+        if (!joined) return fallback;
+        return displayText(joined);
+      }
+      let text = String(rawValue ?? '').trim();
+      if (!text) return fallback;
+
+      if (field.isPercentage) {
+        text = formatPercentageDisplayValue(text);
+      } else if (field.isDate) {
+        text = formatDateForExport(text);
+      }
+
+      const normalizedKey = normalizeFieldName(field.key || field.label || '');
+      if (normalizedKey === normalizeFieldName('Otras solicitudes a tramitar')) {
+        const parsed = parseP36Selections(text);
+        if (parsed.length) text = parsed.join(', ');
+      }
+
+      return displayText(text);
+    };
+
+    const mapFields = (fields) =>
+      fields.map((field) => ({
+        label: displayText(field.label),
+        value: formatExportValue(getRawValue(field), field),
+      }));
+
+    const calificacionesResumen = calificacionesCompactas
+      .map((item) => {
+        const fecha = formatExportValue(getCalificacionDraftValue(item, 'fechaUltimaCalificacion'), { isDate: true });
+        const acta = formatExportValue(getCalificacionDraftValue(item, 'numeroActa'));
+        const desde = formatExportValue(getCalificacionDraftValue(item, 'evaluacionDesde'), { isDate: true });
+        const hasta = formatExportValue(getCalificacionDraftValue(item, 'evaluacionHasta'), { isDate: true });
+        const conducta = formatExportValue(getCalificacionDraftValue(item, 'calificacionConducta'));
+        return `${displayText(item.label)} | Fecha última: ${fecha} | Acta: ${acta} | Desde: ${desde} | Hasta: ${hasta} | Conducta: ${conducta}`;
+      })
+      .join('\n');
+
+    const sections = [
+      {
+        title: 'BLOQUE 1. Información de la persona privada de la libertad',
+        fields: mapFields(EXPORT_FIELDS_BLOQUE_1),
+      },
+    ];
+
+    if (flow === 'condenado') {
+      if (auroraVisibleBlocks.has('bloque2Aurora')) {
+        const fieldsBloque2 = [
+          ...EXPORT_FIELDS_AURORA_BLOQUE_2.slice(0, 4),
+          { label: 'Fecha de actualización de los datos (corte)', value: FECHA_CORTE_DATOS_REFERENCIA, isDate: true },
+          ...EXPORT_FIELDS_AURORA_BLOQUE_2.slice(4),
+          {
+            label: 'Días restantes para cumplir requisito temporal de prisión domiciliaria',
+            value: diasRestantesPrisionDomiciliaria,
+          },
+          {
+            label: 'Días restantes para cumplir requisito temporal de libertad condicional',
+            value: diasRestantesLibertadCondicional,
+          },
+          {
+            label: '26-27. Resumen de calificaciones de conducta (últimas 4)',
+            value: calificacionesResumen,
+          },
+        ];
+        sections.push({
+          title: 'BLOQUE 2 (AURORA) - Información del proceso SISIPEC',
+          fields: mapFields(fieldsBloque2),
+        });
+      }
+
+      if (auroraVisibleBlocks.has('bloque3')) {
+        sections.push({
+          title: 'BLOQUE 3 - Análisis jurídico',
+          fields: mapFields(EXPORT_FIELDS_AURORA_BLOQUE_3),
+        });
+      }
+
+      if (auroraVisibleBlocks.has('bloque4')) {
+        sections.push({
+          title: 'BLOQUE 4 - Entrevista con el usuario',
+          fields: mapFields(EXPORT_FIELDS_AURORA_BLOQUE_4),
+        });
+      }
+
+      if (auroraVisibleBlocks.has('bloque5UtilidadPublica')) {
+        const fieldsBloque5Utilidad = EXPORT_FIELDS_AURORA_BLOQUE_5_UTILIDAD.map((field) => {
+          if (field.key === 'Fecha en la que se reciben todas las pruebas') {
+            return { ...field, value: fechaRecepcionPruebasUtilidad };
+          }
+          if (field.key === 'Fecha de radicación de solicitud de utilidad pública') {
+            return { ...field, value: fechaPresentacionSolicitudUtilidad };
+          }
+          return field;
+        });
+        sections.push({
+          title: 'BLOQUE 5. Utilidad pública',
+          fields: mapFields(fieldsBloque5Utilidad),
+        });
+      }
+
+      if (auroraVisibleBlocks.has('bloque5TramiteNormal')) {
+        const fieldsBloque5Tramite = EXPORT_FIELDS_AURORA_BLOQUE_5_TRAMITE.map((field) => {
+          if (field.key === 'Fecha de recepción de pruebas aportadas por el usuario (si aplica)') {
+            return { ...field, value: fechaRecepcionPruebasTramite };
+          }
+          if (field.key === 'Fecha de presentación de la solicitud a la autoridad') {
+            return { ...field, value: fechaPresentacionSolicitudTramite };
+          }
+          return field;
+        });
+        sections.push({
+          title: 'BLOQUE 5. Trámite de la solicitud',
+          fields: mapFields(fieldsBloque5Tramite),
+        });
+      }
+    }
+
+    if (flow === 'sindicado') {
+      if (celesteVisibleBlocks.has('bloque2Celeste')) {
+        const fieldsBloque2Celeste = [
+          ...EXPORT_FIELDS_CELESTE_BLOQUE_2.slice(0, 4),
+          {
+            label: '18. Tiempo que la persona lleva privada de la libertad (en meses)',
+            value: tiempoPrivacionMeses || readRegistroTextByAliases(registro, ['TIEMPO QUE LA PERSONA LLEVA PRIVADA DE LA LIBERTAD (EN MESES)']),
+          },
+        ];
+        sections.push({
+          title: 'BLOQUE 2 (SINDICADOS) - Información del proceso SISIPEC',
+          fields: mapFields(fieldsBloque2Celeste),
+        });
+      }
+      if (celesteVisibleBlocks.has('bloque3Celeste')) {
+        sections.push({
+          title: 'BLOQUE 3 (SINDICADOS) - Análisis jurídico',
+          fields: mapFields(EXPORT_FIELDS_CELESTE_BLOQUE_3),
+        });
+      }
+      if (celesteVisibleBlocks.has('bloque4Celeste')) {
+        sections.push({
+          title: 'BLOQUE 4 (SINDICADOS) - Entrevista con el usuario',
+          fields: mapFields(EXPORT_FIELDS_CELESTE_BLOQUE_4),
+        });
+      }
+      if (celesteVisibleBlocks.has('bloque5Celeste')) {
+        sections.push({
+          title: 'BLOQUE 5 (SINDICADOS) - Trámite de la solicitud',
+          fields: mapFields(EXPORT_FIELDS_CELESTE_BLOQUE_5),
+        });
+      }
+    }
+
+    const metadata = [
+      { label: 'Documento', value: getDocumentoActual(registro) || 'Sin dato' },
+      { label: 'Nombre', value: displayText(String(registro?.['Nombre'] ?? '').trim()) || 'Sin dato' },
+      { label: 'Flujo', value: flow === 'condenado' ? 'AURORA (Condenado)' : flow === 'sindicado' ? 'CELESTE (Sindicado)' : 'No definido' },
+      { label: 'Estado del caso', value: displayText(registro?.['Estado del caso'] ?? '') || 'Sin dato' },
+      { label: 'Estado del trámite', value: displayText(registro?.['Estado del trámite'] ?? '') || 'Sin dato' },
+      { label: 'Actuación activa', value: actuacionActivaId || 'Sin dato' },
+      {
+        label: 'Fecha de generación',
+        value: new Date().toLocaleString('es-CO', {
+          dateStyle: 'long',
+          timeStyle: 'short',
+        }),
+      },
+    ];
+
+    const metadataHtml = metadata
+      .map((row) => `<li><strong>${escapeHtml(row.label)}:</strong> ${escapeHtml(row.value)}</li>`)
+      .join('');
+
+    const sectionsHtml = sections
+      .map((section) => {
+        const rows = section.fields
+          .map((field) => {
+            const safeValue = escapeHtml(field.value).replace(/\n/g, '<br />');
+            return `<tr><th>${escapeHtml(field.label)}</th><td>${safeValue}</td></tr>`;
+          })
+          .join('');
+
+        return `
+          <section class="pdf-section">
+            <h2>${escapeHtml(section.title)}</h2>
+            <table>
+              <tbody>${rows}</tbody>
+            </table>
+          </section>
+        `;
+      })
+      .join('');
+
+    const html = `
+      <!doctype html>
+      <html lang="es">
+        <head>
+          <meta charset="utf-8" />
+          <title>Reporte Caso Actual</title>
+          <style>
+            :root { color-scheme: light; }
+            body { font-family: Arial, sans-serif; margin: 24px; color: #1d1d1d; line-height: 1.35; }
+            h1 { font-size: 20px; margin: 0 0 10px; }
+            h2 { font-size: 16px; margin: 22px 0 8px; border-bottom: 1px solid #d9d9d9; padding-bottom: 4px; }
+            ul { margin: 0 0 18px 18px; padding: 0; }
+            li { margin-bottom: 4px; }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+            th, td { border: 1px solid #d9d9d9; padding: 6px 8px; text-align: left; vertical-align: top; font-size: 12px; word-break: break-word; }
+            th { background: #f5f5f5; width: 38%; }
+            .pdf-section { break-inside: avoid; }
+            @media print {
+              body { margin: 10mm; }
+              h2 { break-after: avoid; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Reporte del caso actual (Bloques 1 a 5)</h1>
+          <ul>${metadataHtml}</ul>
+          ${sectionsHtml}
+          <script>
+            window.onload = function () {
+              window.focus();
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    const popup = window.open('', '_blank');
+    if (!popup) {
+      setError('No se pudo abrir la vista de impresión. Habilite ventanas emergentes e intente de nuevo.');
+      return;
+    }
+
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+  }
 
   async function handleGuardar() {
     const doc = getDocumentoActual(registro);
@@ -1823,23 +2947,99 @@ export default function FormularioAtencion({ numeroInicial }) {
       setError('Debe cargar un usuario antes de guardar.');
       return;
     }
+    const dateValidationError = getDateValidationError();
+    if (dateValidationError) {
+      setError(dateValidationError);
+      setToastMessage(dateValidationError);
+      setToastOpen(true);
+      return;
+    }
+    const allowPartialAuroraSave = auroraActivo && missingRequiredAuroraOnSave.length > 0;
+    const partialSaveMessage = allowPartialAuroraSave
+      ? `Guardado parcial: el bloque iniciado no está completo. Falta diligenciar: ${missingRequiredAuroraOnSave.join(
+          ', '
+        )}.`
+      : '';
 
     try {
       setError('');
       setToastOpen(false);
       const payloadBase = { ...unwrapRegistro(registro) };
+      const calificacionesPersistibles = calificacionesCompactas.map((item) => {
+        const draft = calificacionesDraft?.[item.id] || {};
+        const originalSnapshot = {
+          fechaUltimaCalificacion: String(item.fechaUltimaCalificacion ?? ''),
+          numeroActa: String(item.numeroActa ?? ''),
+          evaluacionDesde: String(item.evaluacionDesde ?? ''),
+          evaluacionHasta: String(item.evaluacionHasta ?? ''),
+          calificacionConducta: String(item.calificacionConducta ?? ''),
+        };
+        const nextSnapshot = {
+          fechaUltimaCalificacion: String(draft.fechaUltimaCalificacion ?? originalSnapshot.fechaUltimaCalificacion ?? ''),
+          numeroActa: String(draft.numeroActa ?? originalSnapshot.numeroActa ?? ''),
+          evaluacionDesde: String(draft.evaluacionDesde ?? originalSnapshot.evaluacionDesde ?? ''),
+          evaluacionHasta: String(draft.evaluacionHasta ?? originalSnapshot.evaluacionHasta ?? ''),
+          calificacionConducta: String(draft.calificacionConducta ?? originalSnapshot.calificacionConducta ?? ''),
+        };
+        const hasChanges =
+          String(nextSnapshot.fechaUltimaCalificacion).trim() !== String(originalSnapshot.fechaUltimaCalificacion).trim() ||
+          String(nextSnapshot.numeroActa).trim() !== String(originalSnapshot.numeroActa).trim() ||
+          String(nextSnapshot.evaluacionDesde).trim() !== String(originalSnapshot.evaluacionDesde).trim() ||
+          String(nextSnapshot.evaluacionHasta).trim() !== String(originalSnapshot.evaluacionHasta).trim() ||
+          String(nextSnapshot.calificacionConducta).trim() !== String(originalSnapshot.calificacionConducta).trim();
+        return {
+          id: String(item.id ?? ''),
+          sourceActuacionId: String(draft.sourceActuacionId ?? item.sourceActuacionId ?? '').trim(),
+          hasChanges,
+          snapshot: nextSnapshot,
+        };
+      });
+
+      const filaActualCalificacion = calificacionesPersistibles.find((item) => item.id === 'calificacion-1');
+      if (filaActualCalificacion) {
+        applyCalificacionSnapshotToRecord(payloadBase, filaActualCalificacion.snapshot);
+      }
       if (auroraActivo) {
-        payloadBase['Estado del caso'] = casoCerrado ? 'Cerrado' : 'Activo';
+        const estadoTramiteActual = String(auroraRuleState?.derivedStatus || '').trim();
+        if (estadoTramiteActual) payloadBase['Estado del trámite'] = estadoTramiteActual;
+        payloadBase['Estado del caso'] = estadoTramiteActual === 'Caso cerrado' || casoCerrado ? 'Cerrado' : 'Activo';
+      }
+      if (flow === 'sindicado') {
+        const estadoTramiteSindicado = String(celesteRuleState?.derivedStatus || '').trim();
+        if (estadoTramiteSindicado) payloadBase['Estado del trámite'] = estadoTramiteSindicado;
+        payloadBase['Estado del caso'] = estadoTramiteSindicado === 'Caso cerrado' ? 'Cerrado' : 'Activo';
       }
       const updated = await updatePpl(doc, buildUpdatePayload(payloadBase));
+
+      const calificacionesHistoricasToUpdate = calificacionesPersistibles.filter(
+        (item) => item.id !== 'calificacion-1' && item.hasChanges && item.sourceActuacionId
+      );
+      for (const row of calificacionesHistoricasToUpdate) {
+        const rowPayload = {};
+        applyCalificacionSnapshotToRecord(rowPayload, row.snapshot);
+        await updatePpl(doc, {
+          actuacionId: row.sourceActuacionId,
+          data: rowPayload,
+        });
+      }
+
+      const calificacionesSinDestino = calificacionesPersistibles.filter(
+        (item) => item.id !== 'calificacion-1' && item.hasChanges && !item.sourceActuacionId
+      );
       const nextTipo = String(updated?.tipo ?? tipoRegistro ?? '').trim();
       if (nextTipo) setTipoRegistro(nextTipo);
-      if (bloque4IncompletoParaAlertaGuardado) {
-        window.alert('Antes de guardar, por favor complete los campos obligatorios del bloque 4.');
+
+      if (allowPartialAuroraSave) {
+        setError(`${partialSaveMessage} Por favor complete el resto del bloque.`);
+        setToastMessage(partialSaveMessage);
+      } else if (calificacionesSinDestino.length > 0) {
+        setToastMessage(
+          'Se guardó la calificación actual y antecedentes existentes. Las filas sin actuación previa asociada no se pudieron persistir.'
+        );
       } else {
         setToastMessage('Aurora - Cambios guardados correctamente');
-        setToastOpen(true);
       }
+      setToastOpen(true);
       setGuardadoOk(true);
       setHistorialRefreshToken((prev) => prev + 1);
     } catch (e) {
@@ -1852,7 +3052,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     const celesteEval = evaluateCelesteRules({
       answers: {
         ...(registro || {}),
-        'SituaciÃ³n JurÃ­dica actualizada (de conformidad con la rama judicial)': nextSituacionActualizada,
+        'Situación Jurídica actualizada (de conformidad con la rama judicial)': nextSituacionActualizada,
       },
     });
     if (!celesteEval.jumpToAurora) return;
@@ -1865,14 +3065,14 @@ export default function FormularioAtencion({ numeroInicial }) {
 
     const yaRedirigido = String(registro?.redirectedToAurora ?? '').trim().toLowerCase() === 'true';
     if (yaRedirigido) {
-      // Evita bucle de redirecciÃ³n: no vuelve a guardar/redirigir. Solo navega a AURORA (BLOQUE 2).
+      // Evita bucle de redirección: no vuelve a guardar/redirigir. Solo navega a AURORA (BLOQUE 2).
       setTipoRegistro('condenado');
       setRegistro((prev) => ({
         ...(prev || {}),
         __tipoApi: 'condenado',
         redirectedToAurora: true,
-        'SituaciÃ³n JurÃ­dica': 'Condenado',
-        'SituaciÃ³n JurÃ­dica actualizada (de conformidad con la rama judicial)': 'CONDENADO',
+        'Situación Jurídica': 'Condenado',
+        'Situación Jurídica actualizada (de conformidad con la rama judicial)': 'CONDENADO',
       }));
       setAuroraAbrirBloque2(celesteEval.jumpPayload?.startBlock === 2);
       return;
@@ -1882,7 +3082,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
     const next = {
       ...(registro || {}),
-      'SituaciÃ³n JurÃ­dica actualizada (de conformidad con la rama judicial)': 'CONDENADO',
+      'Situación Jurídica actualizada (de conformidad con la rama judicial)': 'CONDENADO',
       redirectedToAurora: true,
     };
 
@@ -1906,13 +3106,13 @@ export default function FormularioAtencion({ numeroInicial }) {
         __tipoApi: refreshedTipo,
         // Fuerza el flujo AURORA por regla de salto (sin reiniciar caso).
         redirectedToAurora: true,
-        'SituaciÃ³n JurÃ­dica': 'Condenado',
-        'SituaciÃ³n JurÃ­dica actualizada (de conformidad con la rama judicial)': 'CONDENADO',
+        'Situación Jurídica': 'Condenado',
+        'Situación Jurídica actualizada (de conformidad con la rama judicial)': 'CONDENADO',
       });
       setAuroraAbrirBloque2(celesteEval.jumpPayload?.startBlock === 2);
     } catch (e) {
       reportError(e, 'formulario-entrevista:salto-celeste-aurora');
-      setError('Error al guardar el formulario. No se redirigiÃ³ a AURORA.');
+      setError('Error al guardar el formulario. No se redirigió a AURORA.');
     } finally {
       setSaltoCelesteGuardando(false);
     }
@@ -1932,7 +3132,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     if (flow !== 'sindicado') return;
     if (!celesteRuleState?.jumpToAurora) return;
     const value =
-      registro?.['SituaciÃ³n JurÃ­dica actualizada (de conformidad con la rama judicial)'] ??
+      registro?.['Situación Jurídica actualizada (de conformidad con la rama judicial)'] ??
       '';
     handleSaltoCelesteAAurora(String(value));
   }, [registro, flow, celesteRuleState?.jumpToAurora, handleSaltoCelesteAAurora]);
@@ -1940,6 +3140,20 @@ export default function FormularioAtencion({ numeroInicial }) {
   const porcentajeAvancePena = parsePercentageValue(registro?.['Porcentaje de avance de pena cumplida']);
   const porcentajeAvancePenaBarra =
     porcentajeAvancePena == null ? null : Math.max(0, Math.min(100, porcentajeAvancePena));
+  const penaTotalDias = parseDayCount(registro?.['Pena total en días']);
+  const tiempoEfectivoDias = parseDayCount(
+    registro?.['Tiempo efectivo de pena cumplida en días (teniendo en cuenta la redención)']
+  );
+  const diasRestantesPrisionDomiciliaria = useMemo(() => {
+    if (!Number.isFinite(penaTotalDias) || !Number.isFinite(tiempoEfectivoDias)) return '';
+    const objetivo = Number(penaTotalDias) * 0.5;
+    return getRemainingDaysStatus(objetivo - Number(tiempoEfectivoDias));
+  }, [penaTotalDias, tiempoEfectivoDias]);
+  const diasRestantesLibertadCondicional = useMemo(() => {
+    if (!Number.isFinite(penaTotalDias) || !Number.isFinite(tiempoEfectivoDias)) return '';
+    const objetivo = Number(penaTotalDias) * 0.6;
+    return getRemainingDaysStatus(objetivo - Number(tiempoEfectivoDias));
+  }, [penaTotalDias, tiempoEfectivoDias]);
 
   useEffect(() => {
     if (!registro) return;
@@ -1996,7 +3210,7 @@ export default function FormularioAtencion({ numeroInicial }) {
           </button>
         </div>
 
-        {cargando && <p>{displayText('Cargando informaciÃ³n...')}</p>}
+        {cargando && <p>{displayText('Cargando información...')}</p>}
         {error && <p className="hint-text">{displayText(error)}</p>}
       </div>
 
@@ -2023,53 +3237,53 @@ export default function FormularioAtencion({ numeroInicial }) {
           )}
 
           {mostrarFormularioDetalle && (
-          <div className="card" style={{ marginTop: '1rem' }}>
-            <h3 className="block-title">{displayText('BLOQUE 1. InformaciÃ³n de la persona privada de la libertad')}</h3>
+          <div ref={formularioDetalleRef} className="card" style={{ marginTop: '1rem' }}>
+            <h3 className="block-title">{displayText('BLOQUE 1. Información de la persona privada de la libertad')}</h3>
 
           <div className="grid-2">
             <Campo label="1. Nombre" name="Nombre" value={registro['Nombre']} onChange={handleChange} />
 
             <Campo
-              label="2. Tipo de indentificaciÃ³n"
-              name="Tipo de indentificaciÃ³n"
+              label="2. Tipo de indentificación"
+              name="Tipo de indentificación"
               type="select"
-              value={registro['Tipo de indentificaciÃ³n']}
+              value={registro['Tipo de indentificación']}
               onChange={handleChange}
               options={OPCIONES_TIPO_IDENTIFICACION}
             />
 
             <Campo
-              label="3. NÃºmero de identificaciÃ³n"
-              name="NÃºmero de identificaciÃ³n"
-              value={registro['NÃºmero de identificaciÃ³n']}
+              label="3. Número de identificación"
+              name="Número de identificación"
+              value={registro['Número de identificación']}
               onChange={handleChange}
-              readOnly={Boolean(String(registro['NÃºmero de identificaciÃ³n'] ?? '').trim())}
+              readOnly={Boolean(String(registro['Número de identificación'] ?? '').trim())}
             />
 
             <Campo
-              label="4. SituaciÃ³n JurÃ­dica"
-              name="SituaciÃ³n JurÃ­dica"
+              label="4. Situación Jurídica"
+              name="Situación Jurídica"
               type="select"
-              value={registro['SituaciÃ³n JurÃ­dica']}
+              value={registro['Situación Jurídica']}
               onChange={handleChange}
               options={OPCIONES_SITUACION_JURIDICA}
               disabled
             />
 
             <Campo
-              label="5. GÃ©nero"
-              name="GÃ©nero"
+              label="5. Género"
+              name="Género"
               type="select"
-              value={registro['GÃ©nero']}
+              value={registro['Género']}
               onChange={handleChange}
               options={OPCIONES_GENERO_AURORA}
             />
 
             <Campo
-              label="6. Enfoque Ã‰tnico/Racial/Cultural"
-              name="Enfoque Ã‰tnico/Racial/Cultural"
+              label="6. Enfoque Étnico/Racial/Cultural"
+              name="Enfoque Étnico/Racial/Cultural"
               type="select"
-              value={registro['Enfoque Ã‰tnico/Racial/Cultural']}
+              value={registro['Enfoque Étnico/Racial/Cultural']}
               onChange={handleChange}
               options={OPCIONES_ENFOQUE_ETNICO}
             />
@@ -2092,32 +3306,32 @@ export default function FormularioAtencion({ numeroInicial }) {
             <Campo label="9. Edad" name="Edad" type="number" value={registro['Edad']} onChange={handleChange} />
 
             <Campo
-              label="10. Lugar de privaciÃ³n de la libertad"
-              name="Lugar de privaciÃ³n de la libertad"
+              label="10. Lugar de privación de la libertad"
+              name="Lugar de privación de la libertad"
               type="select"
-              value={registro['Lugar de privaciÃ³n de la libertad']}
+              value={registro['Lugar de privación de la libertad']}
               onChange={handleChange}
               options={OPCIONES_LUGAR_PRIVACION}
             />
 
             <Campo
-              label="11. Nombre del lugar de privaciÃ³n de la libertad"
-              name="Nombre del lugar de privaciÃ³n de la libertad"
-              value={registro['Nombre del lugar de privaciÃ³n de la libertad']}
+              label="11. Nombre del lugar de privación de la libertad"
+              name="Nombre del lugar de privación de la libertad"
+              value={registro['Nombre del lugar de privación de la libertad']}
               onChange={handleChange}
             />
 
             <Campo
-              label="12. Departamento del lugar de privaciÃ³n de la libertad"
-              name="Departamento del lugar de privaciÃ³n de la libertad"
-              value={registro['Departamento del lugar de privaciÃ³n de la libertad']}
+              label="12. Departamento del lugar de privación de la libertad"
+              name="Departamento del lugar de privación de la libertad"
+              value={registro['Departamento del lugar de privación de la libertad']}
               onChange={handleChange}
             />
 
             <Campo
-              label="13. Distrito/municipio del lugar de privaciÃ³n de la libertad"
-              name="Distrito/municipio del lugar de privaciÃ³n de la libertad"
-              value={registro['Distrito/municipio del lugar de privaciÃ³n de la libertad']}
+              label="13. Distrito/municipio del lugar de privación de la libertad"
+              name="Distrito/municipio del lugar de privación de la libertad"
+              value={registro['Distrito/municipio del lugar de privación de la libertad']}
               onChange={handleChange}
             />
           </div>
@@ -2131,7 +3345,7 @@ export default function FormularioAtencion({ numeroInicial }) {
               {auroraVisibleBlocks.has('bloque2Aurora') && (
                 <>
                 <h3 className="block-title" ref={bloque2AuroraRef}>
-                  {displayText('BLOQUE 2 (AURORA) - InformaciÃ³n del proceso SISIPEC')}
+                  {displayText('BLOQUE 2 (AURORA) - Información del proceso SISIPEC')}
                 </h3>
                 <div className="grid-2">
                 <Campo
@@ -2141,9 +3355,9 @@ export default function FormularioAtencion({ numeroInicial }) {
                   onChange={handleChange}
                 />
                 <Campo
-                  label="15. NÃºmero de proceso"
-                  name="NÃºmero de proceso"
-                  value={registro['NÃºmero de proceso']}
+                  label="15. Número de proceso"
+                  name="Número de proceso"
+                  value={registro['Número de proceso']}
                   onChange={handleChange}
                 />
                 <Campo
@@ -2160,38 +3374,48 @@ export default function FormularioAtencion({ numeroInicial }) {
                   value={registro['Fecha de captura']}
                   onChange={handleChange}
                 />
+                <div className="question-40-highlight">
+                  <Campo
+                    label="Fecha de actualización de los datos (corte)"
+                    name="Fecha de actualización de los datos (corte)"
+                    value={FECHA_CORTE_DATOS_REFERENCIA}
+                    onChange={handleChange}
+                    readOnly
+                    required={false}
+                  />
+                </div>
                 <Campo
-                  label="18. Pena (aÃ±os, meses y dÃ­as)"
-                  name="Pena (aÃ±os, meses y dÃ­as)"
-                  value={registro['Pena (aÃ±os, meses y dÃ­as)']}
+                  label="18. Pena (años, meses y días)"
+                  name="Pena (años, meses y días)"
+                  value={registro['Pena (años, meses y días)']}
                   onChange={handleChange}
                 />
                 <Campo
-                  label="19. Pena total en dÃ­as"
-                  name="Pena total en dÃ­as"
+                  label="19. Pena total en días"
+                  name="Pena total en días"
                   type="number"
-                  value={registro['Pena total en dÃ­as']}
+                  value={registro['Pena total en días']}
                   onChange={handleChange}
                 />
                 <Campo
-                  label="20. Tiempo que la persona lleva privada de la libertad (en dÃ­as)"
-                  name="Tiempo que la persona lleva privada de la libertad (en dÃ­as)"
+                  label="20. Tiempo que la persona lleva privada de la libertad (en días)"
+                  name="Tiempo que la persona lleva privada de la libertad (en días)"
                   type="number"
-                  value={registro['Tiempo que la persona lleva privada de la libertad (en dÃ­as)']}
+                  value={registro['Tiempo que la persona lleva privada de la libertad (en días)']}
                   onChange={handleChange}
                 />
                 <Campo
-                  label="21. RedenciÃ³n total acumulada en dÃ­as"
-                  name="RedenciÃ³n total acumulada en dÃ­as"
+                  label="21. Redención total acumulada en días"
+                  name="Redención total acumulada en días"
                   type="number"
-                  value={registro['RedenciÃ³n total acumulada en dÃ­as']}
+                  value={registro['Redención total acumulada en días']}
                   onChange={handleChange}
                 />
                 <Campo
-                  label="22. Tiempo efectivo de pena cumplida en dÃ­as (teniendo en cuenta la redenciÃ³n)"
-                  name="Tiempo efectivo de pena cumplida en dÃ­as (teniendo en cuenta la redenciÃ³n)"
+                  label="22. Tiempo efectivo de pena cumplida en días (teniendo en cuenta la redención)"
+                  name="Tiempo efectivo de pena cumplida en días (teniendo en cuenta la redención)"
                   type="number"
-                  value={registro['Tiempo efectivo de pena cumplida en dÃ­as (teniendo en cuenta la redenciÃ³n)']}
+                  value={registro['Tiempo efectivo de pena cumplida en días (teniendo en cuenta la redención)']}
                   onChange={handleChange}
                 />
                 <div className="form-field">
@@ -2215,6 +3439,26 @@ export default function FormularioAtencion({ numeroInicial }) {
                     </div>
                   )}
                 </div>
+                <div className="remaining-days-field">
+                  <Campo
+                    label="Días restantes para cumplir requisito temporal de prisión domiciliaria"
+                    name="Días restantes para cumplir requisito temporal de prisión domiciliaria"
+                    value={diasRestantesPrisionDomiciliaria}
+                    onChange={handleChange}
+                    readOnly
+                    required={false}
+                  />
+                </div>
+                <div className="remaining-days-field">
+                  <Campo
+                    label="Días restantes para cumplir requisito temporal de libertad condicional"
+                    name="Días restantes para cumplir requisito temporal de libertad condicional"
+                    value={diasRestantesLibertadCondicional}
+                    onChange={handleChange}
+                    readOnly
+                    required={false}
+                  />
+                </div>
                 <Campo
                   label="24. Fase de tramiento"
                   name="Fase de tramiento"
@@ -2224,86 +3468,77 @@ export default function FormularioAtencion({ numeroInicial }) {
                   options={OPCIONES_FASE_TRATAMIENTO}
                 />
                 <Campo
-                  label="25. Â¿Cuenta con requerimientos judiciales por otros procesos?"
-                  name="Â¿ Cuenta con requerimientos judiciales por otros procesos ?"
+                  label="25. ¿Cuenta con requerimientos judiciales por otros procesos?"
+                  name="¿ Cuenta con requerimientos judiciales por otros procesos ?"
                   type="select"
-                  value={registro['Â¿ Cuenta con requerimientos judiciales por otros procesos ?']}
+                  value={registro['¿ Cuenta con requerimientos judiciales por otros procesos ?']}
                   onChange={handleChange}
                   options={OPCIONES_SI_NO}
                 />
                 <div className="form-field calificacion-resumen-field">
-                  <label>{displayText('26 y 27. Resumen de calificaciones de conducta (últimas 2)')}</label>
+                  <label>{displayText('Resumen de calificaciones de conducta (últimas 4)')}</label>
                   <div className="calificacion-resumen-table-wrap">
                     <table className="calificacion-resumen-table">
                       <thead>
                         <tr>
                           <th>{displayText('Registro')}</th>
-                          <th>{displayText('26. Fecha ?ltima calificaciÃ³n')}</th>
-                          <th>{displayText('26A. NÃºmero de acta')}</th>
-                          <th>{displayText('26B. EvaluaciÃ³n desde')}</th>
-                          <th>{displayText('26C. EvaluaciÃ³n hasta')}</th>
-                          <th>{displayText('27. CalificaciÃ³n de conducta')}</th>
+                          <th>{displayText('Fecha última calificación')}</th>
+                          <th>{displayText('Número de acta')}</th>
+                          <th>{displayText('Evaluación desde')}</th>
+                          <th>{displayText('Evaluación hasta')}</th>
+                          <th>{displayText('Calificación de conducta')}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {calificacionesCompactas.map((item) => (
-                          <tr key={item.id}>
-                            <td className="calificacion-resumen-row-label">{displayText(item.label)}</td>
-                            <td>
-                              {item.editable ? (
+                          <Fragment key={item.id}>
+                            {item.id === 'calificacion-2' && (
+                              <tr className="calificacion-resumen-group-row">
+                                <td className="calificacion-resumen-group-cell" colSpan={6}>
+                                  {displayText('27. Otras calificaciones anteriores:')}
+                                </td>
+                              </tr>
+                            )}
+                            <tr>
+                              <td className="calificacion-resumen-row-label">{displayText(item.label)}</td>
+                              <td>
                                 <input
                                   type="date"
-                                  name={KEY_FECHA_ULTIMA_CALIFICACION}
-                                  value={toDateInputValue(item.fechaUltimaCalificacion)}
-                                  onChange={(e) => handleChange(KEY_FECHA_ULTIMA_CALIFICACION, e.target.value)}
+                                  name={`${KEY_FECHA_ULTIMA_CALIFICACION}-${item.id}`}
+                                  value={toDateInputValue(getCalificacionDraftValue(item, 'fechaUltimaCalificacion'))}
+                                  onChange={(e) => handleCalificacionDraftChange(item.id, 'fechaUltimaCalificacion', e.target.value)}
                                   required
                                 />
-                              ) : (
-                                <span>{formatCalificacionDate(item.fechaUltimaCalificacion)}</span>
-                              )}
-                            </td>
-                            <td>
-                              {item.editable ? (
+                              </td>
+                              <td>
                                 <input
                                   type="text"
-                                  name={KEY_ACTA_CALIFICACION}
-                                  value={item.numeroActa ?? ''}
-                                  onChange={(e) => handleChange(KEY_ACTA_CALIFICACION, e.target.value)}
+                                  name={`${KEY_ACTA_CALIFICACION}-${item.id}`}
+                                  value={getCalificacionDraftValue(item, 'numeroActa')}
+                                  onChange={(e) => handleCalificacionDraftChange(item.id, 'numeroActa', e.target.value)}
                                 />
-                              ) : (
-                                <span>{String(item.numeroActa ?? '').trim() || '\u2014'}</span>
-                              )}
-                            </td>
-                            <td>
-                              {item.editable ? (
+                              </td>
+                              <td>
                                 <input
                                   type="date"
-                                  name={KEY_EVALUACION_DESDE}
-                                  value={toDateInputValue(item.evaluacionDesde)}
-                                  onChange={(e) => handleChange(KEY_EVALUACION_DESDE, e.target.value)}
+                                  name={`${KEY_EVALUACION_DESDE}-${item.id}`}
+                                  value={toDateInputValue(getCalificacionDraftValue(item, 'evaluacionDesde'))}
+                                  onChange={(e) => handleCalificacionDraftChange(item.id, 'evaluacionDesde', e.target.value)}
                                 />
-                              ) : (
-                                <span>{formatCalificacionDate(item.evaluacionDesde)}</span>
-                              )}
-                            </td>
-                            <td>
-                              {item.editable ? (
+                              </td>
+                              <td>
                                 <input
                                   type="date"
-                                  name={KEY_EVALUACION_HASTA}
-                                  value={toDateInputValue(item.evaluacionHasta)}
-                                  onChange={(e) => handleChange(KEY_EVALUACION_HASTA, e.target.value)}
+                                  name={`${KEY_EVALUACION_HASTA}-${item.id}`}
+                                  value={toDateInputValue(getCalificacionDraftValue(item, 'evaluacionHasta'))}
+                                  onChange={(e) => handleCalificacionDraftChange(item.id, 'evaluacionHasta', e.target.value)}
                                 />
-                              ) : (
-                                <span>{formatCalificacionDate(item.evaluacionHasta)}</span>
-                              )}
-                            </td>
-                            <td>
-                              {item.editable ? (
+                              </td>
+                              <td>
                                 <select
-                                  name={KEY_CALIFICACION_CONDUCTA}
-                                  value={item.calificacionConducta ?? ''}
-                                  onChange={(e) => handleChange(KEY_CALIFICACION_CONDUCTA, e.target.value)}
+                                  name={`${KEY_CALIFICACION_CONDUCTA}-${item.id}`}
+                                  value={getCalificacionDraftValue(item, 'calificacionConducta')}
+                                  onChange={(e) => handleCalificacionDraftChange(item.id, 'calificacionConducta', e.target.value)}
                                   required
                                 >
                                   <option value="" disabled hidden />
@@ -2313,11 +3548,9 @@ export default function FormularioAtencion({ numeroInicial }) {
                                     </option>
                                   ))}
                                 </select>
-                              ) : (
-                                <span>{displayText(String(item.calificacionConducta ?? '').trim() || '\u2014')}</span>
-                              )}
-                            </td>
-                          </tr>
+                              </td>
+                            </tr>
+                          </Fragment>
                         ))}
                       </tbody>
                     </table>
@@ -2329,11 +3562,11 @@ export default function FormularioAtencion({ numeroInicial }) {
 
               {auroraVisibleBlocks.has('bloque3') && (
                 <>
-                <h3 className="block-title">{displayText('BLOQUE 3 - AnÃ¡lisis jurÃ­dico')}</h3>
+                <h3 className="block-title">{displayText('BLOQUE 3 - Análisis jurídico')}</h3>
                 <div className="grid-2">
                 <Campo
-                  label="28. Defensor(a) pÃºblico(a) asignado para tramitar la solicitud"
-                  name="Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud"
+                  label="28. Defensor(a) público(a) asignado para tramitar la solicitud"
+                  name="Defensor(a) Público(a) Asignado para tramitar la solicitud"
                   type="datalist"
                   value={getDefensorAsignadoValue(registro)}
                   onChange={handleChange}
@@ -2342,10 +3575,10 @@ export default function FormularioAtencion({ numeroInicial }) {
                 />
 
                 <Campo
-                  label="29. Fecha de anÃ¡lisis jurÃ­dico del caso"
-                  name="Fecha de anÃ¡lisis jurÃ­dico del caso"
+                  label="29. Fecha de análisis jurídico del caso"
+                  name="Fecha de análisis jurídico del caso"
                   type="date"
-                  value={registro['Fecha de anÃ¡lisis jurÃ­dico del caso']}
+                  value={registro['Fecha de análisis jurídico del caso']}
                   onChange={handleChange}
                   showObligatoria
                 />
@@ -2356,27 +3589,27 @@ export default function FormularioAtencion({ numeroInicial }) {
                   type="select"
                   value={registro['Procedencia de libertad condicional']}
                   onChange={handleChange}
-                  options={OPCIONES_PROCEDENCIA_LIBERTAD_CONDICIONAL}
+                  options={OPCIONES_PROCEDENCIA_LIBERTAD_CONDICIONAL_NUMERADAS}
                   showObligatoria
                 />
 
                 <Campo
-                  label="31. Procedencia de prisiÃ³n domiciliaria de mitad de pena"
-                  name="Procedencia de prisiÃ³n domiciliaria de mitad de pena"
+                  label="31. Procedencia de prisión domiciliaria de mitad de pena"
+                  name="Procedencia de prisión domiciliaria de mitad de pena"
                   type="select"
-                  value={registro['Procedencia de prisiÃ³n domiciliaria de mitad de pena']}
+                  value={registro['Procedencia de prisión domiciliaria de mitad de pena']}
                   onChange={handleChange}
-                  options={OPCIONES_PROCEDENCIA_PRISION_DOMICILIARIA}
+                  options={OPCIONES_PROCEDENCIA_PRISION_DOMICILIARIA_NUMERADAS}
                   showObligatoria
                 />
 
                 <Campo
-                  label="32. Procedencia de utilidad pÃºblica (solo para mujeres)"
-                  name="Procedencia de utilidad pÃºblica (solo para mujeres)"
+                  label="32. Procedencia de utilidad pública (solo para mujeres)"
+                  name="Procedencia de utilidad pública (solo para mujeres)"
                   type="select"
-                  value={registro['Procedencia de utilidad pÃºblica (solo para mujeres)']}
+                  value={registro['Procedencia de utilidad pública (solo para mujeres)']}
                   onChange={handleChange}
-                  options={OPCIONES_PROCEDENCIA_UTILIDAD_PUBLICA}
+                  options={OPCIONES_PROCEDENCIA_UTILIDAD_PUBLICA_NUMERADAS}
                   required={false}
                 />
 
@@ -2391,39 +3624,45 @@ export default function FormularioAtencion({ numeroInicial }) {
                 />
 
                 <Campo
-                  label="34. Procedencia de acumulaciÃ³n de penas"
-                  name="Procedencia de acumulaciÃ³n de penas"
+                  label="34. Procedencia de acumulación de penas"
+                  name="Procedencia de acumulación de penas"
                   type="select"
-                  value={registro['Procedencia de acumulaciÃ³n de penas']}
+                  value={registro['Procedencia de acumulación de penas']}
                   onChange={handleChange}
-                  options={OPCIONES_SI_NO}
+                  options={OPCIONES_PROCEDENCIA_ACUMULACION_PENAS}
                   showObligatoria
                 />
 
                 <Campo
-                  label="35. Con quÃ© proceso(s) debe acumular penas (si aplica)"
+                  label="35. Con qué proceso(s) debe acumular penas (si aplica)"
                   name={KEY_Q35_LEGACY}
                   value={registro[KEY_Q35_LEGACY] ?? registro[KEY_Q35_UTF8] ?? ''}
                   onChange={handleChange}
                   required={false}
                   disabled={!habilitarPregunta35}
-                  showObligatoria
+                  showObligatoria={habilitarPregunta35}
                 />
 
-                <Campo
+                <CampoCheckboxMultiple
                   label="36. Otras solicitudes a tramitar"
                   name="Otras solicitudes a tramitar"
-                  type="select"
-                  value={registro['Otras solicitudes a tramitar']}
+                  value={otrasSolicitudesSeleccionadas}
                   onChange={handleChange}
                   options={OPCIONES_OTRAS_SOLICITUDES}
+                  showObligatoria
+                  exclusiveOption="Ninguna"
                 />
+                {otrasSolicitudesSeleccionadas.length > 1 && (
+                  <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+                    <p className="hint-text">{displayText(OPCION_MULTIPLE_P36)}</p>
+                  </div>
+                )}
 
                 <Campo
-                  label="37. Resumen del anÃ¡lisis del caso"
-                  name="Resumen del anÃ¡lisis del caso"
+                  label="37. Resumen del análisis del caso"
+                  name="Resumen del análisis del caso"
                   type="textarea"
-                  value={registro['Resumen del anÃ¡lisis del caso']}
+                  value={registro['Resumen del análisis del caso']}
                   onChange={handleChange}
                   showObligatoria
                 />
@@ -2457,10 +3696,10 @@ export default function FormularioAtencion({ numeroInicial }) {
                 />
 
                 <Campo
-                  label="39. DecisiÃ³n del usuario"
-                  name="DecisiÃ³n del usuario"
+                  label="39. Decisión del usuario"
+                  name="Decisión del usuario"
                   type="select"
-                  value={registro['DecisiÃ³n del usuario']}
+                  value={registro['Decisión del usuario']}
                   onChange={handleChange}
                   options={OPCIONES_AURORA_DECISION_USUARIO}
                   disabled={cierreRegla1Bloque3}
@@ -2469,10 +3708,10 @@ export default function FormularioAtencion({ numeroInicial }) {
 
                 <div className="question-40-highlight">
                 <Campo
-                  label="40. ActuaciÃ³n a adelantar"
-                  name="ActuaciÃ³n a adelantar"
+                  label="40. Actuación a adelantar"
+                  name="Actuación a adelantar"
                   type="select"
-                  value={registro['ActuaciÃ³n a adelantar']}
+                  value={registro['Actuación a adelantar']}
                   onChange={handleChange}
                   options={OPCIONES_AURORA_ACTUACION_A_ADELANTAR}
                   disabled={cierreRegla1Bloque3 || decisionUsuarioBloquea}
@@ -2480,7 +3719,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                 />
                 {cierreRegla1Bloque3 && (
                   <p className="hint-text">
-                    La pregunta 40 esta bloqueada porque el caso se cerro en Bloque 3 (preguntas 30 a 33 sin procedencia).
+                    La pregunta 40 esta bloqueada porque el caso se cerro en Bloque 3 (preguntas 30 a 34 sin procedencia).
                   </p>
                 )}
                 </div>
@@ -2510,7 +3749,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                 {decisionUsuarioBloquea && (
                   <div className="form-field" style={{ gridColumn: '1 / -1' }}>
                     <p className="hint-text">
-                      {displayText('El resto del formulario estÃ¡ bloqueado por la selecciÃ³n en "DecisiÃ³n del usuario".')}
+                      {displayText('El resto del formulario está bloqueado por la selección en "Decisión del usuario".')}
                     </p>
                   </div>
                 )}
@@ -2538,14 +3777,14 @@ export default function FormularioAtencion({ numeroInicial }) {
 
                 const bloquearBloque5 = cierreRegla1Bloque3 || decisionUsuarioBloquea || actuacionBloqueaPorNinguna;
 
-                const requiereMisionTrabajo = String(registro?.['Se requiere misiÃ³n de trabajo'] ?? '').trim();
+                const requiereMisionTrabajo = String(registro?.['Se requiere misión de trabajo'] ?? '').trim();
                 const deshabilitarMision = requiereMisionTrabajo === 'No';
 
                 return (
                   <>
                     {show5A && (
                       <>
-                        <h3 className="block-title">{displayText('BLOQUE 5. Utilidad pÃºblica')}</h3>
+                        <h3 className="block-title">{displayText('BLOQUE 5. Utilidad pública')}</h3>
                         <div className="grid-2">
                           <Campo
                             label="43. Fecha de entrevista psicosocial"
@@ -2577,75 +3816,80 @@ export default function FormularioAtencion({ numeroInicial }) {
                             disabled={bloquearBloque5}
                           />
                           <Campo
-                            label="46. Se requiere misiÃ³n de trabajo"
-                            name="Se requiere misiÃ³n de trabajo"
+                            label="46. Se requiere misión de trabajo"
+                            name="Se requiere misión de trabajo"
                             type="select"
-                            value={registro['Se requiere misiÃ³n de trabajo']}
+                            value={registro['Se requiere misión de trabajo']}
                             onChange={handleChange}
                             options={OPCIONES_SI_NO}
                             required={false}
                             disabled={bloquearBloque5}
                           />
                           <Campo
-                            label="47. Fecha de solicitud de misiÃ³n de trabajo"
-                            name="Fecha de solicitud de misiÃ³n de trabajo"
+                            label="47. Fecha de solicitud de misión de trabajo"
+                            name="Fecha de solicitud de misión de trabajo"
                             type="date"
-                            value={registro['Fecha de solicitud de misiÃ³n de trabajo']}
+                            value={registro['Fecha de solicitud de misión de trabajo']}
                             onChange={handleChange}
                             required={false}
-                            disabled={isAuroraFieldDisabled('Fecha de solicitud de misiÃ³n de trabajo', bloquearBloque5 || deshabilitarMision)}
+                            disabled={isAuroraFieldDisabled('Fecha de solicitud de misión de trabajo', bloquearBloque5 || deshabilitarMision)}
                           />
                           <Campo
-                            label="48. Fecha de asignaciÃ³n de investigador"
-                            name="Fecha de asignaciÃ³n de investigador"
+                            label="48. Fecha de asignación de investigador"
+                            name="Fecha de asignación de investigador"
                             type="date"
-                            value={registro['Fecha de asignaciÃ³n de investigador']}
+                            value={registro['Fecha de asignación de investigador']}
                             onChange={handleChange}
                             required={false}
-                            disabled={isAuroraFieldDisabled('Fecha de asignaciÃ³n de investigador', bloquearBloque5 || deshabilitarMision)}
+                            disabled={isAuroraFieldDisabled('Fecha de asignación de investigador', bloquearBloque5 || deshabilitarMision)}
                           />
                           <Campo
                             label="49. Fecha en la que se reciben todas las pruebas"
                             name="Fecha en la que se reciben todas las pruebas"
                             type="date"
-                            value={registro['Fecha en la que se reciben todas las pruebas']}
+                            value={fechaRecepcionPruebasUtilidad}
                             onChange={handleChange}
                             required={false}
+                            maxDate={maxAllowedFutureDateIso}
                             disabled={bloquearBloque5}
                           />
                           <Campo
-                            label="50. Fecha de radicaciÃ³n de solicitud de utilidad pÃºblica"
-                            name="Fecha de radicaciÃ³n de solicitud de utilidad pÃºblica"
+                            label="50. Fecha de radicación de solicitud de utilidad pública"
+                            name="Fecha de radicación de solicitud de utilidad pública"
                             type="date"
-                            value={registro['Fecha de radicaciÃ³n de solicitud de utilidad pÃºblica']}
+                            value={fechaPresentacionSolicitudUtilidad}
                             onChange={handleChange}
                             required={false}
+                            minDate={minFechaPresentacionUtilidadIso}
+                            maxDate={maxAllowedFutureDateIso}
                             disabled={bloquearBloque5}
                           />
                           <Campo
-                            label="51. Fecha de decisiÃ³n de la autoridad"
-                            name="Fecha de decisiÃ³n de la autoridad"
+                            label="51. Fecha de decisión de la autoridad"
+                            name="Fecha de decisión de la autoridad"
                             type="date"
-                            value={registro['Fecha de decisiÃ³n de la autoridad']}
+                            value={fechaDecisionAutoridadBloque5}
                             onChange={handleChange}
-                            required={false}
+                            minDate={minFechaDecisionUtilidadIso}
+                            maxDate={maxAllowedFutureDateIso}
                             disabled={bloquearBloque5}
+                            showObligatoria
                           />
                           <Campo
-                            label="52. Sentido de la decisiÃ³n"
-                            name="Sentido de la decisiÃ³n"
+                            label="52. Sentido de la decisión"
+                            name="Sentido de la decisión"
                             type="select"
-                            value={registro['Sentido de la decisiÃ³n']}
+                            value={sentidoDecisionBloque5}
                             onChange={handleChange}
                             options={OPCIONES_BLOQUE_5A_SENTIDO_DECISION}
-                            required={false}
                             disabled={bloquearBloque5}
+                            showObligatoria
                           />
                           <Campo
-                            label="53. Motivo de la decisiÃ³n negativa"
-                            name="Motivo de la decisiÃ³n negativa"
+                            label="53. Motivo de la decisión negativa"
+                            name="Motivo de la decisión negativa"
                             type="select"
-                            value={registro['Motivo de la decisiÃ³n negativa']}
+                            value={motivoDecisionNegativaBloque5}
                             onChange={handleChange}
                             options={OPCIONES_BLOQUE_5A_MOTIVO_DECISION_NEGATIVA}
                             required={false}
@@ -2655,40 +3899,57 @@ export default function FormularioAtencion({ numeroInicial }) {
                             label="54. Se presenta recurso"
                             name="Se presenta recurso"
                             type="select"
-                            value={registro['Se presenta recurso']}
+                            value={sePresentaRecursoBloque5}
                             onChange={handleChange}
                             options={OPCIONES_SI_NO}
                             required={false}
                             disabled={bloquearBloque5 || !habilitarNegativaUtilidadPublica}
                           />
                           <Campo
-                            label="55. Fecha de recurso en caso desfavorable"
-                            name="Fecha de recurso en caso desfavorable"
+                            label="55. Fecha de presentación del recurso"
+                            name={KEY_FECHA_PRESENTACION_RECURSO}
                             type="date"
-                            value={registro['Fecha de recurso en caso desfavorable']}
+                            value={fechaPresentacionRecursoBloque5}
                             onChange={handleChange}
                             required={false}
                             disabled={
                               bloquearBloque5 ||
                               !habilitarNegativaUtilidadPublica ||
-                              !isEquivalenteSi(registro?.['Se presenta recurso'])
+                              !isEquivalenteSi(sePresentaRecursoBloque5)
                             }
                           />
                           <Campo
-                            label="56. Sentido de la decisiÃ³n que resuelve recurso"
-                            name="Sentido de la decisiÃ³n que resuelve recurso"
+                            label="56. Fecha de la decisión del recurso"
+                            name={KEY_FECHA_DECISION_RECURSO}
+                            type="date"
+                            value={fechaDecisionRecursoBloque5}
+                            onChange={handleChange}
+                            required={false}
+                            disabled={
+                              bloquearBloque5 ||
+                              !habilitarNegativaUtilidadPublica ||
+                              !isEquivalenteSi(sePresentaRecursoBloque5)
+                            }
+                          />
+                          <Campo
+                            label="57. Sentido de la decisión que resuelve recurso"
+                            name="Sentido de la decisión que resuelve recurso"
                             type="select"
-                            value={registro['Sentido de la decisiÃ³n que resuelve recurso']}
+                            value={sentidoResuelveRecursoBloque5}
                             onChange={handleChange}
                             options={OPCIONES_BLOQUE_5A_SENTIDO_DECISION_RESUELVE_RECURSO}
                             required={false}
-                            disabled={bloquearBloque5 || !isEquivalenteSi(registro?.['Se presenta recurso'])}
+                            disabled={
+                              bloquearBloque5 ||
+                              !habilitarNegativaUtilidadPublica ||
+                              !isEquivalenteSi(sePresentaRecursoBloque5)
+                            }
                           />
                           <Campo
-                            label="57. Cierre del caso por imposibilidad de avanzar (si aplica)"
-                            name="Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pÃºblica"
+                            label="58. Cierre del caso por imposibilidad de avanzar (si aplica)"
+                            name="Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública"
                             type="select"
-                            value={registro['Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pÃºblica']}
+                            value={registro['Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública']}
                             onChange={handleChange}
                             options={OPCIONES_CIERRE_CASO_IMPOSIBILIDAD_AVANZAR}
                             required={false}
@@ -2700,16 +3961,17 @@ export default function FormularioAtencion({ numeroInicial }) {
 
                     {show5B && (
                       <>
-                        <h3 className="block-title">{displayText('BLOQUE 5. TrÃ¡mite de la solicitud')}</h3>
+                        <h3 className="block-title">{displayText('BLOQUE 5. Trámite de la solicitud')}</h3>
                         <div className="grid-2">
                           <Campo
-                            label="43. Fecha de recepciÃ³n de pruebas aportadas por el usuario (si aplica)"
-                            name="Fecha de recepciÃ³n de pruebas aportadas por el usuario (si aplica)"
+                            label="43. Fecha de recepción de pruebas aportadas por el usuario (si aplica)"
+                            name="Fecha de recepción de pruebas aportadas por el usuario (si aplica)"
                             type="date"
-                            value={registro['Fecha de recepciÃ³n de pruebas aportadas por el usuario (si aplica)']}
+                            value={fechaRecepcionPruebasTramite}
                             onChange={handleChange}
                             required={false}
-                            disabled={bloquearBloque5}
+                            maxDate={maxAllowedFutureDateIso}
+                            disabled={bloquearBloque5 || !habilitarRecepcionPruebasTramite}
                           />
                           <Campo
                             label="44. Fecha de solicitud de documentos al Inpec (si aplica)"
@@ -2721,38 +3983,42 @@ export default function FormularioAtencion({ numeroInicial }) {
                             disabled={bloquearBloque5}
                           />
                           <Campo
-                            label="45. Fecha de presentaciÃ³n de la solicitud a la autoridad"
-                            name="Fecha de presentaciÃ³n de la solicitud a la autoridad"
+                            label="45. Fecha de presentación de la solicitud a la autoridad"
+                            name="Fecha de presentación de la solicitud a la autoridad"
                             type="date"
-                            value={registro['Fecha de presentaciÃ³n de la solicitud a la autoridad']}
+                            value={fechaPresentacionSolicitudTramite}
                             onChange={handleChange}
                             required={false}
+                            minDate={minFechaPresentacionTramiteIso}
+                            maxDate={maxAllowedFutureDateIso}
                             disabled={bloquearBloque5}
                           />
                           <Campo
-                            label="46. Fecha de decisiÃ³n de la autoridad"
-                            name="Fecha de decisiÃ³n de la autoridad"
+                            label="46. Fecha de decisión de la autoridad"
+                            name="Fecha de decisión de la autoridad"
                             type="date"
-                            value={registro['Fecha de decisiÃ³n de la autoridad']}
+                            value={fechaDecisionAutoridadBloque5}
                             onChange={handleChange}
-                            required={false}
+                            minDate={minFechaDecisionTramiteIso}
+                            maxDate={maxAllowedFutureDateIso}
                             disabled={bloquearBloque5}
+                            showObligatoria
                           />
                           <Campo
-                            label="47. Sentido de la decisiÃ³n"
-                            name="Sentido de la decisiÃ³n"
+                            label="47. Sentido de la decisión"
+                            name="Sentido de la decisión"
                             type="select"
-                            value={registro['Sentido de la decisiÃ³n']}
+                            value={sentidoDecisionBloque5}
                             onChange={handleChange}
                             options={OPCIONES_BLOQUE_5B_SENTIDO_DECISION}
-                            required={false}
                             disabled={bloquearBloque5}
+                            showObligatoria
                           />
                           <Campo
-                            label="48. Motivo de la decisiÃ³n negativa"
-                            name="Motivo de la decisiÃ³n negativa"
+                            label="48. Motivo de la decisión negativa"
+                            name="Motivo de la decisión negativa"
                             type="select"
-                            value={registro['Motivo de la decisiÃ³n negativa']}
+                            value={motivoDecisionNegativaBloque5}
                             onChange={handleChange}
                             options={OPCIONES_BLOQUE_5B_MOTIVO_DECISION_NEGATIVA}
                             required={false}
@@ -2762,41 +4028,54 @@ export default function FormularioAtencion({ numeroInicial }) {
                             label="49. Se presenta recurso"
                             name="Se presenta recurso"
                             type="select"
-                            value={registro['Se presenta recurso']}
+                            value={sePresentaRecursoBloque5}
                             onChange={handleChange}
                             options={OPCIONES_SI_NO}
                             required={false}
                             disabled={bloquearBloque5 || !habilitarNegativaTramiteNormal}
                           />
                           <Campo
-                            label="50. Fecha de recurso en caso desfavorable"
-                            name="Fecha de recurso en caso desfavorable"
+                            label="50. Fecha de presentación del recurso"
+                            name={KEY_FECHA_PRESENTACION_RECURSO}
                             type="date"
-                            value={registro['Fecha de recurso en caso desfavorable']}
+                            value={fechaPresentacionRecursoBloque5}
                             onChange={handleChange}
                             required={false}
                             disabled={
                               bloquearBloque5 ||
                               !habilitarNegativaTramiteNormal ||
-                              !isEquivalenteSi(registro?.['Se presenta recurso'])
+                              !isEquivalenteSi(sePresentaRecursoBloque5)
                             }
                           />
                           <Campo
-                            label="51. Sentido de la decisiÃ³n que resuelve recurso"
-                            name="Sentido de la decisiÃ³n que resuelve la solicitud"
+                            label="51. Fecha de la decisión del recurso"
+                            name={KEY_FECHA_DECISION_RECURSO}
+                            type="date"
+                            value={fechaDecisionRecursoBloque5}
+                            onChange={handleChange}
+                            required={false}
+                            disabled={
+                              bloquearBloque5 ||
+                              !habilitarNegativaTramiteNormal ||
+                              !isEquivalenteSi(sePresentaRecursoBloque5)
+                            }
+                          />
+                          <Campo
+                            label="52. Sentido de la decisión que resuelve recurso"
+                            name="Sentido de la decisión que resuelve la solicitud"
                             type="select"
-                            value={registro['Sentido de la decisiÃ³n que resuelve la solicitud']}
+                            value={sentidoResuelveSolicitudBloque5}
                             onChange={handleChange}
                             options={OPCIONES_BLOQUE_5B_SENTIDO_DECISION_RESUELVE_SOLICITUD}
                             required={false}
                             disabled={
                               bloquearBloque5 ||
                               !habilitarNegativaTramiteNormal ||
-                              !isEquivalenteSi(registro?.['Se presenta recurso'])
+                              !isEquivalenteSi(sePresentaRecursoBloque5)
                             }
                           />
                           <Campo
-                            label="52. Cierre del caso por imposibilidad de avanzar (si aplica)"
+                            label="53. Cierre del caso por imposibilidad de avanzar (si aplica)"
                             name="Cierre del caso por imposibilidad de avanzar (si aplica)"
                             type="select"
                             value={registro['Cierre del caso por imposibilidad de avanzar (si aplica)']}
@@ -2824,7 +4103,7 @@ export default function FormularioAtencion({ numeroInicial }) {
             <>
               {celesteVisibleBlocks.has('bloque2Celeste') && (
                 <>
-                  <h3 className="block-title">{displayText('BLOQUE 2 (CELESTE) - InformaciÃ³n del proceso SISIPEC')}</h3>
+                  <h3 className="block-title">{displayText('BLOQUE 2 (SINDICADOS) - Información del proceso SISIPEC')}</h3>
                   <div className="grid-2">
                     <Campo
                       label="14. Autoridad a cargo"
@@ -2834,9 +4113,9 @@ export default function FormularioAtencion({ numeroInicial }) {
                       required
                     />
                     <Campo
-                      label="15. NÃºmero de proceso"
-                      name="NÃºmero de proceso"
-                      value={registro['NÃºmero de proceso']}
+                      label="15. Número de proceso"
+                      name="Número de proceso"
+                      value={registro['Número de proceso']}
                       onChange={handleChange}
                       required
                     />
@@ -2871,11 +4150,11 @@ export default function FormularioAtencion({ numeroInicial }) {
 
               {celesteVisibleBlocks.has('bloque3Celeste') && (
                 <>
-                  <h3 className="block-title">{displayText('BLOQUE 3 (CELESTE) - AnÃ¡lisis jurÃ­dico')}</h3>
+                  <h3 className="block-title">{displayText('BLOQUE 3 (SINDICADOS) - Análisis jurídico')}</h3>
                   <div className="grid-2">
                     <Campo
                       label="19. Defensor(a) p\u00fablico(a) asignado para tramitar la solicitud"
-                      name="Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud"
+                      name="Defensor(a) Público(a) Asignado para tramitar la solicitud"
                       type="datalist"
                       value={getDefensorAsignadoValue(registro)}
                       onChange={handleChange}
@@ -2885,9 +4164,9 @@ export default function FormularioAtencion({ numeroInicial }) {
                     />
                     <Campo
                       label="20. Fecha de an\u00e1lisis jur\u00eddico del caso"
-                      name="Fecha de anÃ¡lisis jurÃ­dico del caso"
+                      name="Fecha de análisis jurídico del caso"
                       type="date"
-                      value={registro['Fecha de anÃ¡lisis jurÃ­dico del caso']}
+                      value={registro['Fecha de análisis jurídico del caso']}
                       onChange={handleChange}
                       required
                       showObligatoria
@@ -2895,9 +4174,9 @@ export default function FormularioAtencion({ numeroInicial }) {
                     <div className="question-40-highlight">
                       <Campo
                         label="21. An\u00e1lisis jur\u00eddico y actuaci\u00f3n a desplegar"
-                        name="PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÃ‰RMINOS"
+                        name="PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS"
                         type="select"
-                        value={registro['PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÃ‰RMINOS']}
+                        value={registro['PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS']}
                         onChange={handleChange}
                         options={OPCIONES_CELESTE_ANALISIS_ACTUACION}
                         required
@@ -2906,9 +4185,9 @@ export default function FormularioAtencion({ numeroInicial }) {
                     </div>
                     <Campo
                       label="22. Resumen del an\u00e1lisis jur\u00eddico del caso"
-                      name="RESUMEN DEL ANÃLISIS JURÃDICO DEL PRESENTE CASO"
+                      name="RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO"
                       type="textarea"
-                      value={registro['RESUMEN DEL ANÃLISIS JURÃDICO DEL PRESENTE CASO']}
+                      value={registro['RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO']}
                       onChange={handleChange}
                       required={false}
                       showObligatoria
@@ -2919,7 +4198,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
               {celesteVisibleBlocks.has('bloque4Celeste') && (
                 <>
-                  <h3 className="block-title">{displayText('BLOQUE 4 (CELESTE) - Entrevista con el usuario')}</h3>
+                  <h3 className="block-title">{displayText('BLOQUE 4 (SINDICADOS) - Entrevista con el usuario')}</h3>
                   <div className="grid-2">
                     <Campo
                       label="23. Fecha de la entrevista para informar al usuario"
@@ -2936,38 +4215,38 @@ export default function FormularioAtencion({ numeroInicial }) {
 
               {celesteVisibleBlocks.has('bloque5Celeste') && (
                 <>
-                  <h3 className="block-title">{displayText('BLOQUE 5 (CELESTE) - TrÃ¡mite de la solicitud')}</h3>
+                  <h3 className="block-title">{displayText('BLOQUE 5 (SINDICADOS) - Trámite de la solicitud')}</h3>
                   <div className="grid-2">
                     <Campo
-                      label="24. Fecha de presentaciÃ³n de la solicitud de audiencia"
-                      name="FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÃAS PARA SUSTENTAR REVOCATORIA"
+                      label="24. Fecha de presentación de la solicitud de audiencia"
+                      name="FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA"
                       type="date"
-                      value={registro['FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÃAS PARA SUSTENTAR REVOCATORIA']}
+                      value={registro['FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA']}
                       onChange={handleChange}
                       required={false}
                     />
                     <Campo
-                      label="25. Fecha de realizaciÃ³n de la audiencia"
-                      name="FECHA DE REALIZACIÃ“N DE AUDIENCIA"
+                      label="25. Fecha de realización de la audiencia"
+                      name="FECHA DE REALIZACIÓN DE AUDIENCIA"
                       type="date"
-                      value={registro['FECHA DE REALIZACIÃ“N DE AUDIENCIA']}
+                      value={registro['FECHA DE REALIZACIÓN DE AUDIENCIA']}
                       onChange={handleChange}
                       required={false}
                     />
                     <Campo
-                      label="26. Sentido de la decisiÃ³n"
-                      name="SENTIDO DE LA DECISIÃ“N"
+                      label="26. Sentido de la decisión"
+                      name="SENTIDO DE LA DECISIÓN"
                       type="select"
-                      value={registro['SENTIDO DE LA DECISIÃ“N']}
+                      value={registro['SENTIDO DE LA DECISIÓN']}
                       onChange={handleChange}
                       options={OPCIONES_SENTIDO_DECISION_CELESTE}
                       required={false}
                     />
                     <Campo
-                      label="27. Motivo de la decisiÃ³n negativa"
-                      name="MOTIVO DE LA DECISIÃ“N NEGATIVA"
+                      label="27. Motivo de la decisión negativa"
+                      name="MOTIVO DE LA DECISIÓN NEGATIVA"
                       type="select"
-                      value={registro['MOTIVO DE LA DECISIÃ“N NEGATIVA']}
+                      value={registro['MOTIVO DE LA DECISIÓN NEGATIVA']}
                       onChange={handleChange}
                       options={OPCIONES_MOTIVO_DECISION_NEGATIVA_CELESTE}
                       required={false}
@@ -2975,27 +4254,36 @@ export default function FormularioAtencion({ numeroInicial }) {
                     />
                     <Campo
                       label="28. Se presenta recurso"
-                      name="Â¿SE RECURRIÃ“ EN CASO DE DECISIÃ“N NEGATIVA?"
+                      name="¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?"
                       type="select"
-                      value={registro['Â¿SE RECURRIÃ“ EN CASO DE DECISIÃ“N NEGATIVA?']}
+                      value={registro['¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?']}
                       onChange={handleChange}
                       options={OPCIONES_SI_NO}
                       required={false}
                     />
                     <Campo
-                      label="29. Fecha de recurso en caso desfavorable"
-                      name="Fecha de presentaciÃ³n del recurso"
+                      label="29. Fecha de presentación del recurso"
+                      name="Fecha de presentación del recurso"
                       type="date"
-                      value={registro['Fecha de presentaciÃ³n del recurso']}
+                      value={registro['Fecha de presentación del recurso']}
                       onChange={handleChange}
                       required={false}
                       disabled={!habilitarCelesteRecurso}
                     />
                     <Campo
-                      label="30. Sentido de la decisiÃ³n que resuelve recurso"
-                      name="SENTIDO DE LA DECISIÃ“N QUE RESUELVE RECURSO"
+                      label="30. Fecha de la decisión del recurso"
+                      name="Fecha de la decisión del recurso"
+                      type="date"
+                      value={registro['Fecha de la decisión del recurso']}
+                      onChange={handleChange}
+                      required={false}
+                      disabled={!habilitarCelesteRecurso}
+                    />
+                    <Campo
+                      label="31. Sentido de la decisión que resuelve recurso"
+                      name="SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO"
                       type="select"
-                      value={registro['SENTIDO DE LA DECISIÃ“N QUE RESUELVE RECURSO']}
+                      value={registro['SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO']}
                       onChange={handleChange}
                       options={OPCIONES_SENTIDO_DECISION_RECURSO_CELESTE}
                       required={false}
@@ -3014,6 +4302,10 @@ export default function FormularioAtencion({ numeroInicial }) {
           )}
 
           <div className="actions-center"> 
+            <button className="save-button" type="button" onClick={handleGenerarPdfCasoActual}>
+              GENERAR CONSOLIDADO (PDF)
+            </button>
+
             <button className="save-button" type="button" onClick={handleGuardar}>
               GUARDAR ENTREVISTA
             </button>
@@ -3031,14 +4323,6 @@ export default function FormularioAtencion({ numeroInicial }) {
     </>
   );
 }
-
-
-
-
-
-
-
-
 
 
 

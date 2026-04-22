@@ -1,5 +1,9 @@
 # AURORA - Estrategia de Pruebas
 
+Documento operativo vigente:
+
+- [Protocolo de pruebas v1](./11_protocolo_de_pruebas.md)
+
 ## 1. Estado actual verificable
 
 ## 1.1 Frontend
@@ -17,6 +21,7 @@ Cobertura actual de tests observada:
 
 - Validacion de visibilidad Aurora (`AURORA.B4.VISIBILIDAD.2`).
 - Validacion de dependencias Aurora en bloque 5A y 5B (`AURORA.B5A.*`, `AURORA.B5B.*`).
+- Consistencia del flujo de recurso con dos fechas (presentacion/decision) en formularios activos.
 - Validacion de visibilidad Celeste (`CELESTE.B4.VISIBILIDAD.1`, `CELESTE.B5.VISIBILIDAD.2`).
 - Validacion de estado de actuaciones y semaforo (`ESTADO.*`).
 
@@ -31,9 +36,19 @@ Cobertura actual de tests observada:
 - Validar contratos de API usados por frontend.
 - Reducir riesgo en persistencia CSV (lectura/escritura y actuacion nueva).
 
-## 3. Propuesta incremental (pendiente de implementar)
+## 3. Enfoque vigente
 
-## 3.1 Nivel unitario
+La estrategia se ejecuta en tres niveles:
+
+1. humo técnico por commit/PR;
+2. regresión funcional por flujos de negocio;
+3. preliberación con evidencia y control de severidad.
+
+El detalle de casos, criterios de salida y política de severidad está formalizado en `docs/11_protocolo_de_pruebas.md`.
+
+## 4. Cobertura objetivo por capa
+
+## 4.1 Nivel unitario
 
 - Frontend:
   - ampliar pruebas de `evaluateAuroraRules`.
@@ -45,28 +60,31 @@ Cobertura actual de tests observada:
     - `updateByDocumento`
     - `createActuacionByDocumento`
 
-## 3.2 Nivel integracion
+## 4.2 Nivel integracion
 
 - Pruebas de rutas Express con fixtures CSV controlados:
   - `GET/PUT /api/ppl/:documento`
   - `GET/POST /api/ppl/:documento/actuaciones`
-  - `GET /api/ppl/condenados` valida que solo retorne `condenado` y excluya `sindicado` (regresion critica para PAG).
+  - `GET /api/ppl/condenados` (sin `tipo`) valida que solo retorne `condenado` y excluya `sindicado` (regresion critica para PAG).
+  - `GET /api/ppl/condenados?tipo=all` valida que incluya tanto `condenado` como `sindicado` (regresion critica para Usuarios asignados).
   - `GET /api/defensores`, `GET /api/defensores?source=condenados` y `POST /api/defensores`
 
-## 3.3 Nivel UI (flujo critico)
+## 4.3 Nivel UI (flujo critico)
 
 - Buscar PPL -> editar -> guardar -> verificar persistencia.
 - Crear nueva actuacion -> diligenciar -> guardar -> verificar historial.
 
-## 4. Criterios minimos de calidad sugeridos
+## 5. Criterios minimos de calidad sugeridos
 
 - Ejecutar en CI:
-  - `frontend: npm run lint && npm run test && npm run build`
-  - `backend: TODO` (definir runner y suite)
+  - `root: npm run encoding:check` (bloquea mojibake y archivos no UTF-8, incluyendo CSV fuente)
+  - `root: npm run qa:smoke`
 - Definir un baseline de cobertura para utilidades de reglas.
 
-## 5. TODO de testing
+Control local recomendado antes de PR:
 
-- TODO: definir stack de pruebas backend (ejemplo: Vitest/Jest + supertest).
-- TODO: definir estrategia de fixtures CSV por escenario funcional.
-- TODO: definir pipeline CI y umbrales de calidad (coverage, lint, build).
+1. `npm run encoding:check`
+2. Si hay errores de codificacion: `npm run encoding:normalize`
+3. `npm run encoding:check`
+4. `npm --prefix frontend run lint`
+5. `npm --prefix frontend test`
