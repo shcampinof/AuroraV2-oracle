@@ -66,11 +66,24 @@ const DEFAULT_API_BASE = '/api';
 
 const API_BASE = shouldUseConfiguredApiBase(CONFIGURED_API_BASE) ? CONFIGURED_API_BASE : DEFAULT_API_BASE;
 
-const DEFAULT_FETCH_TIMEOUT_MS = 60000;
+const DEFAULT_FETCH_TIMEOUT_MS = 120000;
+
+function createFetchTimeoutError(timeoutMs) {
+  const seconds = Math.max(1, Math.round(Number(timeoutMs || DEFAULT_FETCH_TIMEOUT_MS) / 1000));
+  const err = new Error(
+    `La consulta tardó demasiado en responder (${seconds}s). Intente de nuevo o aplique filtros para reducir la carga.`
+  );
+  err.code = 'FETCH_TIMEOUT';
+  return err;
+}
 
 async function fetchJson(url, options = {}, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort('timeout');
+  }, timeoutMs);
   try {
     const requestOptions = {
       ...(options || {}),
@@ -80,12 +93,22 @@ async function fetchJson(url, options = {}, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS
       const res = await fetch(url, requestOptions);
       return res;
     } catch (firstError) {
+      if (timedOut || controller.signal.aborted) {
+        throw createFetchTimeoutError(timeoutMs);
+      }
       // Fallback de resiliencia: si la base configurada falla en deploy, intenta same-origin /api.
       const fallbackBase = '/api';
       const canRetryWithFallback = API_BASE !== fallbackBase && String(url || '').startsWith(API_BASE);
       if (!canRetryWithFallback) throw firstError;
       const fallbackUrl = `${fallbackBase}${String(url).slice(API_BASE.length)}`;
-      return fetch(fallbackUrl, requestOptions);
+      try {
+        return await fetch(fallbackUrl, requestOptions);
+      } catch (fallbackError) {
+        if (timedOut || controller.signal.aborted) {
+          throw createFetchTimeoutError(timeoutMs);
+        }
+        throw fallbackError;
+      }
     }
   } finally {
     clearTimeout(timeout);
@@ -222,6 +245,26 @@ export async function getCondenados(options = 1000) {
   return readJsonOrThrow(res, 'Error consultando condenados'); // { columns, rows, meta }
 }
 
+export async function getCondenadosFilterOptions(options = {}) {
+  const source = options && typeof options === 'object' ? options : {};
+  const rawTipo = String(source?.tipo || '').trim().toLowerCase();
+  const safeTipo =
+    rawTipo === 'all' || rawTipo === 'condenado' || rawTipo === 'sindicado' ? rawTipo : 'all';
+
+  const filters = source?.filters && typeof source.filters === 'object' ? source.filters : {};
+  const params = new URLSearchParams();
+  params.set('tipo', safeTipo);
+
+  ['departamento', 'municipio', 'defensor'].forEach((key) => {
+    const value = String(filters?.[key] ?? '').trim();
+    if (value) params.set(key, value);
+  });
+
+  const res = await fetchJson(`${API_BASE}/ppl/condenados/filter-options?${params.toString()}`);
+  if (!res.ok) throw new Error('Error consultando opciones de filtros');
+  return readJsonOrThrow(res, 'Error consultando opciones de filtros');
+}
+
 export async function getDefensores() {
   const res = await fetchJson(`${API_BASE}/defensores`);
   if (!res.ok) throw new Error('Error consultando defensores');
@@ -320,4 +363,3 @@ export async function assignDefensorPpl(documento, defensor, options = {}) {
   if (!res.ok) throw new Error('Error guardando la asignacion de defensor');
   return readJsonOrThrow(res, 'Error guardando la asignacion de defensor');
 }
-

@@ -3,6 +3,7 @@ const { getOptionalGestionSequence } = require('../config/oracle');
 const personaRepo = require('../repositories/oracle/personaRepository');
 const situacionRepo = require('../repositories/oracle/situacionRepository');
 const gestionRepo = require('../repositories/oracle/gestionRepository');
+const calificacionConductaRepo = require('../repositories/oracle/calificacionConductaRepository');
 const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const { DEFAULT_SCOPE_DEPARTAMENTOS } = require('../repositories/oracle/sqlFragments');
 
@@ -39,6 +40,9 @@ const LEGACY_COLUMNS = [
   'Fase de tramiento',
   '¿ Cuenta con requerimientos judiciales por otros procesos ?',
   'Fecha última calificación',
+  'No.Acta de calificación de conducta',
+  'Evaluación de conducta desde',
+  'Evaluación de conducta hasta',
   'Calificación de conducta',
   'PAG',
   'Defensor(a) Público(a) Asignado para tramitar la solicitud',
@@ -73,11 +77,15 @@ const LEGACY_COLUMNS = [
   'FECHA DE REALIZACIÓN DE AUDIENCIA',
   'Fecha de presentación de la solicitud a la autoridad',
   'Fecha de decisión de la autoridad',
+  'Fecha de radicación de solicitud de utilidad pública',
   'Sentido de la decisión',
   'Motivo de la decisión negativa',
   'Se presenta recurso',
   'Fecha de recurso en caso desfavorable',
+  'Fecha de presentación del recurso',
+  'Fecha de la decisión del recurso',
   'Sentido de la decisión que resuelve recurso',
+  'Cierre del caso por imposibilidad de avanzar (si aplica)',
   'Sentido de la decisión que resuelve la solicitud',
   'Estado del caso',
   'Estado del trámite',
@@ -112,6 +120,21 @@ const DATE_FIELDS = new Set([
   'FECHA_PRESENTACION_SOLICITUD_AUTORIDAD',
   'FECHA_DECISION_AUTORIDAD',
   'FECHA_RECURSO_DESFAVORABLE',
+  'FECHA_RADICACION_UTILIDAD',
+  'FECHA_PRESENTACION_RECURSO',
+  'FECHA_DECISION_RECURSO',
+  'FECHA_CALIFICACION_1',
+  'FECHA_INICIO_1',
+  'FECHA_FIN_1',
+  'FECHA_CALIFICACION_2',
+  'FECHA_INICIO_2',
+  'FECHA_FIN_2',
+  'FECHA_CALIFICACION_3',
+  'FECHA_INICIO_3',
+  'FECHA_FIN_3',
+  'FECHA_CALIFICACION_4',
+  'FECHA_INICIO_4',
+  'FECHA_FIN_4',
 ]);
 
 const NUMERIC_FIELDS = new Set([
@@ -124,6 +147,9 @@ const NUMERIC_FIELDS = new Set([
   'PORCENTAJE',
   'ACTIVO',
   'CEDULA_DEFENSOR',
+  'CEDULA_PAG',
+  'DIAS_PRISION',
+  'DIAS_LIBERTAD',
 ]);
 
 function normalizeText(value) {
@@ -181,6 +207,16 @@ function toIsoDate(value) {
   const parsed = parseLooseDate(value);
   if (!parsed) return String(value ?? '').trim();
   return parsed.toISOString().slice(0, 10);
+}
+
+function buildCalificacionesConductaFromRaw(raw = {}) {
+  return [1, 2, 3, 4].map((idx) => ({
+    fechaUltimaCalificacion: toIsoDate(raw[`C_FECHA_CALIFICACION_${idx}`]),
+    numeroActa: String(raw[`C_ACTA_${idx}`] ?? ''),
+    evaluacionDesde: toIsoDate(raw[`C_FECHA_INICIO_${idx}`]),
+    evaluacionHasta: toIsoDate(raw[`C_FECHA_FIN_${idx}`]),
+    calificacionConducta: String(raw[`C_CALIFICACION_${idx}`] ?? ''),
+  }));
 }
 
 function toTypedDbValue(column, value) {
@@ -254,15 +290,17 @@ bind(['Porcentaje de avance de pena cumplida', 'Porcentaje'], 'SITUACION', 'PORC
 bind(['Fase de tramiento', 'Fase'], 'SITUACION', 'FASE');
 bind(['Enfoque Étnico/Racial/Cultural', 'Enfoque'], 'SITUACION', 'ENFOQUE');
 bind(['¿ Cuenta con requerimientos judiciales por otros procesos ?', 'Requerimientos'], 'SITUACION', 'REQUERIMIENTOS');
+bind(['Categorización', 'Categorizacion'], 'SITUACION', 'CATEGORIZACION');
+bind(['Dias_Prision', 'Días restantes para cumplir requisito temporal de prisión domiciliaria'], 'SITUACION', 'DIAS_PRISION');
+bind(['Dias_libertad', 'Días restantes para cumplir requisito temporal de libertad condicional'], 'SITUACION', 'DIAS_LIBERTAD');
 
-bind(['Fecha última calificación', 'Fecha ultima calificacion', 'Fecha calificacion'], 'SITUACION', 'FECHA_CALIFICACION');
-bind(['Calificación de conducta', 'Calificacion de conducta', 'Calificacion'], 'SITUACION', 'CALIFICACION');
 bind(['PAG'], 'GESTION', 'PAG');
+bind(['Cedula_PAG', 'Cédula PAG', 'Cedula PAG', 'cedulaPag'], 'GESTION', 'CEDULA_PAG');
 bind(['Defensor(a) Público(a) Asignado para tramitar la solicitud', 'Defensor(a) Publico(a) Asignado para tramitar la solicitud', 'Defensor', 'defensorAsignado'], 'GESTION', 'DEFENSOR');
 bind(['Cedula defensor', 'Cédula defensor', 'cedulaDefensor', 'defensorCedula'], 'GESTION', 'CEDULA_DEFENSOR');
 bind(['Acción a realizar', 'Accion a realizar'], 'GESTION', 'ACCION_REALIZAR');
 bind(['Fecha de análisis jurídico del caso', 'Fecha de analisis juridico del caso', 'Fecha analisis'], 'GESTION', 'FECHA_ANALISIS');
-bind(['PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS', 'Vencimiento de terminos'], 'GESTION', 'VENCIMIENTO_TERMINOS');
+bind(['Vencimiento de terminos'], 'GESTION', 'VENCIMIENTO_TERMINOS');
 bind(['Procedencia de utilidad pública (solo para mujeres)', 'Utilidad publica'], 'GESTION', 'UTILIDAD_PUBLICA');
 bind(['Procedencia de libertad condicional', 'Libertad condicional'], 'GESTION', 'LIBERTAD_CONDICIONAL');
 bind(['Procedencia de prisión domiciliaria de mitad de pena', 'Prision domiciliaria de mitad de pena'], 'GESTION', 'PRISION_DOMICILIARIA_MITAD_PENA');
@@ -270,10 +308,27 @@ bind(['Procedencia de pena cumplida'], 'GESTION', 'PROCEDENCIA_PENA_CUMPLIDA');
 bind(['Procedencia de acumulación de penas'], 'GESTION', 'PROCEDENCIA_ACUMULACION_PENAS');
 bind(['Con qué proceso(s) debe acumular penas (si aplica)', 'Con que proceso(s) debe acumular penas (si aplica)'], 'GESTION', 'CON_QUE_PROCESOS_ACUMULAR');
 bind(['Otras solicitudes a tramitar'], 'GESTION', 'OTRAS_SOLICITUDES_TRAMITAR');
-bind(['Resumen del análisis del caso', 'Resumen del analisis del caso'], 'GESTION', 'RESUMEN_ANALISIS_CASO');
+bind(
+  [
+    'Resumen del análisis del caso',
+    'Resumen del analisis del caso',
+    'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO',
+    'RESUMEN DEL ANALISIS JURIDICO DEL PRESENTE CASO',
+  ],
+  'GESTION',
+  'RESUMEN_ANALISIS_CASO'
+);
 bind(['Fecha de entrevista'], 'GESTION', 'FECHA_ENTREVISTA');
 bind(['Decisión del usuario', 'Decision del usuario'], 'GESTION', 'DECISION_USUARIO');
-bind(['Actuación a adelantar', 'Actuacion a adelantar'], 'GESTION', 'ACTUACION_ADELANTAR');
+bind(
+  [
+    'Actuación a adelantar',
+    'Actuacion a adelantar',
+    'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS',
+  ],
+  'GESTION',
+  'ACTUACION_ADELANTAR'
+);
 bind(['Requiere pruebas'], 'GESTION', 'REQUIERE_PRUEBAS');
 bind(['Poder en caso de avanzar con la solicitud'], 'GESTION', 'PODER_AVANZAR_SOLICITUD');
 bind(['Fecha de entrevista psicosocial'], 'GESTION', 'FECHA_ENTREVISTA_PSICOSOCIAL');
@@ -291,11 +346,51 @@ bind(['FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR R
 bind(['FECHA DE REALIZACIÓN DE AUDIENCIA'], 'GESTION', 'FECHA_REALIZACION_AUDIENCIA');
 bind(['Fecha de presentación de la solicitud a la autoridad', 'Fecha de presentacion de la solicitud a la autoridad'], 'GESTION', 'FECHA_PRESENTACION_SOLICITUD_AUTORIDAD');
 bind(['Fecha de decisión de la autoridad', 'Fecha de decision de la autoridad'], 'GESTION', 'FECHA_DECISION_AUTORIDAD');
+bind(
+  [
+    'Fecha de radicación de solicitud de utilidad pública',
+    'Fecha de radicacion de solicitud de utilidad publica',
+    'Fecha de radicación de la solicitud de utilidad pública',
+    'Fecha de radicacion de la solicitud de utilidad publica',
+  ],
+  'GESTION',
+  'FECHA_RADICACION_UTILIDAD'
+);
 bind(['Sentido de la decisión', 'Sentido de la decision'], 'GESTION', 'SENTIDO_DECISION');
 bind(['Motivo de la decisión negativa', 'Motivo de la decision negativa'], 'GESTION', 'MOTIVO_DECISION_NEGATIVA');
-bind(['Se presenta recurso'], 'GESTION', 'SE_PRESENTA_RECURSO');
+bind(
+  [
+    'Se presenta recurso',
+    '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?',
+    '¿SE RECURRIO EN CASO DE DECISION NEGATIVA?',
+  ],
+  'GESTION',
+  'SE_PRESENTA_RECURSO'
+);
 bind(['Fecha de recurso en caso desfavorable'], 'GESTION', 'FECHA_RECURSO_DESFAVORABLE');
-bind(['Sentido de la decisión que resuelve recurso', 'Sentido de la decision que resuelve recurso'], 'GESTION', 'SENTIDO_DECISION_RESUELVE_RECURSO');
+bind(['Fecha de presentación del recurso', 'Fecha de presentacion del recurso'], 'GESTION', 'FECHA_PRESENTACION_RECURSO');
+bind(['Fecha de la decisión del recurso', 'Fecha de la decision del recurso'], 'GESTION', 'FECHA_DECISION_RECURSO');
+bind(
+  [
+    'Sentido de la decisión que resuelve recurso',
+    'Sentido de la decision que resuelve recurso',
+    'Sentido de la decisión que resuelve la solicitud',
+    'Sentido de la decision que resuelve la solicitud',
+    'SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO',
+    'SENTIDO DE LA DECISION QUE RESUELVE RECURSO',
+  ],
+  'GESTION',
+  'SENTIDO_DECISION_RESUELVE_RECURSO'
+);
+bind(
+  [
+    'Cierre del caso por imposibilidad de avanzar (si aplica)',
+    'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública',
+    'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad publica',
+  ],
+  'GESTION',
+  'CIERRE_CASO'
+);
 
 function toLegacyRecord(raw = {}) {
   const numero = coalesce(raw.P_NUMERO, '');
@@ -336,12 +431,22 @@ function toLegacyRecord(raw = {}) {
     'Redención total acumulada en días': String(raw.S_REDENCION ?? ''),
     'Tiempo efectivo de pena cumplida en días (teniendo en cuenta la redención)': String(raw.S_TIEMPO_EFECTIVO ?? ''),
     'Porcentaje de avance de pena cumplida': String(raw.S_PORCENTAJE ?? ''),
+    Categorizacion: String(raw.S_CATEGORIZACION ?? ''),
+    'Días restantes para cumplir requisito temporal de prisión domiciliaria': String(raw.S_DIAS_PRISION ?? ''),
+    'Días restantes para cumplir requisito temporal de libertad condicional': String(raw.S_DIAS_LIBERTAD ?? ''),
+    Dias_Prision: String(raw.S_DIAS_PRISION ?? ''),
+    Dias_libertad: String(raw.S_DIAS_LIBERTAD ?? ''),
     'Fase de tramiento': String(raw.S_FASE ?? ''),
     '¿ Cuenta con requerimientos judiciales por otros procesos ?': String(raw.S_REQUERIMIENTOS ?? ''),
 
     'Fecha última calificación': toIsoDate(raw.S_FECHA_CALIFICACION),
+    'No.Acta de calificación de conducta': String(raw.C_ACTA_1 ?? ''),
+    'Evaluación de conducta desde': toIsoDate(raw.C_FECHA_INICIO_1),
+    'Evaluación de conducta hasta': toIsoDate(raw.C_FECHA_FIN_1),
     'Calificación de conducta': String(raw.S_CALIFICACION ?? ''),
+    __calificacionesConducta: buildCalificacionesConductaFromRaw(raw),
     PAG: String(raw.G_PAG ?? ''),
+    Cedula_PAG: String(raw.G_CEDULA_PAG ?? ''),
     'Defensor(a) Público(a) Asignado para tramitar la solicitud': String(raw.G_DEFENSOR ?? ''),
     'Defensor(a) Publico(a) Asignado para tramitar la solicitud': String(raw.G_DEFENSOR ?? ''),
     Defensor: String(raw.G_DEFENSOR ?? ''),
@@ -349,7 +454,7 @@ function toLegacyRecord(raw = {}) {
 
     'Acción a realizar': String(raw.G_ACCION_REALIZAR ?? ''),
     'Fecha de análisis jurídico del caso': toIsoDate(raw.G_FECHA_ANALISIS),
-    'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS': String(raw.G_VENCIMIENTO_TERMINOS ?? ''),
+    'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS': String(raw.G_ACTUACION_ADELANTAR ?? raw.G_VENCIMIENTO_TERMINOS ?? ''),
     'Procedencia de utilidad pública (solo para mujeres)': String(raw.G_UTILIDAD_PUBLICA ?? ''),
     'Procedencia de libertad condicional': String(raw.G_LIBERTAD_CONDICIONAL ?? ''),
     'Procedencia de prisión domiciliaria de mitad de pena': String(raw.G_PRISION_DOMICILIARIA_MITAD_PENA ?? ''),
@@ -358,6 +463,7 @@ function toLegacyRecord(raw = {}) {
     'Con qué proceso(s) debe acumular penas (si aplica)': String(raw.G_CON_QUE_PROCESOS_ACUMULAR ?? ''),
     'Otras solicitudes a tramitar': String(raw.G_OTRAS_SOLICITUDES_TRAMITAR ?? ''),
     'Resumen del análisis del caso': String(raw.G_RESUMEN_ANALISIS_CASO ?? ''),
+    'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO': String(raw.G_RESUMEN_ANALISIS_CASO ?? ''),
     'Fecha de entrevista': toIsoDate(raw.G_FECHA_ENTREVISTA),
     'Decisión del usuario': String(raw.G_DECISION_USUARIO ?? ''),
     'Actuación a adelantar': String(raw.G_ACTUACION_ADELANTAR ?? ''),
@@ -377,13 +483,21 @@ function toLegacyRecord(raw = {}) {
     'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA': toIsoDate(raw.G_FECHA_SOLICITUD_AUDIENCIA_CONTROL),
     'FECHA DE REALIZACIÓN DE AUDIENCIA': toIsoDate(raw.G_FECHA_REALIZACION_AUDIENCIA),
     'Fecha de presentación de la solicitud a la autoridad': toIsoDate(raw.G_FECHA_PRESENTACION_SOLICITUD_AUTORIDAD),
+    'Fecha de radicación de solicitud de utilidad pública': toIsoDate(raw.G_FECHA_RADICACION_UTILIDAD),
+    'Fecha de radicación de la solicitud de utilidad pública': toIsoDate(raw.G_FECHA_RADICACION_UTILIDAD),
     'Fecha de decisión de la autoridad': toIsoDate(raw.G_FECHA_DECISION_AUTORIDAD),
     'Sentido de la decisión': String(raw.G_SENTIDO_DECISION ?? ''),
     'Motivo de la decisión negativa': String(raw.G_MOTIVO_DECISION_NEGATIVA ?? ''),
     'Se presenta recurso': String(raw.G_SE_PRESENTA_RECURSO ?? ''),
+    '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?': String(raw.G_SE_PRESENTA_RECURSO ?? ''),
     'Fecha de recurso en caso desfavorable': toIsoDate(raw.G_FECHA_RECURSO_DESFAVORABLE),
+    'Fecha de presentación del recurso': toIsoDate(raw.G_FECHA_PRESENTACION_RECURSO || raw.G_FECHA_RECURSO_DESFAVORABLE),
+    'Fecha de la decisión del recurso': toIsoDate(raw.G_FECHA_DECISION_RECURSO),
     'Sentido de la decisión que resuelve recurso': String(raw.G_SENTIDO_DECISION_RESUELVE_RECURSO ?? ''),
-    'Sentido de la decisión que resuelve la solicitud': '',
+    'SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO': String(raw.G_SENTIDO_DECISION_RESUELVE_RECURSO ?? ''),
+    'Cierre del caso por imposibilidad de avanzar (si aplica)': String(raw.G_CIERRE_CASO ?? ''),
+    'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública': String(raw.G_CIERRE_CASO ?? ''),
+    'Sentido de la decisión que resuelve la solicitud': String(raw.G_SENTIDO_DECISION_RESUELVE_RECURSO ?? ''),
     'Estado del caso': '',
     'Estado del trámite': '',
     posibleActuacionJudicial: String(raw.G_ACTUACION_ADELANTAR ?? ''),
@@ -443,19 +557,39 @@ function normalizePayload(payload) {
 
 function stripControlKeys(source) {
   const out = { ...(source || {}) };
-  ['caseId', 'casos', 'activeCaseId', 'tipo', 'tipoPpl', 'data', 'rowIndex', 'actuacionId'].forEach((key) => {
+  ['caseId', 'casos', 'activeCaseId', 'tipo', 'tipoPpl', 'data', 'rowIndex', 'actuacionId', '__calificacionesConducta'].forEach((key) => {
     delete out[key];
   });
   return out;
 }
 
-function splitUpdatesByTable(payload) {
+function normalizeCalificacionesPayload(payload) {
+  const clean = normalizePayload(payload);
+  const rows = Array.isArray(clean.__calificacionesConducta) ? clean.__calificacionesConducta : [];
+  if (!rows.length) return {};
+
+  const out = {};
+  rows.slice(0, 4).forEach((row, index) => {
+    const idx = index + 1;
+    const source = row && typeof row === 'object' ? row : {};
+    out[`CALIFICACION_${idx}`] = toTypedDbValue(`CALIFICACION_${idx}`, source.calificacionConducta);
+    out[`ACTA_${idx}`] = toTypedDbValue(`ACTA_${idx}`, source.numeroActa);
+    out[`FECHA_INICIO_${idx}`] = toTypedDbValue(`FECHA_INICIO_${idx}`, source.evaluacionDesde);
+    out[`FECHA_FIN_${idx}`] = toTypedDbValue(`FECHA_FIN_${idx}`, source.evaluacionHasta);
+    out[`FECHA_CALIFICACION_${idx}`] = toTypedDbValue(`FECHA_CALIFICACION_${idx}`, source.fechaUltimaCalificacion);
+  });
+
+  return out;
+}
+
+function splitUpdatesByTable(payload, { allowBaseUpdates = false } = {}) {
   const clean = stripControlKeys(normalizePayload(payload));
   const grouped = { PERSONA: {}, SITUACION: {}, GESTION: {} };
 
   Object.entries(clean).forEach(([key, value]) => {
     const binding = UPDATE_BINDINGS.get(normalizeText(key));
     if (!binding) return;
+    if (!allowBaseUpdates && (binding.table === 'PERSONA' || binding.table === 'SITUACION')) return;
     grouped[binding.table][binding.column] = toTypedDbValue(binding.column, value);
   });
 
@@ -544,12 +678,16 @@ async function createActuacionByDocumento(documento, payload) {
   if (!context?.S_ID_SITUACION) return null;
 
   const updates = splitUpdatesByTable(payload);
+  const calificacionUpdates = normalizeCalificacionesPayload(payload);
 
   if (Object.keys(updates.PERSONA).length) {
     await personaRepo.updatePersonaById(context.P_ID_PERSONA, updates.PERSONA);
   }
   if (Object.keys(updates.SITUACION).length) {
     await situacionRepo.updateSituacionById(context.S_ID_SITUACION, updates.SITUACION);
+  }
+  if (Object.keys(calificacionUpdates).length) {
+    await calificacionConductaRepo.upsertBySituacion(context.S_ID_SITUACION, calificacionUpdates);
   }
 
   const latest = await gestionRepo.getLatestBySituacion(context.S_ID_SITUACION);
@@ -588,6 +726,7 @@ async function updateByDocumento(documento, payload) {
   if (!context?.S_ID_SITUACION) return null;
 
   const updates = splitUpdatesByTable(payload);
+  const calificacionUpdates = normalizeCalificacionesPayload(payload);
   const incoming = payload && typeof payload === 'object' ? payload : {};
 
   if (Object.keys(updates.PERSONA).length) {
@@ -595,6 +734,9 @@ async function updateByDocumento(documento, payload) {
   }
   if (Object.keys(updates.SITUACION).length) {
     await situacionRepo.updateSituacionById(context.S_ID_SITUACION, updates.SITUACION);
+  }
+  if (Object.keys(calificacionUpdates).length) {
+    await calificacionConductaRepo.upsertBySituacion(context.S_ID_SITUACION, calificacionUpdates);
   }
 
   let targetGestionId = null;
@@ -624,7 +766,7 @@ async function updateByDocumento(documento, payload) {
     }
   }
 
-  if (hasMeaningfulUpdates(updates)) {
+  if (hasMeaningfulUpdates(updates) || Object.keys(calificacionUpdates).length) {
     dataVersion += 1;
   }
 
@@ -656,6 +798,7 @@ async function assignDefensor(documentos, defensor, options = {}) {
 
   let defensorNombre = String(defensor || '').trim();
   const pagAsignador = String(options?.pagAsignador || '').trim();
+  const pagCedula = normalizeDocumento(options?.pagCedula || options?.cedulaPag || '');
   let defensorCedula = defensoresRepo.normalizeCedula(options?.defensorCedula || options?.defensorId || '');
 
   if (defensorCedula) {
@@ -679,6 +822,7 @@ async function assignDefensor(documentos, defensor, options = {}) {
 
     const affected = await gestionRepo.assignDefensorBySituacion(context.S_ID_SITUACION, defensorNombre, {
       pagAsignador,
+      pagCedula,
       defensorCedula,
     });
     if (affected > 0) {
@@ -691,6 +835,7 @@ async function assignDefensor(documentos, defensor, options = {}) {
       {
         DEFENSOR: defensorNombre,
         ...(pagAsignador ? { PAG: pagAsignador } : {}),
+        ...(pagCedula ? { CEDULA_PAG: pagCedula } : {}),
         ...(defensorCedula ? { CEDULA_DEFENSOR: defensorCedula } : {}),
       },
       { sequenceName: getOptionalGestionSequence() }

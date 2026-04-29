@@ -3,6 +3,7 @@ import {
   assignDefensorPpl,
   createDefensor,
   getCondenados,
+  getCondenadosFilterOptions,
   getDefensoresCondenados,
   getDefensoresCatalogo,
   extractDefensoresCatalogo,
@@ -10,7 +11,6 @@ import {
 } from '../services/api.js';
 import Toast from '../components/Toast.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
-import { getEstadoClassByLabel } from '../config/estadoActuaciones.rules.ts';
 import { displayOrDash } from '../utils/pplDisplay.js';
 import { reportError } from '../utils/reportError.js';
 
@@ -34,16 +34,7 @@ function isNombreDefensorValido(value) {
   return /^[\p{L}\s]+$/u.test(value);
 }
 
-function getEstadoInfoLigero(row) {
-  const label = String(row?.['Estado del caso'] || '').trim();
-  if (!label) return { label: '', className: '' };
-  return {
-    label,
-    className: String(getEstadoClassByLabel(label) || '').trim(),
-  };
-}
-
-const DEFAULT_INITIAL_LIMIT = 500;
+const DEFAULT_INITIAL_LIMIT = 100;
 const DEFAULT_FILTERED_LIMIT = 200;
 
 function AsignacionDefensores() {
@@ -56,6 +47,15 @@ function AsignacionDefensores() {
   const [seleccionados, setSeleccionados] = useState(new Set());
 
   const [defensores, setDefensores] = useState([]);
+  const [opcionesFiltro, setOpcionesFiltro] = useState({
+    departamentos: [],
+    municipios: [],
+    lugares: [],
+  });
+  const [opcionesFiltroDependientes, setOpcionesFiltroDependientes] = useState({
+    municipios: [],
+    lugares: [],
+  });
   const [defensoresError, setDefensoresError] = useState('');
   const [nuevoDefensorId, setNuevoDefensorId] = useState('');
   const [nuevoDefensorInput, setNuevoDefensorInput] = useState('');
@@ -162,9 +162,63 @@ function AsignacionDefensores() {
     }
   }, []);
 
+  const cargarOpcionesFiltro = useCallback(async (filters = {}) => {
+    try {
+      return await getCondenadosFilterOptions({ tipo: 'condenado', filters });
+    } catch (e) {
+      reportError(e, 'asignacion-defensores:cargar-opciones-filtro');
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     cargarDefensoresActuales();
   }, [cargarDefensoresActuales]);
+
+  useEffect(() => {
+    let active = true;
+    cargarOpcionesFiltro().then((data) => {
+      if (!active) return;
+      setOpcionesFiltro({
+        departamentos: Array.isArray(data?.departamentos) ? data.departamentos : [],
+        municipios: Array.isArray(data?.municipios) ? data.municipios : [],
+        lugares: Array.isArray(data?.lugares) ? data.lugares : [],
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [cargarOpcionesFiltro]);
+
+  useEffect(() => {
+    let active = true;
+    setOpcionesFiltroDependientes({
+      municipios: [],
+      lugares: [],
+    });
+
+    const timeoutId = setTimeout(() => {
+      const departamento = String(fDepartamento || '').trim();
+      const municipio = String(fMunicipio || '').trim();
+
+      if (!departamento && !municipio) {
+        return;
+      }
+
+      cargarOpcionesFiltro({ departamento, municipio }).then((data) => {
+        if (!active) return;
+        setOpcionesFiltroDependientes({
+          municipios: Array.isArray(data?.municipios) ? data.municipios : [],
+          lugares: Array.isArray(data?.lugares) ? data.lugares : [],
+        });
+      });
+    }, 250);
+
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
+  }, [cargarOpcionesFiltro, fDepartamento, fMunicipio]);
 
   useEffect(() => {
     if (!pagValidado?.cedula) return;
@@ -210,31 +264,40 @@ function AsignacionDefensores() {
   }, [rows]);
 
   const departamentos = useMemo(() => {
+    if (opcionesFiltro.departamentos.length) return opcionesFiltro.departamentos;
     const set = new Set();
     rows.forEach((r) => {
       const val = String(r?.departamentoLugarReclusion || '').trim();
       if (val) set.add(val);
     });
     return Array.from(set).sort();
-  }, [rows]);
+  }, [opcionesFiltro.departamentos, rows]);
 
   const municipios = useMemo(() => {
+    if (String(fDepartamento || '').trim()) {
+      return opcionesFiltroDependientes.municipios;
+    }
+    if (opcionesFiltro.municipios.length) return opcionesFiltro.municipios;
     const set = new Set();
     rows.forEach((r) => {
       const val = String(r?.municipioLugarReclusion || '').trim();
       if (val) set.add(val);
     });
     return Array.from(set).sort();
-  }, [rows]);
+  }, [fDepartamento, opcionesFiltroDependientes.municipios, opcionesFiltro.municipios, rows]);
 
   const lugares = useMemo(() => {
+    if (String(fDepartamento || '').trim() || String(fMunicipio || '').trim()) {
+      return opcionesFiltroDependientes.lugares;
+    }
+    if (opcionesFiltro.lugares.length) return opcionesFiltro.lugares;
     const set = new Set();
     rows.forEach((r) => {
       const val = String(r?.lugarReclusion || '').trim();
       if (val) set.add(val);
     });
     return Array.from(set).sort();
-  }, [rows]);
+  }, [fDepartamento, fMunicipio, opcionesFiltroDependientes.lugares, opcionesFiltro.lugares, rows]);
 
   const rowsTab = useMemo(() => {
     if (tab === 'asignacion') return rows.filter((r) => !tieneDefensor(r?.defensorAsignado));
@@ -476,7 +539,7 @@ function AsignacionDefensores() {
 
   return (
     <div className="card loading-layer-host">
-      <h2>PAG -Asignación de casos de condenados</h2>
+      <h2>PAG - Asignación de casos de condenados</h2>
 
       <Toast
         open={toastOpen}
@@ -638,7 +701,11 @@ function AsignacionDefensores() {
               className="input-text"
               placeholder="Filtrar departamento"
               value={fDepartamento}
-              onChange={(e) => setFDepartamento(e.target.value)}
+              onChange={(e) => {
+                setFDepartamento(e.target.value);
+                setFMunicipio('');
+                setFLugar('');
+              }}
             />
             <datalist id="pag-departamentos-list">
               {departamentos.map((d) => (
@@ -654,7 +721,10 @@ function AsignacionDefensores() {
               className="input-text"
               placeholder="Filtrar municipio"
               value={fMunicipio}
-              onChange={(e) => setFMunicipio(e.target.value)}
+              onChange={(e) => {
+                setFMunicipio(e.target.value);
+                setFLugar('');
+              }}
             />
             <datalist id="pag-municipios-list">
               {municipios.map((m) => (
@@ -707,7 +777,7 @@ function AsignacionDefensores() {
               <option value="no_reunen_requisitos">Condenados que no reúnen los requisitos</option>
             </select>
             <p className="hint-text">
-              Criterio: 50% de pena cumplida o faltan 90 días o menos para llegar al 50%.
+              Criterio: campo CATEGORIZACION de situación carcelaria.
             </p>
           </div>
         </div>
@@ -807,7 +877,7 @@ function AsignacionDefensores() {
                   <th>Nombre usuario</th>
                   <th>Departamento de reclusión</th>
                   <th>Municipio de reclusión</th>
-                  <th>Estado</th>
+                  <th>Acción a impulsar</th>
                   <th>Defensor actual</th>
                   <th>Lugar de reclusión</th>
                   <th>Autoridad a cargo</th>
@@ -818,9 +888,6 @@ function AsignacionDefensores() {
                 {rowsFiltradas.map((r, idx) => {
                   const doc = String(r.numeroIdentificacion);
                   const rowKey = `${doc}-${idx}`;
-                  const estadoInfo = getEstadoInfoLigero(r);
-                  const estadoLabel = String(estadoInfo?.label || '').trim();
-                  const estadoClass = String(estadoInfo?.className || '').trim();
                   return (
                     <tr key={rowKey} className="clickable-row" onClick={() => toggleSeleccion(doc)}>
                       <td>
@@ -837,17 +904,7 @@ function AsignacionDefensores() {
                       <td>{displayOrDash(r.nombreUsuario)}</td>
                       <td>{displayOrDash(r.departamentoLugarReclusion)}</td>
                       <td>{displayOrDash(r.municipioLugarReclusion)}</td>
-                      <td>
-                        {estadoLabel ? (
-                          estadoClass ? (
-                            <span className={`estadoBadge ${estadoClass}`}>{estadoLabel}</span>
-                          ) : (
-                            estadoLabel
-                          )
-                        ) : (
-                          '\u2014'
-                        )}
-                      </td>
+                      <td>{displayOrDash(r.accionImpulsar)}</td>
                       <td>{displayOrDash(r.defensorAsignado)}</td>
                       <td>{displayOrDash(r.lugarReclusion)}</td>
                       <td>{displayOrDash(r.autoridadCargo)}</td>
@@ -882,5 +939,3 @@ function AsignacionDefensores() {
 }
 
 export default AsignacionDefensores;
-
-

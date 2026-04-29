@@ -19,6 +19,7 @@ Respuesta actual: `{ ok: true, message: "Backend AURORA operativo (modo MOCK)" }
 |---|---|---|
 | GET | `/ppl` | Listado de registros. Query opcional `tipo=condenado|sindicado` |
 | GET | `/ppl/condenados` | Listado mapeado para tablas de asignacion. Query opcional `tipo=condenado|sindicado|all` (default: `condenado`) |
+| GET | `/ppl/condenados/filter-options` | Opciones para filtros de asignacion: departamentos, municipios, lugares y defensores |
 | GET | `/ppl/:documento` | Consulta unificada por documento |
 | PUT | `/ppl/:documento` | Actualiza registro (body libre o `{ data }`) |
 | GET | `/ppl/:documento/actuaciones` | Historial de actuaciones por documento |
@@ -32,8 +33,15 @@ Errores observables:
 Regla funcional (blindaje):
 
 - `GET /api/ppl/condenados` sin query `tipo` debe excluir registros de tipo `sindicado`.
-- `PAG - Asignacion de Casos` debe consumir esta ruta sin `tipo` para mantener contrato estricto (solo `condenado`).
+- `PAG - Asignacion de casos de condenados` debe consumir esta ruta sin `tipo` para mantener contrato estricto (solo `condenado`).
 - `Usuarios asignados` puede consumir la misma ruta con `tipo=all` para mostrar `condenado` + `sindicado` sin afectar PAG.
+
+Filtros relevantes de `/ppl/condenados`:
+
+- `documento`, `departamento`, `municipio`, `lugar`, `defensor`, `estadoAccion`, `estado`.
+- `potencialSubrogado=potenciales_beneficiarios`: usa `SITUACION_CARCELARIA.CATEGORIZACION` y agrupa `Prision Domiciliaria y Libertad condicional`, `Prision Domiciliaria`, `Revisar por pena`, `Libertad condicional` y `Utilidad Publica`.
+- `potencialSubrogado=proximos_requisito_temporal`: agrupa `Preliminar Prision Domiciliaria` y `Preliminar Libertad condicional`.
+- `potencialSubrogado=no_reunen_requisitos`: excluye las categorias anteriores.
 
 ## 4. Defensores
 

@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { AURORA_FIELD_CATALOG } from './formRules.aurora';
 import {
   getEstadoDisplayInfo,
@@ -66,11 +66,11 @@ describe('estadoActuaciones.rules', () => {
     expect(estado.claseFinal).toBe('estado--gris');
   });
 
-  it('ESTADO.CASO_CERRADO.2 - en trÃ¡mite normal cierra cuando Q47 (Sentido de la decisiÃ³n) estÃ¡ diligenciada', () => {
+  it('ESTADO.CASO_CERRADO.2 - en trámite normal cierra cuando Q47 (Sentido de la decisión) está diligenciada', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
       [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(1),
-      [AURORA_FIELD_CATALOG.q39]: 'SÃ­, desea que el defensor(a) pÃºblico(a) avance con la solicitud',
+      [AURORA_FIELD_CATALOG.q39]: 'Sí, desea que el defensor(a) público(a) avance con la solicitud',
       [AURORA_FIELD_CATALOG.q40]: 'Libertad condicional',
       [AURORA_FIELD_CATALOG.q52]: 'Concede la solicitud',
     });
@@ -78,11 +78,11 @@ describe('estadoActuaciones.rules', () => {
     expect(estado.claseFinal).toBe('estado--gris');
   });
 
-  it('ESTADO.RECURSO.TRAMITE.1 - con Q47 = "No concede la solicitud" y Q49 vacÃ­a, queda Presentar solicitud', () => {
+  it('ESTADO.RECURSO.TRAMITE.1 - con Q47 = "No concede la solicitud" y Q49 vacía, queda Presentar solicitud', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
       [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(1),
-      [AURORA_FIELD_CATALOG.q39]: 'SÃ­, desea que el defensor(a) pÃºblico(a) avance con la solicitud',
+      [AURORA_FIELD_CATALOG.q39]: 'Sí, desea que el defensor(a) público(a) avance con la solicitud',
       [AURORA_FIELD_CATALOG.q40]: 'Libertad condicional',
       [AURORA_FIELD_CATALOG.q52]: 'No concede la solicitud',
       [AURORA_FIELD_CATALOG.q54]: '',
@@ -91,14 +91,14 @@ describe('estadoActuaciones.rules', () => {
     expect(estado.claseFinal).toBe('estado--verde');
   });
 
-  it('ESTADO.RECURSO.TRAMITE.2 - con Q47 = "No concede la solicitud" y Q49 = "SÃ­", queda Pendiente decisiÃ³n', () => {
+  it('ESTADO.RECURSO.TRAMITE.2 - con Q47 = "No concede la solicitud" y Q49 = "Sí", queda Pendiente decisión', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
       [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(1),
-      [AURORA_FIELD_CATALOG.q39]: 'SÃ­, desea que el defensor(a) pÃºblico(a) avance con la solicitud',
+      [AURORA_FIELD_CATALOG.q39]: 'Sí, desea que el defensor(a) público(a) avance con la solicitud',
       [AURORA_FIELD_CATALOG.q40]: 'Libertad condicional',
       [AURORA_FIELD_CATALOG.q52]: 'No concede la solicitud',
-      [AURORA_FIELD_CATALOG.q54]: 'SÃ­',
+      [AURORA_FIELD_CATALOG.q54]: 'Sí',
       [AURORA_FIELD_CATALOG.b5NormalSentidoResuelveSolicitud]: '',
     });
     expect(estado.etiqueta).toBe('Pendiente decisión');
@@ -109,7 +109,7 @@ describe('estadoActuaciones.rules', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
       [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(1),
-      [AURORA_FIELD_CATALOG.q39]: 'SÃ­, desea que el defensor(a) pÃºblico(a) avance con la solicitud',
+      [AURORA_FIELD_CATALOG.q39]: 'Sí, desea que el defensor(a) público(a) avance con la solicitud',
       [AURORA_FIELD_CATALOG.q40]: 'Libertad condicional',
       [AURORA_FIELD_CATALOG.q52]: 'No concede la solicitud',
       [AURORA_FIELD_CATALOG.q54]: 'No',
@@ -118,11 +118,11 @@ describe('estadoActuaciones.rules', () => {
     expect(estado.claseFinal).toBe('estado--gris');
   });
 
-  it('ESTADO.MOJIBAKE.1 - "SÃ­" en decision del usuario no cierra el caso por error', () => {
+  it('ESTADO.MOJIBAKE.1 - "Sí" en decision del usuario no cierra el caso por error', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
       [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(1),
-      [AURORA_FIELD_CATALOG.q39]: 'SÃ­, desea que el defensor(a) pÃºblico(a) avance con la solicitud',
+      [AURORA_FIELD_CATALOG.q39]: 'Sí, desea que el defensor(a) público(a) avance con la solicitud',
       [AURORA_FIELD_CATALOG.q40]: 'Libertad condicional',
     });
     expect(estado.etiqueta).toBe('Presentar solicitud');
@@ -185,7 +185,7 @@ describe('estadoActuaciones.rules', () => {
         ...buildBloque3Base(),
         [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(2),
         [AURORA_FIELD_CATALOG.q40]: 'Libertad condicional',
-        'Fecha de presentaciÃ³n de solicitud a la autoridad judicial': formatDateDaysAgo(1),
+        'Fecha de presentación de solicitud a la autoridad judicial': formatDateDaysAgo(1),
       },
     });
     expect(display.label).toBe('Pendiente decisi\u00f3n');
@@ -232,15 +232,15 @@ describe('estadoActuaciones.rules', () => {
     expect(display.className).toBe('estado--gris');
   });
 
-  it('ESTADO.SINDICADO.1 - con Q19-Q22 completas y Q21 "Se avanzarÃ¡...", muestra Entrevistar al usuario', () => {
+  it('ESTADO.SINDICADO.1 - con Q19-Q22 completas y Q21 "Se avanzará...", muestra Entrevistar al usuario', () => {
     const display = getEstadoDisplayInfo({
       estadoSource: {
-        'SituaciÃ³n JurÃ­dica': 'Sindicado',
-        'Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud': 'DEFENSOR',
-        'Fecha de anÃ¡lisis jurÃ­dico del caso': formatDateDaysAgo(2),
-        'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÃ‰RMINOS':
-          'Se avanzarÃ¡ con solicitud de revocatoria o sustituciÃ³n de la medida',
-        'RESUMEN DEL ANÃLISIS JURÃDICO DEL PRESENTE CASO': 'Resumen',
+        'Situación Jurídica': 'Sindicado',
+        'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'DEFENSOR',
+        'Fecha de análisis jurídico del caso': formatDateDaysAgo(2),
+        'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS':
+          'Se avanzará con solicitud de revocatoria o sustitución de la medida',
+        'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO': 'Resumen',
       },
     });
     expect(display.label).toBe('Entrevistar al usuario');
@@ -250,16 +250,16 @@ describe('estadoActuaciones.rules', () => {
   it('ESTADO.SINDICADO.2 - con Q24/Q25 diligenciadas y Q26 niega, muestra Presentar recurso', () => {
     const display = getEstadoDisplayInfo({
       estadoSource: {
-        'SituaciÃ³n JurÃ­dica': 'Sindicado',
-        'Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud': 'DEFENSOR',
-        'Fecha de anÃ¡lisis jurÃ­dico del caso': formatDateDaysAgo(4),
-        'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÃ‰RMINOS':
-          'Se avanzarÃ¡ con solicitud de revocatoria o sustituciÃ³n de la medida',
-        'RESUMEN DEL ANÃLISIS JURÃDICO DEL PRESENTE CASO': 'Resumen',
+        'Situación Jurídica': 'Sindicado',
+        'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'DEFENSOR',
+        'Fecha de análisis jurídico del caso': formatDateDaysAgo(4),
+        'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS':
+          'Se avanzará con solicitud de revocatoria o sustitución de la medida',
+        'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO': 'Resumen',
         'Fecha de entrevista': formatDateDaysAgo(3),
-        'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÃAS PARA SUSTENTAR REVOCATORIA': formatDateDaysAgo(2),
-        'FECHA DE REALIZACIÃ“N DE AUDIENCIA': formatDateDaysAgo(1),
-        'SENTIDO DE LA DECISIÃ“N': 'Niega la solicitud',
+        'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA': formatDateDaysAgo(2),
+        'FECHA DE REALIZACIÓN DE AUDIENCIA': formatDateDaysAgo(1),
+        'SENTIDO DE LA DECISIÓN': 'Niega la solicitud',
       },
     });
     expect(display.label).toBe('Presentar recurso');
@@ -269,14 +269,14 @@ describe('estadoActuaciones.rules', () => {
   it('ESTADO.SINDICADO.3 - con Q24 diligenciada y Q25 vacía, muestra Pendiente audiencia sin color', () => {
     const display = getEstadoDisplayInfo({
       estadoSource: {
-        'SituaciÃ³n JurÃ­dica': 'Sindicado',
-        'Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud': 'DEFENSOR',
-        'Fecha de anÃ¡lisis jurÃ­dico del caso': formatDateDaysAgo(4),
-        'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÃ‰RMINOS':
-          'Se avanzarÃ¡ con solicitud de revocatoria o sustituciÃ³n de la medida',
-        'RESUMEN DEL ANÃLISIS JURÃDICO DEL PRESENTE CASO': 'Resumen',
+        'Situación Jurídica': 'Sindicado',
+        'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'DEFENSOR',
+        'Fecha de análisis jurídico del caso': formatDateDaysAgo(4),
+        'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS':
+          'Se avanzará con solicitud de revocatoria o sustitución de la medida',
+        'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO': 'Resumen',
         'Fecha de entrevista': formatDateDaysAgo(3),
-        'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÃAS PARA SUSTENTAR REVOCATORIA': formatDateDaysAgo(2),
+        'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA': formatDateDaysAgo(2),
       },
     });
     expect(display.label).toBe('Pendiente audiencia');
@@ -286,20 +286,19 @@ describe('estadoActuaciones.rules', () => {
   it('ESTADO.SINDICADO.4 - con Q25 diligenciada y Q26 vacía, muestra Pendiente decisión de audiencia sin color', () => {
     const display = getEstadoDisplayInfo({
       estadoSource: {
-        'SituaciÃ³n JurÃ­dica': 'Sindicado',
-        'Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud': 'DEFENSOR',
-        'Fecha de anÃ¡lisis jurÃ­dico del caso': formatDateDaysAgo(4),
-        'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÃ‰RMINOS':
-          'Se avanzarÃ¡ con solicitud de revocatoria o sustituciÃ³n de la medida',
-        'RESUMEN DEL ANÃLISIS JURÃDICO DEL PRESENTE CASO': 'Resumen',
+        'Situación Jurídica': 'Sindicado',
+        'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'DEFENSOR',
+        'Fecha de análisis jurídico del caso': formatDateDaysAgo(4),
+        'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS':
+          'Se avanzará con solicitud de revocatoria o sustitución de la medida',
+        'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO': 'Resumen',
         'Fecha de entrevista': formatDateDaysAgo(3),
-        'FECHA DE REALIZACIÃ“N DE AUDIENCIA': formatDateDaysAgo(1),
+        'FECHA DE REALIZACIÓN DE AUDIENCIA': formatDateDaysAgo(1),
       },
     });
     expect(display.label).toBe('Pendiente decisión de audiencia');
     expect(display.className).toBe('');
   });
 });
-
 
 

@@ -1,6 +1,6 @@
 # SQL principales Oracle (AuroraV2-oracle)
 
-## 1. CTE situaci髇 activa
+## 1. CTE situaci贸n activa
 ```sql
 WITH ranked_situacion AS (
   SELECT
@@ -45,7 +45,7 @@ WHERE s.RN = 1
 ORDER BY DEFENSOR
 ```
 
-## 4. Historial por situaci髇
+## 4. Historial por situaci贸n
 ```sql
 SELECT *
 FROM DNDP.GESTION_JURIDICA
@@ -53,14 +53,14 @@ WHERE ID_SITUACION = :idSituacion
 ORDER BY FECHA_REGISTRO ASC NULLS LAST, ID_GESTION ASC
 ```
 
-## 5. Crear actuaci髇
+## 5. Crear actuaci贸n
 ```sql
 INSERT INTO DNDP.GESTION_JURIDICA (<columnas>)
 VALUES (<binds>)
 RETURNING ID_GESTION INTO :outId
 ```
 
-## 6. Actualizar actuaci髇
+## 6. Actualizar actuaci贸n
 ```sql
 UPDATE DNDP.GESTION_JURIDICA
 SET <columna> = :valor, ...

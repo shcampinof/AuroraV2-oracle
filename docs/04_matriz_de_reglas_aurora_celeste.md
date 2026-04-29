@@ -38,9 +38,7 @@ Cambios aplicados y validados:
 9. Historial:
    - accion visible: "Actualizar actuacion",
    - "Crear nueva actuacion" crea y abre formulario limpio.
-10. Nuevas opciones intermedias en procedencia:
-   - libertad condicional >57%,
-   - prision domiciliaria >47%,
+10. Opciones intermedias vigentes en procedencia:
    - libertad condicional (90 dias o menos para cumplir tiempo),
    - prision domiciliaria (90 dias o menos para cumplir tiempo).
 11. Validacion temporal de bloque 5:
@@ -77,33 +75,33 @@ Cambios aplicados y validados:
 
 1. Aurora bloque 2:
    - nuevo campo no editable antes de Q18:
-     - `17A. Fecha de actualizaciÃƒÆ’Ã‚Â³n de los datos (corte)`.
+     - `17A. Fecha de actualización de los datos (corte)`.
    - valor temporal actual: `15/04/2026`.
 2. Aurora bloque 3:
    - Q30, Q31 y Q32 ahora renderizan opciones numeradas en el orden existente.
    - Q30, Q31, Q32 y Q34 incluyen:
-     - `No aplica porque estÃƒÆ’Ã‚Â¡ en trÃƒÆ’Ã‚Â¡mite solicitud de acumulaciÃƒÆ’Ã‚Â³n de penas`.
+     - `No aplica porque está en trámite solicitud de acumulación de penas`.
 3. Flujo sindicados:
-   - opciÃƒÆ’Ã‚Â³n nueva en Q21:
-     - `No se avanzarÃƒÆ’Ã‚Â¡ porque ya no soy el defensor en este caso`.
+   - opción nueva en Q21:
+     - `No se avanzará porque ya no soy el defensor en este caso`.
    - texto de bloques actualizado de `(CELESTE)` a `(SINDICADOS)`.
    - Q29 renombrada:
-     - `Fecha de presentaci�n del recurso`.
+     - `Fecha de presentación del recurso`.
    - Q30 (nueva):
-     - `Fecha de la decisi�n del recurso`.
-   - la pregunta de sentido de la decisi�n que resuelve recurso se corre a Q31.
-4. Estado derivado en sindicados (acci�n a impulsar) implementado:
+     - `Fecha de la decisión del recurso`.
+   - la pregunta de sentido de la decisión que resuelve recurso se corre a Q31.
+4. Estado derivado en sindicados (acción a impulsar) implementado:
    - Q19-Q22 incompletas -> `Analizar el caso`.
-   - Q21 `No se avanzar�...` -> `Caso cerrado`.
-   - Q21 `Se avanzar�...` y Q23 vac�a -> `Entrevistar al usuario`.
+   - Q21 `No se avanzará...` -> `Caso cerrado`.
+   - Q21 `Se avanzará...` y Q23 vacía -> `Entrevistar al usuario`.
    - Q23 diligenciada -> `Presentar solicitud`.
-   - Q24 diligenciada y Q25 vac�a -> `Pendiente audiencia` (sin sem�foro verde/amarillo/rojo).
-   - Q25 diligenciada y Q26 vac�a -> `Pendiente decisi�n de audiencia` (sin sem�foro verde/amarillo/rojo).
+   - Q24 diligenciada y Q25 vacía -> `Pendiente audiencia` (sin semáforo verde/amarillo/rojo).
+   - Q25 diligenciada y Q26 vacía -> `Pendiente decisión de audiencia` (sin semáforo verde/amarillo/rojo).
    - Q24+Q25 y Q26 `Revoca.../Sustituye...` -> `Caso cerrado`.
    - Q24+Q25 y Q26 `Niega la solicitud` -> `Presentar recurso`.
    - Q28 `No` -> `Caso cerrado`.
    - Q28 `Si` -> `Presentar recurso`.
-   - Q29 con fecha -> `Pendiente decisi�n`.
+   - Q29 con fecha -> `Pendiente decisión`.
    - Q30 o Q31 con respuesta -> `Caso cerrado`.
 
 ---
@@ -112,8 +110,8 @@ Cambios aplicados y validados:
 
 | ID | Campo | Tipo | Obligatoria | Nota |
 |---|---|---|---|---|
-| Q30 | Procedencia libertad condicional | select | Si | Incluye opciones intermedias (>57% y 90 dias o menos) |
-| Q31 | Procedencia prision domiciliaria | select | Si | Incluye opciones intermedias (>47% y 90 dias o menos) |
+| Q30 | Procedencia libertad condicional | select | Si | Incluye opcion intermedia de 90 dias o menos |
+| Q31 | Procedencia prision domiciliaria | select | Si | Incluye opcion intermedia de 90 dias o menos |
 | Q26-Q27 | Resumen de calificaciones de conducta | tabla dinamica | Si | 4 filas visibles editables; encabezados sin numeracion |
 | Q32 | Procedencia utilidad publica | select | No | Opcional en bloque 3 |
 | Q33 | Procedencia pena cumplida | select | Si | |
@@ -201,18 +199,18 @@ Cambios aplicados y validados:
 
 | ID | Campo | Tipo | Obligatoria | Nota |
 |---|---|---|---|---|
-| Q19 | Defensor(a) pÃƒÆ’Ã‚Âºblico(a) asignado para tramitar la solicitud | datalist | Si | |
-| Q20 | Fecha de anÃƒÆ’Ã‚Â¡lisis jurÃƒÆ’Ã‚Â­dico del caso | date | Si | |
-| Q21 | AnÃƒÆ’Ã‚Â¡lisis jurÃƒÆ’Ã‚Â­dico y actuaciÃƒÆ’Ã‚Â³n a desplegar | select | Si | Incluye opciÃƒÆ’Ã‚Â³n de no avance por cambio de defensor |
-| Q22 | Resumen del anÃƒÆ’Ã‚Â¡lisis jurÃƒÆ’Ã‚Â­dico del caso | textarea | Si | |
+| Q19 | Defensor(a) público(a) asignado para tramitar la solicitud | datalist | Si | |
+| Q20 | Fecha de análisis jurídico del caso | date | Si | |
+| Q21 | Análisis jurídico y actuación a desplegar | select | Si | Incluye opción de no avance por cambio de defensor |
+| Q22 | Resumen del análisis jurídico del caso | textarea | Si | |
 | Q23 | Fecha de la entrevista para informar al usuario | date | Si | Habilita bloque 5 |
-| Q24 | Fecha de presentaciÃƒÆ’Ã‚Â³n de la solicitud de audiencia | date | No | |
-| Q25 | Fecha de realizaciÃƒÆ’Ã‚Â³n de la audiencia | date | No | |
-| Q26 | Sentido de la decisiÃƒÆ’Ã‚Â³n | select | No | |
+| Q24 | Fecha de presentación de la solicitud de audiencia | date | No | |
+| Q25 | Fecha de realización de la audiencia | date | No | |
+| Q26 | Sentido de la decisión | select | No | |
 | Q28 | Se presenta recurso | select | No | |
-| Q29 | Fecha de presentaciÃƒÆ’Ã‚Â³n del recurso | date | No | Si tiene fecha, pasa a pendiente decisiÃƒÆ’Ã‚Â³n |
-| Q30 | Fecha de la decisiÃƒÂ³n del recurso | date | No | Si tiene respuesta, cierra caso |
-| Q31 | Sentido de la decisiÃƒÂ³n que resuelve recurso | select | No | Si tiene respuesta, cierra caso |
+| Q29 | Fecha de presentación del recurso | date | No | Si tiene fecha, pasa a pendiente decisión |
+| Q30 | Fecha de la decisión del recurso | date | No | Si tiene respuesta, cierra caso |
+| Q31 | Sentido de la decisión que resuelve recurso | select | No | Si tiene respuesta, cierra caso |
 
 ---
 
@@ -221,27 +219,27 @@ Cambios aplicados y validados:
 | Regla ID | Condicion | Efecto |
 |---|---|---|
 | `SINDICADO.B1_3.VISIBILIDAD.1` | Siempre | visibles `bloque1`, `bloque2Celeste`, `bloque3Celeste` |
-| `SINDICADO.B3.CIERRE.LOCK.1` | Q21 inicia con `No se avanzarÃƒÆ’Ã‚Â¡...` | lock activo, sin bloque 4 ni 5 |
+| `SINDICADO.B3.CIERRE.LOCK.1` | Q21 inicia con `No se avanzará...` | lock activo, sin bloque 4 ni 5 |
 | `SINDICADO.B4.VISIBILIDAD.1` | bloque 3 obligatorio completo | agrega `bloque4Celeste` |
 | `SINDICADO.B5.VISIBILIDAD.2` | bloque 4 completo (Q23) | agrega `bloque5Celeste` |
 
 ---
 
-## 9. Estado derivado del trÃƒÆ’Ã‚Â¡mite (Sindicado)
+## 9. Estado derivado del trámite (Sindicado)
 
 | Regla ID | Condicion | Estado |
 |---|---|---|
 | `SINDICADO.STATUS.ANALIZAR.1` | faltan Q19-Q22 | `Analizar el caso` |
-| `SINDICADO.STATUS.CIERRE.Q21.1` | Q21 inicia con `No se avanzarÃƒÆ’Ã‚Â¡...` | `Caso cerrado` |
-| `SINDICADO.STATUS.ENTREVISTAR.1` | Q21 inicia con `Se avanzarÃƒÆ’Ã‚Â¡...` y Q23 vacÃƒÆ’Ã‚Â­a | `Entrevistar al usuario` |
+| `SINDICADO.STATUS.CIERRE.Q21.1` | Q21 inicia con `No se avanzará...` | `Caso cerrado` |
+| `SINDICADO.STATUS.ENTREVISTAR.1` | Q21 inicia con `Se avanzará...` y Q23 vacía | `Entrevistar al usuario` |
 | `SINDICADO.STATUS.SOLICITUD.1` | Q23 diligenciada y sin resultado de audiencia | `Presentar solicitud` |
-| `SINDICADO.STATUS.PENDIENTE_AUDIENCIA.Q24.1` | Q24 diligenciada y Q25 vac�a | `Pendiente audiencia` |
-| `SINDICADO.STATUS.PENDIENTE_DECISION_AUDIENCIA.Q25.1` | Q25 diligenciada y Q26 vac�a | `Pendiente decisi�n de audiencia` |
+| `SINDICADO.STATUS.PENDIENTE_AUDIENCIA.Q24.1` | Q24 diligenciada y Q25 vacía | `Pendiente audiencia` |
+| `SINDICADO.STATUS.PENDIENTE_DECISION_AUDIENCIA.Q25.1` | Q25 diligenciada y Q26 vacía | `Pendiente decisión de audiencia` |
 | `SINDICADO.STATUS.CIERRE.Q26.1` | Q24+Q25 y Q26 = `Revoca...` o `Sustituye...` | `Caso cerrado` |
 | `SINDICADO.STATUS.RECURSO.1` | Q24+Q25 y Q26 = `Niega la solicitud` | `Presentar recurso` |
 | `SINDICADO.STATUS.CIERRE.Q28.1` | en flujo de recurso, Q28 = `No` | `Caso cerrado` |
 | `SINDICADO.STATUS.RECURSO.Q28.2` | en flujo de recurso, Q28 = `Si` | `Presentar recurso` |
-| `SINDICADO.STATUS.PENDIENTE.Q29.1` | Q29 diligenciada | `Pendiente decisi�n` |
+| `SINDICADO.STATUS.PENDIENTE.Q29.1` | Q29 diligenciada | `Pendiente decisión` |
 | `SINDICADO.STATUS.CIERRE.Q30_31.1` | Q30 o Q31 con respuesta | `Caso cerrado` |
 
 ## 10. Validacion tecnica (2026-04-20)
@@ -251,4 +249,3 @@ Cambios aplicados y validados:
 | `npm --prefix frontend run lint` | OK |
 | `npm --prefix frontend test -- --run src/utils/evaluateCelesteRules.test.ts` | OK |
 | `npm --prefix frontend run build` | OK |
-

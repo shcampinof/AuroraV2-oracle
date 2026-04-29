@@ -27,26 +27,26 @@ Reglas:
 - Siempre visibles: `bloque1`, `bloque2Aurora`.
 - Si no hay lock: se agrega `bloque3`.
 - En bloque 2 de Aurora, antes de la pregunta 18, se muestra campo no editable:
-  - `17A. Fecha de actualizaciÃ³n de los datos (corte)` (resaltado en azul, solo lectura).
+  - `17A. Fecha de actualización de los datos (corte)` (resaltado en azul, solo lectura).
   - Valor temporal configurado: `15/04/2026`.
 - En bloque 2 de Aurora, entre Q23 y Q24 se muestran 2 campos calculados y no editables:
-  - `DÃ­as restantes para cumplir requisito temporal de prisiÃ³n domiciliaria`
-  - `DÃ­as restantes para cumplir requisito temporal de libertad condicional`
-  - CÃ¡lculo: `Pena total en dÃ­as - Tiempo efectivo de pena cumplida en dÃ­as (teniendo en cuenta la redenciÃ³n)` contra umbral del beneficio.
+  - `Días restantes para cumplir requisito temporal de prisión domiciliaria`
+  - `Días restantes para cumplir requisito temporal de libertad condicional`
+  - Cálculo: `Pena total en días - Tiempo efectivo de pena cumplida en días (teniendo en cuenta la redención)` contra umbral del beneficio.
   - Salida:
-    - `MÃ¡s de 90 dÃ­as`
-    - `N dÃ­as` cuando faltan `90` o menos
+    - `Más de 90 días`
+    - `N días` cuando faltan `90` o menos
     - `Ya cumple el tiempo` cuando el faltante es `<= 0`
 - Resumen de calificaciones (Q26-Q27) en bloque 2:
-  - Se renderiza dinÃ¡micamente con 4 filas visibles.
-  - Fila 1: `26. CalificaciÃ³n actual (mÃ¡s reciente)` (editable).
-  - Fila 2: `27. Otras calificaciones: CalificaciÃ³n 2`.
-  - Filas siguientes: `CalificaciÃ³n 3`, `CalificaciÃ³n 4`.
+  - Se renderiza dinámicamente con 4 filas visibles.
+  - Fila 1: `26. Calificación actual (más reciente)` (editable).
+  - Fila 2: `27. Otras calificaciones: Calificación 2`.
+  - Filas siguientes: `Calificación 3`, `Calificación 4`.
   - Todas las filas son editables.
-  - Encabezados de columna sin numeraciÃ³n (`Fecha Ãºltima calificaciÃ³n`, `NÃºmero de acta`, `EvaluaciÃ³n desde`, `EvaluaciÃ³n hasta`, `CalificaciÃ³n de conducta`).
-  - Si la fila corresponde a una actuaciÃ³n histÃ³rica existente, sus cambios se persisten en esa actuaciÃ³n.
-  - Si no existe actuaciÃ³n histÃ³rica asociada a la fila, se permite ediciÃ³n visual pero no persistencia.
-  - Orden de anteriores: fecha de calificaciÃ³n descendente.
+  - Encabezados de columna sin numeración (`Fecha última calificación`, `Número de acta`, `Evaluación desde`, `Evaluación hasta`, `Calificación de conducta`).
+  - Si la fila corresponde a una actuación histórica existente, sus cambios se persisten en esa actuación.
+  - Si no existe actuación histórica asociada a la fila, se permite edición visual pero no persistencia.
+  - Orden de anteriores: fecha de calificación descendente.
 - `bloque4` se muestra cuando:
   - obligatorios de bloque 3 estan completos (Q32 sigue opcional),
   - **Q36 tiene seleccion valida**,
@@ -55,7 +55,7 @@ Reglas:
 - En bloque 3 de Aurora:
   - Q30, Q31 y Q32 muestran opciones numeradas respetando el orden actual.
   - Q30, Q31, Q32 y Q34 incluyen la opcion:
-    - `No aplica porque estÃ¡ en trÃ¡mite solicitud de acumulaciÃ³n de penas`.
+    - `No aplica porque está en trámite solicitud de acumulación de penas`.
 
 Lock activo:
 
@@ -91,9 +91,9 @@ Reglas clave:
 
 - P37 se valida dentro de la misma regla global de obligatorios de bloque (sin validacion separada).
 - Si faltan obligatorios en bloques iniciados, no se bloquea persistencia: se realiza guardado parcial y se muestra advertencia visual con los campos faltantes para completar el bloque.
-- En Q39 (`DecisiÃ³n del usuario`), ambas opciones afirmativas habilitan continuidad de flujo:
-  - `SÃ­, desea que el defensor(a) pÃºblico(a) avance con la solicitud`
-  - `SÃ­ desea que el defensor presente solicitud, pero suscrita por la persona privada de la Libertad.`
+- En Q39 (`Decisión del usuario`), ambas opciones afirmativas habilitan continuidad de flujo:
+  - `Sí, desea que el defensor(a) público(a) avance con la solicitud`
+  - `Sí desea que el defensor presente solicitud, pero suscrita por la persona privada de la Libertad.`
 - Q35 es condicional a Q34:
   - Si Q34 = "Si", Q35 se habilita y se marca obligatoria visualmente.
   - Si Q34 != "Si", Q35 se deshabilita, se limpia y no cuenta como faltante.
@@ -152,10 +152,10 @@ Ajustes:
   - `Concede la solicitud`
   - `No concede la solicitud`
   - Compatibilidad: si existen registros historicos con `Concede/No concede subrogado penal`, se normalizan al abrir.
-- En Q42 (`Poder en caso de avanzar con la solicitud`) se incluye la opciÃ³n `No requiere poder` sin cambiar reglas de habilitaciÃ³n/bloqueo.
-- En tramite normal (5B), Q43 (`Fecha de recepciÃ³n de pruebas aportadas por el usuario (si aplica)`) depende de Q41 (`Requiere pruebas`):
-  - si Q41 = `SÃ­`, Q43 se habilita;
-  - si Q41 != `SÃ­`, Q43 se deshabilita y se limpia automaticamente.
+- En Q42 (`Poder en caso de avanzar con la solicitud`) se incluye la opción `No requiere poder` sin cambiar reglas de habilitación/bloqueo.
+- En tramite normal (5B), Q43 (`Fecha de recepción de pruebas aportadas por el usuario (si aplica)`) depende de Q41 (`Requiere pruebas`):
+  - si Q41 = `Sí`, Q43 se habilita;
+  - si Q41 != `Sí`, Q43 se deshabilita y se limpia automaticamente.
 - Validacion de secuencia temporal en fechas de tramite:
   - Tramite normal: Q43 <= Q45 <= Q46.
   - Utilidad publica: Q49 <= Q50 <= Q51.
@@ -210,10 +210,8 @@ Esto evita casos donde, con formulario ya avanzado, el estado se quedaba en `Ana
 
 ## 9. Nuevas opciones penales en bloque 3
 
-Se agregaron opciones de estado intermedio:
+Opciones de estado intermedio vigentes:
 
-- Q30: `Si procedera proximamente libertad condicional (>57% de pena cumplida)`
-- Q31: `Si procedera proximamente prision domiciliaria (>47% de pena cumplida)`
 - Q30: `Si procedera proximamente libertad condicional (90 dias o menos para cumplir tiempo)`
 - Q31: `Si procedera proximamente prision domiciliaria (90 dias o menos para cumplir tiempo)`
 
@@ -273,7 +271,7 @@ Estados/accion a impulsar en sindicados:
 Persistencia:
 
 - En guardado de sindicados se sincroniza:
-  - `Estado del trÃ¡mite` con `derivedStatus`.
+  - `Estado del trámite` con `derivedStatus`.
   - `Estado del caso` a `Cerrado` solo cuando estado derivado es `Caso cerrado`; en otro caso `Activo`.
 
 ---
@@ -285,7 +283,6 @@ Sobre el estado actual del repo:
 - `npm --prefix frontend run lint` -> OK
 - `npm --prefix frontend test -- --run src/utils/evaluateCelesteRules.test.ts` -> OK
 - `npm --prefix frontend run build` -> OK
-
 
 
 

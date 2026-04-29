@@ -2,6 +2,7 @@ const { execute, getOracleDriver } = require('../../db/oraclePool');
 
 const GESTION_COLUMNS = new Set([
   'PAG',
+  'CEDULA_PAG',
   'DEFENSOR',
   'CEDULA_DEFENSOR',
   'ACCION_REALIZAR',
@@ -35,11 +36,15 @@ const GESTION_COLUMNS = new Set([
   'FECHA_REALIZACION_AUDIENCIA',
   'FECHA_PRESENTACION_SOLICITUD_AUTORIDAD',
   'FECHA_DECISION_AUTORIDAD',
+  'FECHA_RADICACION_UTILIDAD',
   'SENTIDO_DECISION',
   'MOTIVO_DECISION_NEGATIVA',
   'SE_PRESENTA_RECURSO',
   'FECHA_RECURSO_DESFAVORABLE',
+  'FECHA_PRESENTACION_RECURSO',
+  'FECHA_DECISION_RECURSO',
   'SENTIDO_DECISION_RESUELVE_RECURSO',
+  'CIERRE_CASO',
   'FECHA_REGISTRO',
 ]);
 
@@ -217,11 +222,13 @@ function normalizeAssignOptions(pagOrOptions) {
   if (pagOrOptions && typeof pagOrOptions === 'object') {
     return {
       pagAsignador: String(pagOrOptions?.pagAsignador || '').trim(),
+      pagCedula: String(pagOrOptions?.pagCedula || pagOrOptions?.cedulaPag || '').trim(),
       defensorCedula: String(pagOrOptions?.defensorCedula || pagOrOptions?.defensorId || '').trim(),
     };
   }
   return {
     pagAsignador: String(pagOrOptions || '').trim(),
+    pagCedula: '',
     defensorCedula: '',
   };
 }
@@ -229,11 +236,13 @@ function normalizeAssignOptions(pagOrOptions) {
 async function assignDefensorBySituacion(idSituacion, defensor, pagOrOptions = '') {
   const options = normalizeAssignOptions(pagOrOptions);
   const hasPag = String(options.pagAsignador || '').trim() !== '';
+  const hasPagCedula = String(options.pagCedula || '').trim() !== '';
   const hasDefensorCedula = String(options.defensorCedula || '').trim() !== '';
   const sql = `
     UPDATE DNDP.GESTION_JURIDICA
        SET DEFENSOR = :defensor
          ${hasPag ? ', PAG = :pag' : ''}
+         ${hasPagCedula ? ', CEDULA_PAG = :cedulaPag' : ''}
          ${hasDefensorCedula ? ', CEDULA_DEFENSOR = :cedulaDefensor' : ''}
      WHERE ID_SITUACION = :idSituacion
   `;
@@ -242,6 +251,7 @@ async function assignDefensorBySituacion(idSituacion, defensor, pagOrOptions = '
     defensor: String(defensor || '').trim(),
     idSituacion: Number(idSituacion),
     ...(hasPag ? { pag: String(options.pagAsignador || '').trim() } : {}),
+    ...(hasPagCedula ? { cedulaPag: String(options.pagCedula || '').trim() } : {}),
     ...(hasDefensorCedula ? { cedulaDefensor: String(options.defensorCedula || '').trim() } : {}),
   };
 

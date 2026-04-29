@@ -13,6 +13,7 @@ const { closePool } = require('./db/oraclePool');
 
 const app = express();
 const PORT = process.env.PORT || 7860;
+const enableStartupWarmup = String(process.env.ENABLE_STARTUP_WARMUP || '').trim().toLowerCase() === 'true';
 const frontendDistPath = path.join(__dirname, 'public', 'app');
 const frontendIndexPath = path.join(frontendDistPath, 'index.html');
 const hasFrontendBuild = fs.existsSync(frontendIndexPath);
@@ -55,6 +56,11 @@ app.use('/api', (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor AURORA escuchando en http://0.0.0.0:${PORT}`);
   setImmediate(async () => {
+    if (!enableStartupWarmup) {
+      console.log('[warmup] Deshabilitado. Define ENABLE_STARTUP_WARMUP=true para activarlo.');
+      return;
+    }
+
     const startedAt = Date.now();
     try {
       const total = (await consolidado.getAll()).length;

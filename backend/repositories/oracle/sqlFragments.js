@@ -1,7 +1,7 @@
-const DEFAULT_SCOPE_DEPARTAMENTOS = ['ANTIOQUIA', 'NORTE DE SANTANDER', 'CAUCA', 'SANTANDER'];
+const DEFAULT_SCOPE_DEPARTAMENTOS = [];
 
 function normalizedSqlExpr(columnRef) {
-  return `TRANSLATE(UPPER(TRIM(NVL(${columnRef}, ''))), '¡…Õ”⁄¿»Ã“ŸƒÀœ÷‹—', 'AEIOUAEIOUAEIOUN')`;
+  return `TRANSLATE(UPPER(TRIM(NVL(${columnRef}, ''))), '√Å√â√ç√ì√ö√Ä√à√å√í√ô√Ñ√ã√è√ñ√ú√ë', 'AEIOUAEIOUAEIOUN')`;
 }
 
 function buildScopeWhereClause(columnRef = 's.DEPARTAMENTO', bindPrefix = 'dep', values = DEFAULT_SCOPE_DEPARTAMENTOS) {
@@ -44,6 +44,7 @@ function buildActiveSituacionCte() {
 
 module.exports = {
   DEFAULT_SCOPE_DEPARTAMENTOS,
+  normalizedSqlExpr,
   buildScopeWhereClause,
   buildActiveSituacionCte,
 };

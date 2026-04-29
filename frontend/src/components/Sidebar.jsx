@@ -2,7 +2,7 @@
   { id: 'inicio', label: 'Inicio' },
   { id: 'formulario', label: 'Formulario de atención' },
   { id: 'registros', label: 'Usuarios asignados' },
-  { id: 'asignacion', label: 'PAG -Asignación de casos de condenados' },
+  { id: 'asignacion', label: 'PAG - Asignación de casos de condenados' },
   { id: 'herramientas', label: 'Caja de Herramientas' },
   { id: 'manual', label: 'Manual Interactivo' },
 ];
@@ -25,4 +25,3 @@ function Sidebar({ vistaActual, onChangeView }) {
 }
 
 export default Sidebar;
-

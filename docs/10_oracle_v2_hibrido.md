@@ -1,46 +1,46 @@
-# Aurora Oracle v2 (hÌbrida segura)
+# Aurora Oracle v2 (h√≠brida segura)
 
-## 1) CÛmo funcionaba la app con CSV
-- Fuente principal de datos PPL y actuaciones: `backend/data/consolidado_ppl.csv` vÌa `backend/db/consolidado.repo.js`.
-- Cat·logos auxiliares:
-  - PAG: `backend/data/PAG.csv` vÌa `backend/db/pag.repo.js`.
-  - Defensores: `backend/data/defensores.csv` vÌa `backend/db/defensores.repo.js`.
+## 1) C√≥mo funcionaba la app con CSV
+- Fuente principal de datos PPL y actuaciones: `backend/data/consolidado_ppl.csv` v√≠a `backend/db/consolidado.repo.js`.
+- Cat√°logos auxiliares:
+  - PAG: `backend/data/PAG.csv` v√≠a `backend/db/pag.repo.js`.
+  - Defensores: `backend/data/defensores.csv` v√≠a `backend/db/defensores.repo.js`.
 - Persistencia CSV en backend original:
   - lectura con cache en memoria;
   - escritura por reescritura completa del archivo.
 - Endpoints consumidos por frontend: `/api/ppl/*`, `/api/defensores*`, `/api/formatos*`, `/api/health`.
 
-## 2) Archivos CSV reemplazados y quÈ quedÛ temporal
+## 2) Archivos CSV reemplazados y qu√© qued√≥ temporal
 ### Reemplazado a Oracle
 - `backend/db/consolidado.repo.js` -> `backend/db/oracleConsolidado.repo.js`.
 - `backend/routes/ppl.js` migrado a lectura/escritura Oracle (async).
 
-### Se mantiene temporal en CSV (por decisiÛn v2 hÌbrida)
+### Se mantiene temporal en CSV (por decisi√≥n v2 h√≠brida)
 - `GET /api/ppl/pag/:cedula/validar` -> `backend/db/pag.repo.js`.
 - `GET/POST /api/defensores` -> `backend/db/defensores.repo.js`.
 
 ## 3) Nueva estructura orientada a Oracle
-- `backend/config/oracle.js`: variables de entorno y validaciÛn.
-- `backend/db/oraclePool.js`: pool, ejecuciÛn SQL, health check Oracle.
-- `backend/repositories/oracle/sqlFragments.js`: CTE de situaciÛn activa + alcance regional.
-- `backend/repositories/oracle/personaRepository.js`: consultas de persona+situaciÛn+gestiÛn.
-- `backend/repositories/oracle/situacionRepository.js`: updates de situaciÛn.
-- `backend/repositories/oracle/gestionRepository.js`: historial/insert/update/asignaciÛn de gestiÛn.
-- `backend/services/pplService.js`: lÛgica de negocio y adapter Oracle -> contrato legacy.
+- `backend/config/oracle.js`: variables de entorno y validaci√≥n.
+- `backend/db/oraclePool.js`: pool, ejecuci√≥n SQL, health check Oracle.
+- `backend/repositories/oracle/sqlFragments.js`: CTE de situaci√≥n activa + alcance regional.
+- `backend/repositories/oracle/personaRepository.js`: consultas de persona+situaci√≥n+gesti√≥n.
+- `backend/repositories/oracle/situacionRepository.js`: updates de situaci√≥n.
+- `backend/repositories/oracle/gestionRepository.js`: historial/insert/update/asignaci√≥n de gesti√≥n.
+- `backend/services/pplService.js`: l√≥gica de negocio y adapter Oracle -> contrato legacy.
 - `backend/routes/health.js`: `GET /api/health/db` (`SELECT 1 FROM dual`).
 - `backend/db/oracleConsolidado.repo.js`: fachada compatible con el contrato del router actual.
 
 ## 4) SQL principales implementadas
-### 4.1 CTE de situaciÛn activa (prioridad funcional)
+### 4.1 CTE de situaci√≥n activa (prioridad funcional)
 1. `ACTIVO = 1`
-2. `FECHA_CAPTURA` m·s reciente
-3. mayor longitud numÈrica de `PROCESO` (sin guiones)
-4. `FECHA_REGISTRO` m·s reciente
+2. `FECHA_CAPTURA` m√°s reciente
+3. mayor longitud num√©rica de `PROCESO` (sin guiones)
+4. `FECHA_REGISTRO` m√°s reciente
 
-ImplementaciÛn: `backend/repositories/oracle/sqlFragments.js` + uso en `personaRepository.js`.
+Implementaci√≥n: `backend/repositories/oracle/sqlFragments.js` + uso en `personaRepository.js`.
 
 ### 4.2 Listados y detalle PPL
-- Base: `DNDP.PERSONA` + CTE de situaciÛn activa (`DNDP.SITUACION_CARCELARIA`) + `LEFT JOIN DNDP.GESTION_JURIDICA`.
+- Base: `DNDP.PERSONA` + CTE de situaci√≥n activa (`DNDP.SITUACION_CARCELARIA`) + `LEFT JOIN DNDP.GESTION_JURIDICA`.
 - Usado para:
   - `/api/ppl`
   - `/api/ppl/condenados`
@@ -50,15 +50,15 @@ ImplementaciÛn: `backend/repositories/oracle/sqlFragments.js` + uso en `personaR
 - Lectura por `ID_SITUACION` ordenada por `FECHA_REGISTRO, ID_GESTION`.
 - Usado para `/api/ppl/:documento/actuaciones`.
 
-### 4.4 Crear actuaciÛn
+### 4.4 Crear actuaci√≥n
 - `INSERT INTO DNDP.GESTION_JURIDICA ... RETURNING ID_GESTION`.
-- Fallback de ID cuando no hay autogeneraciÛn:
+- Fallback de ID cuando no hay autogeneraci√≥n:
   - secuencia opcional `ORACLE_GESTION_ID_SEQUENCE`;
   - o fallback por `MAX(ID_GESTION)+1`.
 
-### 4.5 Actualizar actuaciÛn
+### 4.5 Actualizar actuaci√≥n
 - `UPDATE DNDP.GESTION_JURIDICA` por `ID_GESTION` derivado de `actuacionId` (`${documento}-${idGestion}`),
-  con fallback a la gestiÛn m·s reciente.
+  con fallback a la gesti√≥n m√°s reciente.
 
 ## 5) Archivos nuevos y modificados
 ### Nuevos
@@ -81,7 +81,7 @@ ImplementaciÛn: `backend/repositories/oracle/sqlFragments.js` + uso en `personaR
 - `backend/package.json`
 - `backend/package-lock.json`
 
-## 6) CÛmo correr localmente
+## 6) C√≥mo correr localmente
 1. Backend:
 ```bash
 cd backend
@@ -111,7 +111,7 @@ npm run dev
 npm run smoke:oracle
 ```
 
-## 7) CÛmo correr en Linux por SSH
+## 7) C√≥mo correr en Linux por SSH
 1. Conectarse por SSH y entrar al backend.
 2. Exportar variables Oracle:
 ```bash
@@ -128,23 +128,23 @@ export ORACLE_GESTION_ID_SEQUENCE='<schema.secuencia>'
 npm install
 npm run start:prod
 ```
-4. ValidaciÛn mÌnima:
+4. Validaci√≥n m√≠nima:
 ```bash
 curl -s http://127.0.0.1:7860/api/health
 curl -s http://127.0.0.1:7860/api/health/db
 ```
 
-## 8) Checklist de validaciÛn CSV vs Oracle
+## 8) Checklist de validaci√≥n CSV vs Oracle
 - [ ] `/api/ppl/condenados` devuelve columnas/rows/meta y soporta filtros.
 - [ ] `/api/ppl/:documento` conserva shape `{ tipo, registro }`.
 - [ ] `/api/ppl/:documento/actuaciones` conserva shape `{ documento, actuaciones }`.
-- [ ] `POST /api/ppl/:documento/actuaciones` crea actuaciÛn y retorna `actuacion.id` compatible.
+- [ ] `POST /api/ppl/:documento/actuaciones` crea actuaci√≥n y retorna `actuacion.id` compatible.
 - [ ] `PUT /api/ppl/:documento` actualiza con `actuacionId` y sin `actuacionId` (fallback).
 - [ ] `POST /api/ppl/asignar-defensor` sigue validando PAG en CSV y asigna en Oracle.
 - [ ] `GET /api/health/db` responde `ok=true` y ejecuta `SELECT 1 FROM dual`.
 - [ ] Frontend carga sin cambios de rutas ni shape esperado.
 
 ## Notas de compatibilidad
-- `HERRAMIENTA` se trata como eliminado (se retorna vacÌo estable).
+- `HERRAMIENTA` se trata como eliminado (se retorna vac√≠o estable).
 - Alcance regional por defecto conservado: Antioquia, Norte de Santander, Cauca, Santander.
-- Cat·logos PAG/defensores quedan temporalmente en CSV para v2 hÌbrida.
+- Cat√°logos PAG/defensores quedan temporalmente en CSV para v2 h√≠brida.

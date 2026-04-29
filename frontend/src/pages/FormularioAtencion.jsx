@@ -72,7 +72,6 @@ const FECHA_CORTE_DATOS_REFERENCIA = '15/04/2026';
 const OPCIONES_PROCEDENCIA_LIBERTAD_CONDICIONAL = [
 
   'Sí procede solicitud de libertad condicional',
-  'Sí procederá proximamente libertad condicional (>57% de pena cumplida)',
   'Sí procederá proximamente libertad condicional (90 días o menos para cumplir tiempo)',
   'No aplica porque ya hay solicitud de libertad o subrogado penal en trámite',
   'No aplica porque ya está en libertad por pena cumplida',
@@ -103,7 +102,6 @@ const OPCIONES_PROCEDENCIA_LIBERTAD_CONDICIONAL_NUMERADAS =
 const OPCIONES_PROCEDENCIA_PRISION_DOMICILIARIA = [
 
   'Sí procede solicitud de prisión domiciliaria de mitad de pena',
-  'Sí procederá proximamente prisión domiciliaria (>47% de pena cumplida)',
   'Sí procederá proximamente prisión domiciliaria (90 días o menos para cumplir tiempo)',
   'No aplica porque ya hay solicitud de libertad o subrogado penal en trámite',
   'No aplica porque ya está en libertad por pena cumplida',
@@ -861,6 +859,20 @@ function hasCalificacionSnapshotData(snapshot) {
   return [source.fechaUltimaCalificacion, source.numeroActa, source.evaluacionDesde, source.evaluacionHasta, source.calificacionConducta].some(
     (value) => isFilled(value)
   );
+}
+
+function normalizeCalificacionesConductaRows(value) {
+  const rows = Array.isArray(value) ? value : [];
+  return rows.slice(0, 4).map((row) => {
+    const source = row && typeof row === 'object' ? row : {};
+    return {
+      fechaUltimaCalificacion: String(source.fechaUltimaCalificacion ?? ''),
+      numeroActa: String(source.numeroActa ?? ''),
+      evaluacionDesde: String(source.evaluacionDesde ?? ''),
+      evaluacionHasta: String(source.evaluacionHasta ?? ''),
+      calificacionConducta: String(source.calificacionConducta ?? ''),
+    };
+  });
 }
 
 function applyCalificacionSnapshotToRecord(record, snapshot) {
@@ -2020,7 +2032,12 @@ export default function FormularioAtencion({ numeroInicial }) {
   ]);
 
   const calificacionActual = useMemo(() => buildCalificacionSnapshot(registro), [registro]);
+  const calificacionesDesdeBase = useMemo(() => {
+    const rows = normalizeCalificacionesConductaRows(registro?.__calificacionesConducta);
+    return rows.some((item) => hasCalificacionSnapshotData(item)) ? rows : [];
+  }, [registro]);
   const calificacionesAnteriores = useMemo(() => {
+    if (calificacionesDesdeBase.length) return calificacionesDesdeBase.slice(1);
     const rows = Array.isArray(actuacionesCalificacion) ? actuacionesCalificacion : [];
     if (!rows.length) return [];
 
@@ -2066,9 +2083,18 @@ export default function FormularioAtencion({ numeroInicial }) {
       ...item.snapshot,
       sourceActuacionId: item.sourceActuacionId,
     }));
-  }, [actuacionesCalificacion, actuacionActivaId]);
+  }, [actuacionesCalificacion, actuacionActivaId, calificacionesDesdeBase]);
 
   const calificacionesCompactas = useMemo(() => {
+    if (calificacionesDesdeBase.length) {
+      return [0, 1, 2, 3].map((idx) => ({
+        id: `calificacion-${idx + 1}`,
+        label: idx === 0 ? '26. Calificación actual (más reciente)' : `Calificación ${idx + 1}`,
+        sourceActuacionId: idx === 0 ? String(actuacionActivaId ?? '').trim() : '',
+        ...(calificacionesDesdeBase[idx] || buildCalificacionSnapshot(null)),
+      }));
+    }
+
     const items = [
       {
         id: 'calificacion-1',
@@ -2088,7 +2114,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     }
 
     return items;
-  }, [calificacionActual, calificacionesAnteriores, actuacionActivaId]);
+  }, [calificacionActual, calificacionesAnteriores, actuacionActivaId, calificacionesDesdeBase]);
 
   useEffect(() => {
     const nextDraft = {};
@@ -2431,6 +2457,9 @@ export default function FormularioAtencion({ numeroInicial }) {
     const persistirCierreAutomatico = async () => {
       try {
         const nextRecord = { ...unwrapRegistro(registro), 'Estado del caso': 'Cerrado' };
+        if (!String(nextRecord['Cierre del caso por imposibilidad de avanzar (si aplica)'] ?? '').trim()) {
+          nextRecord['Cierre del caso por imposibilidad de avanzar (si aplica)'] = motivoCierre || 'Caso cerrado';
+        }
         await updatePpl(doc, buildUpdatePayload(nextRecord));
         setRegistro(wrapRegistroForLookup(nextRecord));
         setToastMessage('Caso cerrado y avances guardados autom\u00E1ticamente');
@@ -2444,7 +2473,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     };
 
     persistirCierreAutomatico();
-  }, [registro, auroraActivo, cierrePorDecisionFinalBloque5, getDocumentoActual, buildUpdatePayload]);
+  }, [registro, auroraActivo, cierrePorDecisionFinalBloque5, getDocumentoActual, buildUpdatePayload, motivoCierre]);
 
   useEffect(() => {
     if (!registro || !auroraActivo) return;
@@ -2999,10 +3028,16 @@ export default function FormularioAtencion({ numeroInicial }) {
       if (filaActualCalificacion) {
         applyCalificacionSnapshotToRecord(payloadBase, filaActualCalificacion.snapshot);
       }
+      payloadBase.__calificacionesConducta = calificacionesPersistibles
+        .slice(0, 4)
+        .map((item) => ({ ...(item.snapshot || buildCalificacionSnapshot(null)) }));
       if (auroraActivo) {
         const estadoTramiteActual = String(auroraRuleState?.derivedStatus || '').trim();
         if (estadoTramiteActual) payloadBase['Estado del trámite'] = estadoTramiteActual;
         payloadBase['Estado del caso'] = estadoTramiteActual === 'Caso cerrado' || casoCerrado ? 'Cerrado' : 'Activo';
+        if (payloadBase['Estado del caso'] === 'Cerrado' && !String(payloadBase['Cierre del caso por imposibilidad de avanzar (si aplica)'] ?? '').trim()) {
+          payloadBase['Cierre del caso por imposibilidad de avanzar (si aplica)'] = motivoCierre || estadoTramiteActual || 'Caso cerrado';
+        }
       }
       if (flow === 'sindicado') {
         const estadoTramiteSindicado = String(celesteRuleState?.derivedStatus || '').trim();
@@ -3145,15 +3180,19 @@ export default function FormularioAtencion({ numeroInicial }) {
     registro?.['Tiempo efectivo de pena cumplida en días (teniendo en cuenta la redención)']
   );
   const diasRestantesPrisionDomiciliaria = useMemo(() => {
+    const desdeBase = String(registro?.Dias_Prision ?? registro?.['Días restantes para cumplir requisito temporal de prisión domiciliaria'] ?? '').trim();
+    if (desdeBase !== '') return desdeBase;
     if (!Number.isFinite(penaTotalDias) || !Number.isFinite(tiempoEfectivoDias)) return '';
     const objetivo = Number(penaTotalDias) * 0.5;
     return getRemainingDaysStatus(objetivo - Number(tiempoEfectivoDias));
-  }, [penaTotalDias, tiempoEfectivoDias]);
+  }, [penaTotalDias, tiempoEfectivoDias, registro]);
   const diasRestantesLibertadCondicional = useMemo(() => {
+    const desdeBase = String(registro?.Dias_libertad ?? registro?.['Días restantes para cumplir requisito temporal de libertad condicional'] ?? '').trim();
+    if (desdeBase !== '') return desdeBase;
     if (!Number.isFinite(penaTotalDias) || !Number.isFinite(tiempoEfectivoDias)) return '';
     const objetivo = Number(penaTotalDias) * 0.6;
     return getRemainingDaysStatus(objetivo - Number(tiempoEfectivoDias));
-  }, [penaTotalDias, tiempoEfectivoDias]);
+  }, [penaTotalDias, tiempoEfectivoDias, registro]);
 
   useEffect(() => {
     if (!registro) return;
@@ -4323,12 +4362,6 @@ export default function FormularioAtencion({ numeroInicial }) {
     </>
   );
 }
-
-
-
-
-
-
 
 
 

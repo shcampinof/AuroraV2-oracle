@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getCondenados } from '../services/api.js';
+import { getCondenados, getCondenadosFilterOptions } from '../services/api.js';
 import { pickActiveCaseData } from '../utils/entrevistaEstado.js';
 import { displayOrDash } from '../utils/pplDisplay.js';
 import { getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
@@ -16,7 +16,7 @@ function prettifyHeader(key) {
 
 const EXTRA_COLUMNS = ['actuacionJudicial'];
 const ROWS_PER_PAGE = 100;
-const DEFAULT_INITIAL_LIMIT = 400;
+const DEFAULT_INITIAL_LIMIT = 100;
 const DEFAULT_FILTERED_LIMIT = 200;
 const ESTADOS_TRAMITE_OPTIONS = [
   'Analizar el caso',
@@ -304,6 +304,12 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   const [pagina, setPagina] = useState(1);
 
   const [defensores, setDefensores] = useState([]);
+  const [opcionesFiltro, setOpcionesFiltro] = useState({
+    defensores: [],
+    departamentos: [],
+    municipios: [],
+    lugares: [],
+  });
   const isDev = typeof import.meta !== 'undefined' && import.meta?.env?.DEV;
   const estadoInfoCacheRef = useRef(new WeakMap());
   const tableScrollRef = useRef(null);
@@ -479,9 +485,38 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     }
   }, []);
 
+  const cargarOpcionesFiltro = useCallback(async () => {
+    try {
+      const data = await getCondenadosFilterOptions({ tipo: 'all' });
+      const next = {
+        defensores: Array.isArray(data?.defensores) ? data.defensores : [],
+        departamentos: Array.isArray(data?.departamentos) ? data.departamentos : [],
+        municipios: Array.isArray(data?.municipios) ? data.municipios : [],
+        lugares: Array.isArray(data?.lugares) ? data.lugares : [],
+      };
+      setOpcionesFiltro(next);
+      setDefensores((prev) => {
+        const merged = new Map();
+        [...(Array.isArray(prev) ? prev : []), ...next.defensores].forEach((value) => {
+          const text = String(value || '').trim();
+          if (!text) return;
+          const key = text.toLowerCase();
+          if (!merged.has(key)) merged.set(key, text);
+        });
+        return Array.from(merged.values()).sort((a, b) => a.localeCompare(b));
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   useEffect(() => {
     cargarRowsFromBackend();
   }, [cargarRowsFromBackend]);
+
+  useEffect(() => {
+    cargarOpcionesFiltro();
+  }, [cargarOpcionesFiltro]);
 
   useEffect(() => {
     estadoInfoCacheRef.current = new WeakMap();
@@ -515,23 +550,26 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
   const lugaresDisponibles = useMemo(() => {
     if (filtroAdicionalSeleccionado !== 'lugar') return [];
-    return distinctSorted(rows, getLugarPrivacionValue);
-  }, [rows, filtroAdicionalSeleccionado]);
+    return opcionesFiltro.lugares.length ? opcionesFiltro.lugares : distinctSorted(rows, getLugarPrivacionValue);
+  }, [opcionesFiltro.lugares, rows, filtroAdicionalSeleccionado]);
   const departamentosDisponibles = useMemo(() => {
     if (filtroAdicionalSeleccionado !== 'departamento' && filtroAdicionalSeleccionado !== 'municipio') return [];
-    return distinctSorted(rows, getDepartamentoPrivacionValue);
-  }, [rows, filtroAdicionalSeleccionado]);
+    return opcionesFiltro.departamentos.length
+      ? opcionesFiltro.departamentos
+      : distinctSorted(rows, getDepartamentoPrivacionValue);
+  }, [opcionesFiltro.departamentos, rows, filtroAdicionalSeleccionado]);
 
   const estadosDisponibles = useMemo(() => ESTADOS_TRAMITE_OPTIONS, []);
 
   const municipiosDisponiblesDraft = useMemo(() => {
     if (filtroAdicionalSeleccionado !== 'municipio') return [];
     const depNeedle = normalize(filtrosDraft.departamento);
+    if (opcionesFiltro.municipios.length && !depNeedle) return opcionesFiltro.municipios;
     const candidates = depNeedle
       ? rows.filter((r) => normalize(getDepartamentoPrivacionValue(r)) === depNeedle)
       : rows;
     return distinctSorted(candidates, getMunicipioPrivacionValue);
-  }, [rows, filtrosDraft.departamento, filtroAdicionalSeleccionado]);
+  }, [opcionesFiltro.municipios, rows, filtrosDraft.departamento, filtroAdicionalSeleccionado]);
 
   const rowsFiltradas = useMemo(() => {
     const estadoNeedle = normalize(filtrosAplicados.estado);
@@ -1032,5 +1070,3 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     </div>
   );
 }
-
-
