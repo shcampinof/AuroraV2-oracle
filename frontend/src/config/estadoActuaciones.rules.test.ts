@@ -37,6 +37,20 @@ describe('estadoActuaciones.rules', () => {
     expect(estado.claseFinal).toBe('estado--verde');
   });
 
+  it('ESTADO.ENTREVISTAR.2 - campos condicionales vacíos no regresan el estado a Analizar el caso', () => {
+    const estado = obtenerEstadoActuacion({
+      ...buildBloque3Base(),
+      [AURORA_FIELD_CATALOG.q38]: '',
+      [AURORA_FIELD_CATALOG.q40]: '',
+      [AURORA_FIELD_CATALOG.q41]: '',
+      [AURORA_FIELD_CATALOG.b5NormalRecepcionPruebas]: '',
+      [AURORA_FIELD_CATALOG.q55]: '',
+      [AURORA_FIELD_CATALOG.b5NormalSentidoResuelveSolicitud]: '',
+    });
+
+    expect(estado.etiqueta).toBe('Entrevistar al usuario');
+  });
+
   it('ESTADO.SOLICITUD.1 - etiqueta Presentar solicitud cuando bloque base esta completo y falta radicacion', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
@@ -78,7 +92,7 @@ describe('estadoActuaciones.rules', () => {
     expect(estado.claseFinal).toBe('estado--gris');
   });
 
-  it('ESTADO.RECURSO.TRAMITE.1 - con Q47 = "No concede la solicitud" y Q49 vacía, queda Presentar solicitud', () => {
+  it('ESTADO.RECURSO.TRAMITE.1 - con Q47 = "No concede la solicitud" y Q49 vacía, queda Caso cerrado', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
       [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(1),
@@ -87,8 +101,8 @@ describe('estadoActuaciones.rules', () => {
       [AURORA_FIELD_CATALOG.q52]: 'No concede la solicitud',
       [AURORA_FIELD_CATALOG.q54]: '',
     });
-    expect(estado.etiqueta).toBe('Presentar solicitud');
-    expect(estado.claseFinal).toBe('estado--verde');
+    expect(estado.etiqueta).toBe('Caso cerrado');
+    expect(estado.claseFinal).toBe('estado--gris');
   });
 
   it('ESTADO.RECURSO.TRAMITE.2 - con Q47 = "No concede la solicitud" y Q49 = "Sí", queda Pendiente decisión', () => {
@@ -247,7 +261,27 @@ describe('estadoActuaciones.rules', () => {
     expect(display.className).toBe('estado--verde');
   });
 
-  it('ESTADO.SINDICADO.2 - con Q24/Q25 diligenciadas y Q26 niega, muestra Presentar recurso', () => {
+  it('ESTADO.SINDICADO.1B - bloque 5 vacío no cambia Entrevistar al usuario a Analizar el caso', () => {
+    const display = getEstadoDisplayInfo({
+      estadoSource: {
+        'Situación Jurídica': 'Sindicado',
+        'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'DEFENSOR',
+        'Fecha de análisis jurídico del caso': formatDateDaysAgo(2),
+        'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS':
+          'Se avanzará con solicitud de revocatoria o sustitución de la medida',
+        'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO': 'Resumen',
+        'Fecha de entrevista': '',
+        'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA': '',
+        'FECHA DE REALIZACIÓN DE AUDIENCIA': '',
+        'SENTIDO DE LA DECISIÓN': '',
+        '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?': '',
+      },
+    });
+
+    expect(display.label).toBe('Entrevistar al usuario');
+  });
+
+  it('ESTADO.SINDICADO.2 - con Q24/Q25 diligenciadas, Q26 niega y sin recurso, muestra Caso cerrado', () => {
     const display = getEstadoDisplayInfo({
       estadoSource: {
         'Situación Jurídica': 'Sindicado',
@@ -262,11 +296,11 @@ describe('estadoActuaciones.rules', () => {
         'SENTIDO DE LA DECISIÓN': 'Niega la solicitud',
       },
     });
-    expect(display.label).toBe('Presentar recurso');
-    expect(display.className).toBe('estado--rojo');
+    expect(display.label).toBe('Caso cerrado');
+    expect(display.className).toBe('estado--gris');
   });
 
-  it('ESTADO.SINDICADO.3 - con Q24 diligenciada y Q25 vacía, muestra Pendiente audiencia sin color', () => {
+  it('ESTADO.SINDICADO.3 - con Q24 diligenciada y Q25 vacía, muestra Pendiente audiencia azul', () => {
     const display = getEstadoDisplayInfo({
       estadoSource: {
         'Situación Jurídica': 'Sindicado',
@@ -280,10 +314,10 @@ describe('estadoActuaciones.rules', () => {
       },
     });
     expect(display.label).toBe('Pendiente audiencia');
-    expect(display.className).toBe('');
+    expect(display.className).toBe('estado--azul');
   });
 
-  it('ESTADO.SINDICADO.4 - con Q25 diligenciada y Q26 vacía, muestra Pendiente decisión de audiencia sin color', () => {
+  it('ESTADO.SINDICADO.4 - con Q25 diligenciada y Q26 vacía, muestra Pendiente decisión de audiencia azul', () => {
     const display = getEstadoDisplayInfo({
       estadoSource: {
         'Situación Jurídica': 'Sindicado',
@@ -297,8 +331,6 @@ describe('estadoActuaciones.rules', () => {
       },
     });
     expect(display.label).toBe('Pendiente decisión de audiencia');
-    expect(display.className).toBe('');
+    expect(display.className).toBe('estado--azul');
   });
 });
-
-

@@ -166,6 +166,28 @@ function isNiegaQ26(answers: CelesteRecord): boolean {
   return normalizeCelesteValue(getAnswerByKey(answers, FIELD.q26)).includes('niega la solicitud');
 }
 
+function deriveBloque5StatusCeleste(answers: CelesteRecord): CelesteDerivedStatus | '' {
+  const q24 = getAnswerByKey(answers, FIELD.q24);
+  const q25 = getAnswerByKey(answers, FIELD.q25);
+  const q26 = getAnswerByKey(answers, FIELD.q26);
+  const q28 = getAnswerByKey(answers, FIELD.q28);
+  const q29 = getAnswerByKey(answers, FIELD.q29);
+  const q30 = getAnswerByKey(answers, FIELD.q30);
+  const q31 = getAnswerByKey(answers, FIELD.q31);
+
+  if (isFilled(q30) || isFilled(q31)) return 'Caso cerrado';
+  if (isRevocaOSustituyeQ26(answers)) return 'Caso cerrado';
+  if (isNiegaQ26(answers)) {
+    if (normalizeYesNo(q28) === 'si') return 'Pendiente decisión';
+    return 'Caso cerrado';
+  }
+  if (isFilled(q29) || normalizeYesNo(q28) === 'si') return 'Pendiente decisión';
+  if (isFilled(q25) && !isFilled(q26)) return 'Pendiente decisión de audiencia';
+  if (isFilled(q24) && !isFilled(q25)) return 'Pendiente audiencia';
+  if ([q24, q25, q26, q28].some((value) => isFilled(value))) return 'Presentar solicitud';
+  return '';
+}
+
 export const mandatoryByBlock: Record<CelesteBlockId, FieldRef[]> = {
   bloque1: [],
   bloque2Celeste: [
@@ -230,25 +252,11 @@ export function resolveVisibleBlocksCeleste(answers: CelesteRecord): CelesteBloc
 
 export function deriveStatusCeleste(answers: CelesteRecord): CelesteDerivedStatus {
   if (isNoSeAvanzaraQ21(answers)) return 'Caso cerrado';
-  if (isFilled(getAnswerByKey(answers, FIELD.q30))) return 'Caso cerrado';
-  if (isFilled(getAnswerByKey(answers, FIELD.q31))) return 'Caso cerrado';
+  const bloque5Status = deriveBloque5StatusCeleste(answers);
+  if (bloque5Status) return bloque5Status;
   if (!areKeysFilled(answers, REQUIRED_19_22)) return 'Analizar el caso';
   if (!isSeAvanzaraQ21(answers)) return 'Analizar el caso';
   if (!isFilled(getAnswerByKey(answers, FIELD.q23))) return 'Entrevistar al usuario';
-  if (isFilled(getAnswerByKey(answers, FIELD.q24)) && !isFilled(getAnswerByKey(answers, FIELD.q25))) {
-    return 'Pendiente audiencia';
-  }
-  if (isFilled(getAnswerByKey(answers, FIELD.q25)) && !isFilled(getAnswerByKey(answers, FIELD.q26))) {
-    return 'Pendiente decisión de audiencia';
-  }
-
-  const has24And25 = isFilled(getAnswerByKey(answers, FIELD.q24)) && isFilled(getAnswerByKey(answers, FIELD.q25));
-  if (has24And25 && isRevocaOSustituyeQ26(answers)) return 'Caso cerrado';
-  if (has24And25 && isNiegaQ26(answers)) {
-    if (normalizeYesNo(getAnswerByKey(answers, FIELD.q28)) === 'no') return 'Caso cerrado';
-    if (isFilled(getAnswerByKey(answers, FIELD.q29))) return 'Pendiente decisión';
-    return 'Presentar recurso';
-  }
   return 'Presentar solicitud';
 }
 

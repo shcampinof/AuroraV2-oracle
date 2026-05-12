@@ -122,7 +122,7 @@ describe('evaluateCelesteRules - flujo sindicados', () => {
     expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
-  it('Regla 6: con Q24/Q25 diligenciadas y Q26 = niega, estado = Presentar recurso', () => {
+  it('Regla 6: con Q24/Q25 diligenciadas, Q26 = niega y Q28 vacía, estado = Caso cerrado', () => {
     const result = evaluateCelesteRules({
       answers: {
         ...buildBaseSeAvanza(),
@@ -132,7 +132,7 @@ describe('evaluateCelesteRules - flujo sindicados', () => {
         [Q26]: Q26_NIEGA,
       },
     });
-    expect(result.derivedStatus).toBe('Presentar recurso');
+    expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
   it('Regla 7: si Q28 = No, estado = Caso cerrado', () => {
@@ -149,7 +149,7 @@ describe('evaluateCelesteRules - flujo sindicados', () => {
     expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
-  it('Regla 8: si Q28 = Sí, se mantiene estado = Presentar recurso', () => {
+  it('Regla 8: si Q28 = Sí, queda Pendiente decisión', () => {
     const result = evaluateCelesteRules({
       answers: {
         ...buildBaseSeAvanza(),
@@ -160,7 +160,36 @@ describe('evaluateCelesteRules - flujo sindicados', () => {
         [Q28]: 'si',
       },
     });
-    expect(result.derivedStatus).toBe('Presentar recurso');
+    expect(result.derivedStatus).toBe('Pendiente decisión');
+  });
+
+  it('Regla 8B: con Q26 = niega y Q28 = Sí queda Pendiente decisión aunque falte bloque 3', () => {
+    const result = evaluateCelesteRules({
+      answers: {
+        [Q26]: Q26_NIEGA,
+        [Q28]: 'si',
+      },
+    });
+    expect(result.derivedStatus).toBe('Pendiente decisión');
+  });
+
+  it('Regla bloque 5: con Q24 diligenciada y sin bloque 3 queda Pendiente audiencia', () => {
+    const result = evaluateCelesteRules({
+      answers: {
+        [Q24]: '2026-04-16',
+      },
+    });
+    expect(result.derivedStatus).toBe('Pendiente audiencia');
+  });
+
+  it('Regla bloque 5: con Q25 diligenciada y Q26 en "-" queda Pendiente decisión de audiencia', () => {
+    const result = evaluateCelesteRules({
+      answers: {
+        [Q25]: '2026-04-18',
+        [Q26]: '-',
+      },
+    });
+    expect(result.derivedStatus).toBe('Pendiente decisión de audiencia');
   });
 
   it('Regla 9: si Q29 tiene fecha de presentación de recurso, estado = Pendiente decisión', () => {
@@ -216,5 +245,3 @@ describe('evaluateCelesteRules - flujo sindicados', () => {
     expect(b5.visibleBlocks).toContain('bloque5Celeste');
   });
 });
-
-

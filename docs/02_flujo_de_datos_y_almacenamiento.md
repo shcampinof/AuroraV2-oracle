@@ -108,20 +108,19 @@ No hay append incremental: cada persistencia reemplaza el contenido completo del
 - Sin bloqueo de archivo ni control transaccional.
 - Las columnas faltantes pueden agregarse en runtime con `ensureColumn`, y quedan persistidas en la siguiente reescritura total.
 
-## 8. Flujo de defensores (`defensores.csv`)
+## 8. Flujo de defensores (`DNDP.DEFENSORES`)
 
 Archivos fuente:
 
-- `backend/db/defensores.repo.js`
+- `backend/repositories/oracle/defensoresRepository.js`
 - `backend/routes/defensores.js`
-- `backend/data/defensores.csv`
 
 Comportamiento actual:
 
-1. `GET /api/defensores` lee `defensores.csv`, normaliza a MAYUSCULA, elimina placeholders y deduplica en memoria.
-2. `POST /api/defensores` valida `nombre` (obligatorio, solo letras y espacios).
-3. Antes de crear, verifica duplicado tanto en `defensores.csv` como en defensores de condenados (`consolidado_ppl.csv`).
-4. Si pasa validaciones, persiste reescribiendo `defensores.csv` completo.
+1. `GET /api/defensores` lee `DNDP.DEFENSORES` y devuelve opciones con `CEDULA` como `id`.
+2. `GET /api/defensores?source=condenados` lee asignaciones vigentes de personas condenadas en Oracle.
+3. `POST /api/defensores` valida `cedula` y `nombre` e inserta en `DNDP.DEFENSORES`.
+4. Antes de crear, verifica duplicado por cedula en `DNDP.DEFENSORES` y por nombre en asignaciones vigentes de condenados.
 
 Codigos de error observables:
 
@@ -144,7 +143,7 @@ Controles implementados:
 Cobertura del control:
 
 - Frontend, backend y docs (`.js/.jsx/.ts/.tsx/.mjs/.cjs/.md/.json/.css/...`).
-- Fuentes de datos: `backend/data/consolidado_ppl.csv` y `backend/data/defensores.csv`.
+- Archivos CSV legados/versionados para referencia o pruebas locales, no como fuente operativa de defensores.
 
 Flujo operativo recomendado:
 

@@ -1,6 +1,8 @@
 const { execute } = require('../../db/oraclePool');
 const { buildActiveSituacionCte, buildScopeWhereClause, DEFAULT_SCOPE_DEPARTAMENTOS, normalizedSqlExpr } = require('./sqlFragments');
 
+const DEFENSOR_ACTIVO_EXPR = 'COALESCE(TO_NCHAR(a.NOMBRE_DEFENSOR), TO_NCHAR(d.NOMBRE))';
+
 const BASE_SELECT_COLUMNS = [
   'p.ID_PERSONA AS P_ID_PERSONA',
   'p.NUMERO AS P_NUMERO',
@@ -67,10 +69,11 @@ const BASE_SELECT_COLUMNS = [
 
   'g.ID_GESTION AS G_ID_GESTION',
   'g.ID_SITUACION AS G_ID_SITUACION',
-  'g.PAG AS G_PAG',
-  'g.CEDULA_PAG AS G_CEDULA_PAG',
-  'g.CEDULA_DEFENSOR AS G_CEDULA_DEFENSOR',
-  'COALESCE(g.DEFENSOR, TO_NCHAR(d.NOMBRE)) AS G_DEFENSOR',
+  'a.NOMBRE_PAG AS G_PAG',
+  'a.CEDULA_PAG AS G_CEDULA_PAG',
+  'a.CEDULA_DEFENSOR AS G_CEDULA_DEFENSOR',
+  `${DEFENSOR_ACTIVO_EXPR} AS G_DEFENSOR`,
+  'a.FECHA_ASIGNACION AS G_FECHA_ASIGNACION',
   'g.ACCION_REALIZAR AS G_ACCION_REALIZAR',
   'g.FECHA_ANALISIS AS G_FECHA_ANALISIS',
   'g.VENCIMIENTO_TERMINOS AS G_VENCIMIENTO_TERMINOS',
@@ -226,7 +229,7 @@ function buildCondenadosSummaryWhereClause({
 
   const textFilters = [
     ['nombre', 'p.NOMBRE', 'contains'],
-    ['defensor', "COALESCE(g.DEFENSOR, TO_NCHAR(d.NOMBRE))", 'prefix'],
+    ['defensor', DEFENSOR_ACTIVO_EXPR, 'prefix'],
     ['lugar', 's.ESTABLECIMIENTO', 'prefix'],
     ['departamento', 's.DEPARTAMENTO', 'prefix'],
     ['municipio', 's.MUNICIPIO', 'prefix'],
@@ -294,11 +297,14 @@ function buildCondenadosSummaryFromAndWhere({
     JOIN ranked_situacion s
       ON s.ID_PERSONA = p.ID_PERSONA
      AND s.RN = 1
+    LEFT JOIN active_asignacion a
+      ON a.ID_PERSONA = p.ID_PERSONA
+     AND a.RN = 1
+    LEFT JOIN DNDP.DEFENSORES d
+      ON d.CEDULA = a.CEDULA_DEFENSOR
     LEFT JOIN latest_gestion g
       ON g.ID_SITUACION = s.ID_SITUACION
      AND g.RN = 1
-    LEFT JOIN DNDP.DEFENSORES d
-      ON d.CEDULA = g.CEDULA_DEFENSOR
     LEFT JOIN DNDP.CALIFICACION_CONDUCTA c
       ON c.ID_SITUACION = s.ID_SITUACION
     WHERE ${clause}
@@ -325,6 +331,16 @@ async function listCondenadosSummary({
           ORDER BY g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
         ) AS RN
       FROM DNDP.GESTION_JURIDICA g
+    ),
+    active_asignacion AS (
+      SELECT
+        a.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY a.ID_PERSONA
+          ORDER BY a.FECHA_ASIGNACION DESC NULLS LAST, a.ID_ASIGNACION DESC
+        ) AS RN
+      FROM DNDP.ASIGNACION a
+      WHERE a.FECHA_FIN IS NULL
     )
   `;
 
@@ -358,8 +374,8 @@ async function listCondenadosSummary({
         s.SITUACION AS "Situacion Juridica",
         s.SITUACION AS "situacion",
         s.SITUACION_JURIDICA_ACTUALIZADA AS "Situacion Juridica actualizada (de conformidad con la rama judicial)",
-        COALESCE(g.DEFENSOR, TO_NCHAR(d.NOMBRE)) AS "Defensor(a) Publico(a) Asignado para tramitar la solicitud",
-        COALESCE(g.DEFENSOR, TO_NCHAR(d.NOMBRE)) AS "Defensor",
+        ${DEFENSOR_ACTIVO_EXPR} AS "Defensor(a) Publico(a) Asignado para tramitar la solicitud",
+        ${DEFENSOR_ACTIVO_EXPR} AS "Defensor",
         s.PENA_DIAS AS "Pena dias",
         s.TIEMPO_EFECTIVO AS "Tiempo efectivo",
         s.PORCENTAJE AS "Porcentaje",
@@ -389,7 +405,7 @@ async function listCondenadosSummary({
         g.FECHA_PRESENTACION_SOLICITUD_AUTORIDAD AS "Fecha de presentacion de la solicitud a la autoridad",
         g.FECHA_RADICACION_UTILIDAD AS "Fecha de radicacion de solicitud de utilidad publica",
         g.FECHA_DECISION_AUTORIDAD AS "Fecha de decision de la autoridad",
-        CAST(NULL AS TIMESTAMP) AS "Fecha de asignacion del PAG",
+        a.FECHA_ASIGNACION AS "Fecha de asignacion del PAG",
         CAST(NULL AS VARCHAR2(4000)) AS "Estado del caso",
         CAST(NULL AS VARCHAR2(4000)) AS "Estado del tramite",
         g.ACCION_REALIZAR AS "Accion a realizar",
@@ -458,6 +474,16 @@ async function listDistinctCondenadosFilterOptions({
           ORDER BY g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
         ) AS RN
       FROM DNDP.GESTION_JURIDICA g
+    ),
+    active_asignacion AS (
+      SELECT
+        a.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY a.ID_PERSONA
+          ORDER BY a.FECHA_ASIGNACION DESC NULLS LAST, a.ID_ASIGNACION DESC
+        ) AS RN
+      FROM DNDP.ASIGNACION a
+      WHERE a.FECHA_FIN IS NULL
     )
   `;
 
@@ -509,7 +535,7 @@ async function listDistinctCondenadosFilterOptions({
       fieldFilters: { departamento, municipio },
     }),
     queryDistinct({
-      columnRef: 'COALESCE(g.DEFENSOR, TO_NCHAR(d.NOMBRE))',
+      columnRef: DEFENSOR_ACTIVO_EXPR,
       alias: 'DEFENSOR',
       fieldFilters: { defensor },
     }),
@@ -540,8 +566,20 @@ async function listRowsWithActiveSituacionAndGestiones({
      AND s.RN = 1
     LEFT JOIN DNDP.GESTION_JURIDICA g
       ON g.ID_SITUACION = s.ID_SITUACION
+    LEFT JOIN (
+      SELECT
+        a.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY a.ID_PERSONA
+          ORDER BY a.FECHA_ASIGNACION DESC NULLS LAST, a.ID_ASIGNACION DESC
+        ) AS RN
+      FROM DNDP.ASIGNACION a
+      WHERE a.FECHA_FIN IS NULL
+    ) a
+      ON a.ID_PERSONA = p.ID_PERSONA
+     AND a.RN = 1
     LEFT JOIN DNDP.DEFENSORES d
-      ON d.CEDULA = g.CEDULA_DEFENSOR
+      ON d.CEDULA = a.CEDULA_DEFENSOR
     LEFT JOIN DNDP.CALIFICACION_CONDUCTA c
       ON c.ID_SITUACION = s.ID_SITUACION
     WHERE ${scopeClause}
@@ -573,18 +611,28 @@ async function listDistinctDefensores({ tipo = '', scopeDepartamentos = DEFAULT_
   const sql = `
     ${buildActiveSituacionCte()}
     SELECT DISTINCT
-      TRIM(COALESCE(g.DEFENSOR, TO_NCHAR(d.NOMBRE))) AS DEFENSOR
+      TRIM(${DEFENSOR_ACTIVO_EXPR}) AS DEFENSOR
     FROM ranked_situacion s
     JOIN DNDP.PERSONA p
       ON p.ID_PERSONA = s.ID_PERSONA
-    JOIN DNDP.GESTION_JURIDICA g
-      ON g.ID_SITUACION = s.ID_SITUACION
+    LEFT JOIN (
+      SELECT
+        a.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY a.ID_PERSONA
+          ORDER BY a.FECHA_ASIGNACION DESC NULLS LAST, a.ID_ASIGNACION DESC
+        ) AS RN
+      FROM DNDP.ASIGNACION a
+      WHERE a.FECHA_FIN IS NULL
+    ) a
+      ON a.ID_PERSONA = p.ID_PERSONA
+     AND a.RN = 1
     LEFT JOIN DNDP.DEFENSORES d
-      ON d.CEDULA = g.CEDULA_DEFENSOR
+      ON d.CEDULA = a.CEDULA_DEFENSOR
     WHERE s.RN = 1
       AND ${scopeClause}
       AND ${tipoClause}
-      AND TRIM(NVL(COALESCE(g.DEFENSOR, TO_NCHAR(d.NOMBRE)), '')) <> ''
+      AND TRIM(NVL(${DEFENSOR_ACTIVO_EXPR}, '')) <> ''
     ORDER BY DEFENSOR ASC
   `;
 

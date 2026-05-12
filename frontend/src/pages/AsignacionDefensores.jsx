@@ -59,6 +59,7 @@ function AsignacionDefensores() {
   const [defensoresError, setDefensoresError] = useState('');
   const [nuevoDefensorId, setNuevoDefensorId] = useState('');
   const [nuevoDefensorInput, setNuevoDefensorInput] = useState('');
+  const [crearDefensorCedula, setCrearDefensorCedula] = useState('');
   const [crearDefensorNombre, setCrearDefensorNombre] = useState('');
   const [crearDefensorError, setCrearDefensorError] = useState('');
   const [crearDefensorSuccess, setCrearDefensorSuccess] = useState('');
@@ -450,7 +451,13 @@ function AsignacionDefensores() {
     setError('');
     setToastOpen(false);
     try {
-      await assignDefensorPpl(documentos, defensor, { pagCedula: pagValidado.cedula });
+      const defensorCedula = /^\d+$/.test(String(nuevoDefensorId || '').trim())
+        ? String(nuevoDefensorId || '').trim()
+        : '';
+      await assignDefensorPpl(documentos, defensor, {
+        pagCedula: pagValidado.cedula,
+        ...(defensorCedula ? { defensorCedula } : {}),
+      });
 
       setToastOpen(true);
       setSeleccionados(new Set());
@@ -465,9 +472,14 @@ function AsignacionDefensores() {
   }
 
   async function guardarNuevoDefensor() {
+    const cedula = normalizeDocumento(crearDefensorCedula);
     const nombre = normalizeDefensorNombre(crearDefensorNombre);
     setCrearDefensorSuccess('');
 
+    if (!cedula) {
+      setCrearDefensorError('La cedula del defensor es obligatoria.');
+      return;
+    }
     if (!nombre) {
       setCrearDefensorError('El nombre del defensor es obligatorio.');
       return;
@@ -486,7 +498,7 @@ function AsignacionDefensores() {
     setGuardandoDefensor(true);
     setCrearDefensorError('');
     try {
-      const data = await createDefensor(nombre);
+      const data = await createDefensor({ cedula, nombre });
       const creado = normalizeDefensorNombre(data?.defensor || nombre);
       const opcionCreada = data?.opcion;
 
@@ -500,9 +512,11 @@ function AsignacionDefensores() {
           setNuevoDefensorInput(String(hit.nombre || creado));
         }
       }
+      setCrearDefensorCedula('');
       setCrearDefensorNombre('');
       setCrearDefensorSuccess('Defensor creado correctamente');
       await cargarDefensoresActuales();
+      window.dispatchEvent(new CustomEvent('aurora:defensores-updated'));
     } catch (e) {
       reportError(e, 'asignacion-defensores:crear-defensor');
       setCrearDefensorError(String(e?.message || 'Error guardando defensor.'));
@@ -533,7 +547,9 @@ function AsignacionDefensores() {
   }
 
   const botonGuardarDefensorDeshabilitado =
-    guardandoDefensor || String(crearDefensorNombre || '').trim() === '';
+    guardandoDefensor ||
+    String(crearDefensorCedula || '').trim() === '' ||
+    String(crearDefensorNombre || '').trim() === '';
   const mostrarOverlayCarga = tab !== 'crearDefensor' && (cargando || validandoPag);
   const mensajeOverlayCarga = 'Cargando información...';
 
@@ -592,6 +608,25 @@ function AsignacionDefensores() {
           <h3 className="block-title">Crear defensor</h3>
           <div className="grid-2">
             <div className="form-field">
+              <label>Numero de cedula del defensor</label>
+              <input
+                className="input-text"
+                placeholder="Ingrese cedula del defensor"
+                value={crearDefensorCedula}
+                onChange={(e) => {
+                  setCrearDefensorCedula(normalizeDocumento(e.target.value));
+                  if (crearDefensorError) setCrearDefensorError('');
+                  if (crearDefensorSuccess) setCrearDefensorSuccess('');
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    guardarNuevoDefensor();
+                  }
+                }}
+              />
+            </div>
+            <div className="form-field">
               <label>Nombre completo del defensor</label>
               <input
                 className="input-text"
@@ -614,7 +649,6 @@ function AsignacionDefensores() {
               {crearDefensorSuccess && <p className="hint-text">{crearDefensorSuccess}</p>}
               {guardandoDefensor && <p className="hint-text">Guardando defensor...</p>}
             </div>
-            <div />
           </div>
           <div className="actions-center">
             <button

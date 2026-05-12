@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import Header from './components/Header.jsx';
 import Sidebar from './components/Sidebar.jsx';
+import LoginPage from './pages/LoginPage.jsx';
 
 import Home from './pages/Home.jsx';
 import RegistrosAsignados from './pages/RegistrosAsignados.jsx';
@@ -9,6 +10,7 @@ import FormularioAtencion from './pages/FormularioAtencion.jsx';
 import AsignacionDefensores from './pages/AsignacionDefensores.jsx';
 import CajaHerramientas from './pages/CajaHerramientas.jsx';
 import ManualInteractivo from './pages/ManualInteractivo.jsx';
+import { logout, refreshSession } from './services/auth.js';
 
 const VISTAS = new Set(['inicio', 'formulario', 'registros', 'asignacion', 'herramientas', 'manual']);
 
@@ -23,8 +25,28 @@ function vistaDesdeHash(hashValue) {
 function App() {
   const [vistaActual, setVistaActual] = useState(() => vistaDesdeHash(window.location.hash));
   const [numeroSeleccionado, setNumeroSeleccionado] = useState(null);
+  const [session, setSession] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
 
   useEffect(() => {
+    let alive = true;
+    refreshSession()
+      .then((activeSession) => {
+        if (!alive) return;
+        setSession(activeSession);
+      })
+      .finally(() => {
+        if (!alive) return;
+        setAuthChecking(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!session) return undefined;
+
     function syncVistaWithHash() {
       const resolved = vistaDesdeHash(window.location.hash);
       setVistaActual(resolved);
@@ -40,7 +62,7 @@ function App() {
     return () => {
       window.removeEventListener('hashchange', syncVistaWithHash);
     };
-  }, []);
+  }, [session]);
 
   function cambiarVista(vista) {
     if (!VISTAS.has(vista)) return;
@@ -70,6 +92,23 @@ function App() {
     if (doc) abrirFormularioPorDocumento(doc);
   };
 
+  function manejarSalida() {
+    logout();
+    setSession(null);
+  }
+
+  if (authChecking) {
+    return (
+      <div className="auth-loading-screen">
+        <div className="auth-loading-card">Validando sesión institucional...</div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LoginPage onAuthenticated={setSession} />;
+  }
+
   let contenido = null;
 
   if (vistaActual === 'inicio') {
@@ -96,7 +135,7 @@ function App() {
 
   return (
     <div className="app-container">
-      <Header />
+      <Header user={session.user} onLogout={manejarSalida} />
       <div className="app-main">
         <Sidebar vistaActual={vistaActual} onChangeView={cambiarVista} />
         <main className="content-area">{contenido}</main>

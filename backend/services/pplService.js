@@ -3,6 +3,7 @@ const { getOptionalGestionSequence } = require('../config/oracle');
 const personaRepo = require('../repositories/oracle/personaRepository');
 const situacionRepo = require('../repositories/oracle/situacionRepository');
 const gestionRepo = require('../repositories/oracle/gestionRepository');
+const asignacionRepo = require('../repositories/oracle/asignacionRepository');
 const calificacionConductaRepo = require('../repositories/oracle/calificacionConductaRepository');
 const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const { DEFAULT_SCOPE_DEPARTAMENTOS } = require('../repositories/oracle/sqlFragments');
@@ -89,6 +90,7 @@ const LEGACY_COLUMNS = [
   'Sentido de la decisión que resuelve la solicitud',
   'Estado del caso',
   'Estado del trámite',
+  'Fecha de asignación del PAG',
   'numero',
   'situacion',
   'ESTABLECIMIENTO',
@@ -209,6 +211,93 @@ function toIsoDate(value) {
   return parsed.toISOString().slice(0, 10);
 }
 
+function calculateAgeAt(date, today = new Date()) {
+  let age = today.getFullYear() - date.getFullYear();
+  const monthDiff = today.getMonth() - date.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < date.getDate())) {
+    age -= 1;
+  }
+  return age;
+}
+
+function toBirthIsoDate(value, ageValue) {
+  if (!value) return '';
+  const rawText = String(value ?? '').trim();
+  const twoDigitYear = rawText.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/);
+
+  let parsed = null;
+  if (twoDigitYear) {
+    const a = Number(twoDigitYear[1]);
+    const b = Number(twoDigitYear[2]);
+    const yy = Number(twoDigitYear[3]);
+    let day = a;
+    let month = b;
+    if (a <= 12 && b > 12) {
+      day = b;
+      month = a;
+    }
+    const today = new Date();
+    const reportedAge = Number.parseInt(String(ageValue ?? ''), 10);
+    const candidates = [1900 + yy, 2000 + yy]
+      .map((year) => new Date(year, month - 1, day))
+      .filter((candidate) => !Number.isNaN(candidate.getTime()));
+
+    if (Number.isFinite(reportedAge)) {
+      parsed = candidates.reduce((best, candidate) => {
+        if (!best) return candidate;
+        const bestDelta = Math.abs(calculateAgeAt(best, today) - reportedAge);
+        const candidateDelta = Math.abs(calculateAgeAt(candidate, today) - reportedAge);
+        return candidateDelta < bestDelta ? candidate : best;
+      }, null);
+    } else {
+      parsed = candidates.find((candidate) => candidate <= today) || candidates[0] || null;
+    }
+  } else {
+    parsed = parseLooseDate(value);
+  }
+
+  if (!parsed || Number.isNaN(parsed.getTime())) return toIsoDate(value);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  while (parsed > today) {
+    parsed = new Date(parsed.getFullYear() - 100, parsed.getMonth(), parsed.getDate());
+  }
+
+  return parsed.toISOString().slice(0, 10);
+}
+
+function normalizeFaseTratamientoValue(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const normalized = normalizeText(text);
+  const map = new Map([
+    ['obs', 'OBS'],
+    ['observacion', 'OBS'],
+    ['alt', 'ALT'],
+    ['alta', 'ALT'],
+    ['med', 'MED'],
+    ['mediana', 'MED'],
+    ['min', 'MIN'],
+    ['minima', 'MIN'],
+    ['con', 'CON'],
+    ['confianza', 'CON'],
+    ['sin', 'SIN'],
+    ['no reporta', 'SIN'],
+    ['sin registro', 'SIN'],
+  ]);
+  return map.get(normalized) || text;
+}
+
+function normalizeRequerimientosValue(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const normalized = normalizeText(text);
+  if (normalized === 's' || normalized === 'si' || normalized === 'yes') return 'S';
+  if (normalized === 'n' || normalized === 'no') return 'N';
+  return text;
+}
+
 function buildCalificacionesConductaFromRaw(raw = {}) {
   return [1, 2, 3, 4].map((idx) => ({
     fechaUltimaCalificacion: toIsoDate(raw[`C_FECHA_CALIFICACION_${idx}`]),
@@ -235,6 +324,16 @@ function toTypedDbValue(column, value) {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
+  if (col === 'FASE') {
+    const normalized = normalizeFaseTratamientoValue(value);
+    return normalized === '' ? null : normalized;
+  }
+
+  if (col === 'REQUERIMIENTOS') {
+    const normalized = normalizeRequerimientosValue(value);
+    return normalized === '' ? null : normalized;
+  }
+
   const text = String(value).trim();
   return text === '' ? null : text;
 }
@@ -246,6 +345,27 @@ function coalesce(...values) {
   }
   return '';
 }
+
+const DEFENSOR_FIELD_ALIASES = [
+  'defensorAsignado',
+  'Defensor(a) Público(a) Asignado para tramitar la solicitud',
+  'Defensor(a) Publico(a) Asignado para tramitar la solicitud',
+  'Defensor(a) P?blico(a) Asignado para tramitar la solicitud',
+  'Defensor',
+];
+
+function isDefensorFieldKey(key) {
+  const normalized = normalizeText(key)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return (
+    normalized === 'defensor a publico a asignado para tramitar la solicitud' ||
+    normalized === 'defensor asignado' ||
+    normalized === 'defensor'
+  );
+}
+
 const UPDATE_BINDINGS = new Map();
 
 function bind(aliases, table, column) {
@@ -294,10 +414,6 @@ bind(['Categorización', 'Categorizacion'], 'SITUACION', 'CATEGORIZACION');
 bind(['Dias_Prision', 'Días restantes para cumplir requisito temporal de prisión domiciliaria'], 'SITUACION', 'DIAS_PRISION');
 bind(['Dias_libertad', 'Días restantes para cumplir requisito temporal de libertad condicional'], 'SITUACION', 'DIAS_LIBERTAD');
 
-bind(['PAG'], 'GESTION', 'PAG');
-bind(['Cedula_PAG', 'Cédula PAG', 'Cedula PAG', 'cedulaPag'], 'GESTION', 'CEDULA_PAG');
-bind(['Defensor(a) Público(a) Asignado para tramitar la solicitud', 'Defensor(a) Publico(a) Asignado para tramitar la solicitud', 'Defensor', 'defensorAsignado'], 'GESTION', 'DEFENSOR');
-bind(['Cedula defensor', 'Cédula defensor', 'cedulaDefensor', 'defensorCedula'], 'GESTION', 'CEDULA_DEFENSOR');
 bind(['Acción a realizar', 'Accion a realizar'], 'GESTION', 'ACCION_REALIZAR');
 bind(['Fecha de análisis jurídico del caso', 'Fecha de analisis juridico del caso', 'Fecha analisis'], 'GESTION', 'FECHA_ANALISIS');
 bind(['Vencimiento de terminos'], 'GESTION', 'VENCIMIENTO_TERMINOS');
@@ -408,7 +524,7 @@ function toLegacyRecord(raw = {}) {
     'Género': String(raw.P_GENERO ?? ''),
     'Enfoque Étnico/Racial/Cultural': String(raw.S_ENFOQUE ?? ''),
     Nacionalidad: String(raw.P_NACIONALIDAD ?? ''),
-    'Fecha de nacimiento': toIsoDate(raw.P_FECHA_NACIMIENTO),
+    'Fecha de nacimiento': toBirthIsoDate(raw.P_FECHA_NACIMIENTO, raw.P_EDAD),
     Edad: String(raw.P_EDAD ?? ''),
     'Lugar de privación de la libertad': String(raw.S_LUGAR_PRIVACION ?? ''),
     'Nombre del lugar de privación de la libertad': String(raw.S_ESTABLECIMIENTO ?? ''),
@@ -436,8 +552,8 @@ function toLegacyRecord(raw = {}) {
     'Días restantes para cumplir requisito temporal de libertad condicional': String(raw.S_DIAS_LIBERTAD ?? ''),
     Dias_Prision: String(raw.S_DIAS_PRISION ?? ''),
     Dias_libertad: String(raw.S_DIAS_LIBERTAD ?? ''),
-    'Fase de tramiento': String(raw.S_FASE ?? ''),
-    '¿ Cuenta con requerimientos judiciales por otros procesos ?': String(raw.S_REQUERIMIENTOS ?? ''),
+    'Fase de tramiento': normalizeFaseTratamientoValue(raw.S_FASE),
+    '¿ Cuenta con requerimientos judiciales por otros procesos ?': normalizeRequerimientosValue(raw.S_REQUERIMIENTOS),
 
     'Fecha última calificación': toIsoDate(raw.S_FECHA_CALIFICACION),
     'No.Acta de calificación de conducta': String(raw.C_ACTA_1 ?? ''),
@@ -447,6 +563,8 @@ function toLegacyRecord(raw = {}) {
     __calificacionesConducta: buildCalificacionesConductaFromRaw(raw),
     PAG: String(raw.G_PAG ?? ''),
     Cedula_PAG: String(raw.G_CEDULA_PAG ?? ''),
+    'Fecha de asignación del PAG': toIsoDate(raw.G_FECHA_ASIGNACION),
+    'Fecha de asignacion del PAG': toIsoDate(raw.G_FECHA_ASIGNACION),
     'Defensor(a) Público(a) Asignado para tramitar la solicitud': String(raw.G_DEFENSOR ?? ''),
     'Defensor(a) Publico(a) Asignado para tramitar la solicitud': String(raw.G_DEFENSOR ?? ''),
     Defensor: String(raw.G_DEFENSOR ?? ''),
@@ -519,12 +637,22 @@ function computeTipo(record) {
 }
 
 function extractDefensor(record) {
-  return coalesce(
-    record?.defensorAsignado,
-    record?.['Defensor(a) Público(a) Asignado para tramitar la solicitud'],
-    record?.['Defensor(a) Publico(a) Asignado para tramitar la solicitud'],
-    record?.Defensor
-  );
+  const source = record && typeof record === 'object' ? record : {};
+  const directValue = coalesce(...DEFENSOR_FIELD_ALIASES.map((key) => source?.[key]));
+  if (directValue) return directValue;
+
+  for (const [key, value] of Object.entries(source)) {
+    if (!isDefensorFieldKey(key)) continue;
+    const text = String(value ?? '').trim();
+    if (text) return text;
+  }
+
+  return '';
+}
+
+function payloadHasDefensorField(payload) {
+  const source = payload && typeof payload === 'object' ? payload : {};
+  return Object.keys(source).some((key) => isDefensorFieldKey(key));
 }
 
 function hydrateDefensorAliases(record, fallback = '') {
@@ -590,7 +718,15 @@ function splitUpdatesByTable(payload, { allowBaseUpdates = false } = {}) {
     const binding = UPDATE_BINDINGS.get(normalizeText(key));
     if (!binding) return;
     if (!allowBaseUpdates && (binding.table === 'PERSONA' || binding.table === 'SITUACION')) return;
-    grouped[binding.table][binding.column] = toTypedDbValue(binding.column, value);
+    const dbValue = toTypedDbValue(binding.column, value);
+    if (
+      dbValue == null &&
+      Object.prototype.hasOwnProperty.call(grouped[binding.table], binding.column) &&
+      grouped[binding.table][binding.column] != null
+    ) {
+      return;
+    }
+    grouped[binding.table][binding.column] = dbValue;
   });
 
   return grouped;
@@ -679,6 +815,7 @@ async function createActuacionByDocumento(documento, payload) {
 
   const updates = splitUpdatesByTable(payload);
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
+  const normalizedPayload = normalizePayload(payload);
 
   if (Object.keys(updates.PERSONA).length) {
     await personaRepo.updatePersonaById(context.P_ID_PERSONA, updates.PERSONA);
@@ -690,14 +827,23 @@ async function createActuacionByDocumento(documento, payload) {
     await calificacionConductaRepo.upsertBySituacion(context.S_ID_SITUACION, calificacionUpdates);
   }
 
-  const latest = await gestionRepo.getLatestBySituacion(context.S_ID_SITUACION);
-  if (!String(updates.GESTION.DEFENSOR || '').trim() && String(latest?.DEFENSOR || '').trim()) {
-    updates.GESTION.DEFENSOR = latest.DEFENSOR;
-  }
-
   const gestionId = await gestionRepo.insertGestion(context.S_ID_SITUACION, updates.GESTION, {
     sequenceName: getOptionalGestionSequence(),
   });
+
+  if (payloadHasDefensorField(normalizedPayload)) {
+    const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
+    const currentDefensor = String(context.G_DEFENSOR || '').trim();
+    if (normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
+      if (nextDefensor) {
+        await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
+          defensorNombre: nextDefensor,
+          pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
+          pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
+        });
+      }
+    }
+  }
 
   dataVersion += 1;
 
@@ -728,6 +874,7 @@ async function updateByDocumento(documento, payload) {
   const updates = splitUpdatesByTable(payload);
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
   const incoming = payload && typeof payload === 'object' ? payload : {};
+  const normalizedPayload = normalizePayload(payload);
 
   if (Object.keys(updates.PERSONA).length) {
     await personaRepo.updatePersonaById(context.P_ID_PERSONA, updates.PERSONA);
@@ -766,6 +913,21 @@ async function updateByDocumento(documento, payload) {
     }
   }
 
+  if (payloadHasDefensorField(normalizedPayload)) {
+    const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
+    const currentDefensor = String(context.G_DEFENSOR || '').trim();
+    if (normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
+      if (nextDefensor) {
+        await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
+          defensorNombre: nextDefensor,
+          pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
+          pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
+        });
+        dataVersion += 1;
+      }
+    }
+  }
+
   if (hasMeaningfulUpdates(updates) || Object.keys(calificacionUpdates).length) {
     dataVersion += 1;
   }
@@ -798,6 +960,7 @@ async function assignDefensor(documentos, defensor, options = {}) {
 
   let defensorNombre = String(defensor || '').trim();
   const pagAsignador = String(options?.pagAsignador || '').trim();
+  const pagNombre = String(options?.pagNombre || pagAsignador || '').trim();
   const pagCedula = normalizeDocumento(options?.pagCedula || options?.cedulaPag || '');
   let defensorCedula = defensoresRepo.normalizeCedula(options?.defensorCedula || options?.defensorId || '');
 
@@ -820,27 +983,13 @@ async function assignDefensor(documentos, defensor, options = {}) {
     });
     if (!context?.S_ID_SITUACION) continue;
 
-    const affected = await gestionRepo.assignDefensorBySituacion(context.S_ID_SITUACION, defensorNombre, {
-      pagAsignador,
+    const affected = await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
+      defensorNombre,
+      pagNombre,
       pagCedula,
       defensorCedula,
     });
-    if (affected > 0) {
-      updated += affected;
-      continue;
-    }
-
-    const inserted = await gestionRepo.insertGestion(
-      context.S_ID_SITUACION,
-      {
-        DEFENSOR: defensorNombre,
-        ...(pagAsignador ? { PAG: pagAsignador } : {}),
-        ...(pagCedula ? { CEDULA_PAG: pagCedula } : {}),
-        ...(defensorCedula ? { CEDULA_DEFENSOR: defensorCedula } : {}),
-      },
-      { sequenceName: getOptionalGestionSequence() }
-    );
-    if (inserted) updated += 1;
+    if (affected > 0) updated += affected;
   }
 
   if (updated > 0) dataVersion += 1;

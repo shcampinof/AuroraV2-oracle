@@ -25,15 +25,17 @@ Cambios aplicados y validados:
    - Q39 en opcion no afirmativa (`No ...`, `El usuario es renuente ...`),
    - Q40 incluye "NINGUNA" o "NO PROCEDE NADA",
    - en utilidad publica: Q44 o Q45 = `No`,
-   - recurso en `No` (Q54 utilidad / Q49 tramite),
-   - Q57 (utilidad) o Q52 (tramite) diligenciada,
-   - y en tramite normal Q47 (sentido de decision) diligenciada solo cierra cuando NO es `No concede la solicitud`.
+   - decision negativa con recurso vacio o `No` (Q54 utilidad / Q49 tramite),
+   - decision del recurso diligenciada,
+   - y decision favorable de autoridad.
 7. Estado derivado ajustado a matriz de "Accion a impulsar":
    - `Entrevistar al usuario`: Q29 y Q37 diligenciadas, pero falta Q38 o Q40.
    - `Presentar solicitud`: Q29, Q37, Q38 y Q40 diligenciadas; falta Q50 (utilidad publica) o Q45 (tramite normal).
    - `Pendiente decision`: Q29, Q37, Q38 y Q40 diligenciadas; existe Q50 o Q45, y falta Q51 o Q46.
-   - en tramite normal: Q47 = `No concede la solicitud` + Q49 vacia -> `Presentar solicitud`.
-   - en tramite normal: Q47 = `No concede la solicitud` + Q49 = `Si` + Q52 vacia -> `Pendiente decision`.
+   - decision negativa + recurso vacio o `No` -> `Caso cerrado`.
+   - decision negativa + recurso = `Si` + sin decision de recurso -> `Pendiente decision`.
+   - Q51/Q46 con fecha y sentido de decision vacio o `-` -> `Pendiente decision`.
+   - cualquier dato de bloque 5 impide volver a `Analizar el caso`.
 8. En bloque 5 (frontend), "Fecha de decision de la autoridad" y "Sentido de la decision" quedan obligatorios.
 9. Historial:
    - accion visible: "Actualizar actuacion",
@@ -95,13 +97,12 @@ Cambios aplicados y validados:
    - Q21 `No se avanzará...` -> `Caso cerrado`.
    - Q21 `Se avanzará...` y Q23 vacía -> `Entrevistar al usuario`.
    - Q23 diligenciada -> `Presentar solicitud`.
-   - Q24 diligenciada y Q25 vacía -> `Pendiente audiencia` (sin semáforo verde/amarillo/rojo).
-   - Q25 diligenciada y Q26 vacía -> `Pendiente decisión de audiencia` (sin semáforo verde/amarillo/rojo).
+   - Q24 diligenciada y Q25 vacía -> `Pendiente audiencia` (`estado--azul`).
+   - Q25 diligenciada y Q26 vacía -> `Pendiente decisión de audiencia` (`estado--azul`).
    - Q24+Q25 y Q26 `Revoca.../Sustituye...` -> `Caso cerrado`.
-   - Q24+Q25 y Q26 `Niega la solicitud` -> `Presentar recurso`.
-   - Q28 `No` -> `Caso cerrado`.
-   - Q28 `Si` -> `Presentar recurso`.
-   - Q29 con fecha -> `Pendiente decisión`.
+   - Q24+Q25, Q26 `Niega la solicitud` y Q28 vacia o `No` -> `Caso cerrado`.
+   - Q28 `Si` -> `Pendiente decisión`.
+   - Q29 con fecha -> se mantiene `Pendiente decisión`.
    - Q30 o Q31 con respuesta -> `Caso cerrado`.
 
 ---
@@ -175,8 +176,9 @@ Cambios aplicados y validados:
 |---|---|---|
 | `AURORA.STATUS.ANALIZAR.1` | falta analisis o resumen | `Analizar el caso` |
 | `AURORA.STATUS.ENTREVISTAR.1` | Q29 y Q37 diligenciadas, pero falta Q38 o Q40 | `Entrevistar al usuario` |
-| `AURORA.STATUS.PENDIENTE.RECURSO.1` | tramite normal: Q47 = `No concede la solicitud`, Q49 = `Si`, Q52 vacia | `Pendiente decision` |
-| `AURORA.STATUS.SOLICITUD.RECURSO.1` | tramite normal: Q47 = `No concede la solicitud`, Q49 vacia | `Presentar solicitud` |
+| `AURORA.STATUS.PENDIENTE.RECURSO.1` | decision negativa, recurso = `Si` y sin decision del recurso | `Pendiente decision` |
+| `AURORA.STATUS.PENDIENTE.SENTIDO.1` | Q51/Q46 con fecha y sentido de decision vacio o `-` | `Pendiente decision` |
+| `AURORA.STATUS.SOLICITUD.B5_PARCIAL.1` | hay datos de bloque 5 sin radicacion/presentacion | `Presentar solicitud` |
 | `AURORA.STATUS.SOLICITUD.1` | Q29/Q37/Q38/Q40 diligenciadas y falta Q50 (utilidad) o Q45 (tramite) | `Presentar solicitud` |
 | `AURORA.STATUS.PENDIENTE.1` | Q29/Q37/Q38/Q40 diligenciadas, existe Q50 (utilidad) o Q45 (tramite), y falta Q51 o Q46 | `Pendiente decision` |
 | `AURORA.STATUS.CERRADO.1` | reglas de cierre cumplidas | `Caso cerrado` |
@@ -234,12 +236,11 @@ Cambios aplicados y validados:
 | `SINDICADO.STATUS.ENTREVISTAR.1` | Q21 inicia con `Se avanzará...` y Q23 vacía | `Entrevistar al usuario` |
 | `SINDICADO.STATUS.SOLICITUD.1` | Q23 diligenciada y sin resultado de audiencia | `Presentar solicitud` |
 | `SINDICADO.STATUS.PENDIENTE_AUDIENCIA.Q24.1` | Q24 diligenciada y Q25 vacía | `Pendiente audiencia` |
-| `SINDICADO.STATUS.PENDIENTE_DECISION_AUDIENCIA.Q25.1` | Q25 diligenciada y Q26 vacía | `Pendiente decisión de audiencia` |
+| `SINDICADO.STATUS.PENDIENTE_DECISION_AUDIENCIA.Q25.1` | Q25 diligenciada y Q26 vacía o `-` | `Pendiente decisión de audiencia` |
 | `SINDICADO.STATUS.CIERRE.Q26.1` | Q24+Q25 y Q26 = `Revoca...` o `Sustituye...` | `Caso cerrado` |
-| `SINDICADO.STATUS.RECURSO.1` | Q24+Q25 y Q26 = `Niega la solicitud` | `Presentar recurso` |
-| `SINDICADO.STATUS.CIERRE.Q28.1` | en flujo de recurso, Q28 = `No` | `Caso cerrado` |
-| `SINDICADO.STATUS.RECURSO.Q28.2` | en flujo de recurso, Q28 = `Si` | `Presentar recurso` |
-| `SINDICADO.STATUS.PENDIENTE.Q29.1` | Q29 diligenciada | `Pendiente decisión` |
+| `SINDICADO.STATUS.CIERRE.RECURSO.1` | Q24+Q25, Q26 = `Niega la solicitud` y Q28 vacia o `No` | `Caso cerrado` |
+| `SINDICADO.STATUS.PENDIENTE.Q28.1` | en flujo de recurso, Q28 = `Si` | `Pendiente decisión` |
+| `SINDICADO.STATUS.PENDIENTE.Q29.1` | Q29 diligenciada despues de Q28 = `Si` | `Pendiente decisión` |
 | `SINDICADO.STATUS.CIERRE.Q30_31.1` | Q30 o Q31 con respuesta | `Caso cerrado` |
 
 ## 10. Validacion tecnica (2026-04-20)

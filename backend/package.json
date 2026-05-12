@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"No backend tests configured\"",
+    "test": "node scripts/auth-config.test.js",
     "start": "node index.js",
     "start:prod": "node index.js",
     "dev": "nodemon index.js",
@@ -20,6 +20,10 @@
     "csv-parse": "^6.1.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.5.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "jwks-rsa": "^4.0.1",
     "oracledb": "^6.9.0"
   },
   "devDependencies": {

@@ -44,7 +44,6 @@ Incluye un frontend en React y un backend en Node.js/Express, desplegados en un 
 
 ## Riesgos/Pendientes
 
-- Backend aún no cuenta con suite formal de pruebas unitarias/integración en `npm test`.
-- Dependencias con vulnerabilidades reportadas por `npm audit`:
-  - backend: 2 (1 low, 1 high)
-  - frontend: 8 (6 moderate, 2 high)
+- Backend ya cuenta con una prueba automatizada mínima de configuración segura de autenticación en `npm test`; falta ampliar cobertura a rutas e integración Oracle.
+- `npm audit --audit-level=moderate` queda en 0 vulnerabilidades para frontend y backend al 2026-05-06.
+- El build frontend conserva una advertencia no bloqueante de bundle principal mayor a 500 kB; conviene dividir rutas con `import()` antes de un despliegue con tráfico alto.

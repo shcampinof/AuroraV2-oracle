@@ -1,6 +1,8 @@
 import { LOGO_DEFENSORIA_URL } from '../config/externalAssets.js';
 
-function Header() {
+function Header({ user, onLogout }) {
+  const displayName = user?.name || user?.email || user?.username || 'Usuario';
+
   return (
     <header className="header header--dark">
       <div className="header-inner">
@@ -13,7 +15,10 @@ function Header() {
             Herramienta para la gestión de atención jurídica de personas privadas de la libertad.
           </p>
         </div>
-        <div className="header-spacer" aria-hidden="true" />
+        <div className="header-session">
+          <span title={displayName}>{displayName}</span>
+          <button type="button" onClick={onLogout}>Salir</button>
+        </div>
       </div>
     </header>
   );

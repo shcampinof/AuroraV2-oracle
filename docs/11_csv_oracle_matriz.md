@@ -8,10 +8,10 @@
 | `GET /api/ppl/:documento/actuaciones` | `db/consolidado.repo.js` | `services/pplService.js` + repos Oracle | Migrado |
 | `POST /api/ppl/:documento/actuaciones` | `db/consolidado.repo.js` | `services/pplService.js` + repos Oracle | Migrado |
 | `PUT /api/ppl/:documento` | `db/consolidado.repo.js` | `services/pplService.js` + repos Oracle | Migrado |
-| `POST /api/ppl/asignar-defensor` | `db/consolidado.repo.js` + `db/pag.repo.js` | Oracle para asignación + CSV para validación PAG | Híbrido |
-| `GET /api/ppl/pag/:cedula/validar` | `db/pag.repo.js` (`PAG.csv`) | `db/pag.repo.js` | Temporal CSV |
-| `GET /api/defensores` | `db/defensores.repo.js` (`defensores.csv`) | `db/defensores.repo.js` (catálogo) + Oracle para `source=condenados` | Híbrido |
-| `POST /api/defensores` | `db/defensores.repo.js` | `db/defensores.repo.js` + validación en Oracle (`source=condenados`) | Híbrido |
+| `POST /api/ppl/asignar-defensor` | `db/consolidado.repo.js` + `db/pag.repo.js` | Oracle para asignación y validación PAG | Migrado |
+| `GET /api/ppl/pag/:cedula/validar` | `db/pag.repo.js` (`PAG.csv`) | `repositories/oracle/pagRepository.js` (`DNDP.PAG`) | Migrado |
+| `GET /api/defensores` | `db/defensores.repo.js` (`defensores.csv`) | `repositories/oracle/defensoresRepository.js` (`DNDP.DEFENSORES`) | Migrado |
+| `POST /api/defensores` | `db/defensores.repo.js` | `repositories/oracle/defensoresRepository.js` (`DNDP.DEFENSORES`) | Migrado |
 
 ## Archivos puente de compatibilidad
 - `backend/db/oracleConsolidado.repo.js`: mantiene interfaz de `consolidado` consumida por rutas.

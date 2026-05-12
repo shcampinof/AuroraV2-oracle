@@ -40,10 +40,19 @@ docker run -e PORT=7860 -p 7860:7860 aurora-app
 Minimas para ejecucion:
 
 - `PORT` (opcional): puerto HTTP del servidor Express. Default: `7860`.
+- `AUTH_JWT_SECRET`: requerido en `NODE_ENV=production`; usar un secreto fuerte y unico del ambiente.
+- `AZURE_AD_TENANT_ID` y `AZURE_AD_CLIENT_ID`: requeridos para habilitar SSO institucional.
+- `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_HOST`, `ORACLE_PORT`, `ORACLE_SERVICE_NAME`: requeridos para datos reales.
 
 Opcionales de build frontend:
 
 - `VITE_API_BASE_URL` (build arg): URL base para API en el bundle frontend. Default: `/api`.
+
+Seguridad:
+
+- `AUTH_LOCAL_ADMIN_ENABLED` queda deshabilitado por defecto en produccion si se omite.
+- Si se habilita login local temporal, no usar `admin/admin`.
+- `CORS_ORIGIN` vacio permite todos los origenes solo en desarrollo local; en produccion se limita a same-origin salvo allowlist explicita.
 
 No se incluyen credenciales ni archivos `.env` dentro de la imagen. Si agregas integraciones sensibles (tokens, DB URI, etc.), inyectalas como variables de entorno al desplegar.
 

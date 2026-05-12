@@ -1,10 +1,6 @@
 const { execute, getOracleDriver } = require('../../db/oraclePool');
 
 const GESTION_COLUMNS = new Set([
-  'PAG',
-  'CEDULA_PAG',
-  'DEFENSOR',
-  'CEDULA_DEFENSOR',
   'ACCION_REALIZAR',
   'FECHA_ANALISIS',
   'VENCIMIENTO_TERMINOS',
@@ -218,57 +214,11 @@ async function updateGestionById(idGestion, fields = {}) {
   return Number(result?.rowsAffected || 0);
 }
 
-function normalizeAssignOptions(pagOrOptions) {
-  if (pagOrOptions && typeof pagOrOptions === 'object') {
-    return {
-      pagAsignador: String(pagOrOptions?.pagAsignador || '').trim(),
-      pagCedula: String(pagOrOptions?.pagCedula || pagOrOptions?.cedulaPag || '').trim(),
-      defensorCedula: String(pagOrOptions?.defensorCedula || pagOrOptions?.defensorId || '').trim(),
-    };
-  }
-  return {
-    pagAsignador: String(pagOrOptions || '').trim(),
-    pagCedula: '',
-    defensorCedula: '',
-  };
-}
-
-async function assignDefensorBySituacion(idSituacion, defensor, pagOrOptions = '') {
-  const options = normalizeAssignOptions(pagOrOptions);
-  const hasPag = String(options.pagAsignador || '').trim() !== '';
-  const hasPagCedula = String(options.pagCedula || '').trim() !== '';
-  const hasDefensorCedula = String(options.defensorCedula || '').trim() !== '';
-  const sql = `
-    UPDATE DNDP.GESTION_JURIDICA
-       SET DEFENSOR = :defensor
-         ${hasPag ? ', PAG = :pag' : ''}
-         ${hasPagCedula ? ', CEDULA_PAG = :cedulaPag' : ''}
-         ${hasDefensorCedula ? ', CEDULA_DEFENSOR = :cedulaDefensor' : ''}
-     WHERE ID_SITUACION = :idSituacion
-  `;
-
-  const binds = {
-    defensor: String(defensor || '').trim(),
-    idSituacion: Number(idSituacion),
-    ...(hasPag ? { pag: String(options.pagAsignador || '').trim() } : {}),
-    ...(hasPagCedula ? { cedulaPag: String(options.pagCedula || '').trim() } : {}),
-    ...(hasDefensorCedula ? { cedulaDefensor: String(options.defensorCedula || '').trim() } : {}),
-  };
-
-  const result = await execute(sql, binds, {
-    autoCommit: true,
-    operation: 'gestion.assignDefensorBySituacion',
-  });
-
-  return Number(result?.rowsAffected || 0);
-}
-
 module.exports = {
   listBySituacion,
   getLatestBySituacion,
   getById,
   insertGestion,
   updateGestionById,
-  assignDefensorBySituacion,
   GESTION_COLUMNS,
 };

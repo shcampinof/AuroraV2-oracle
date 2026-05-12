@@ -105,8 +105,8 @@ export function getEstadoClassByLabel(estado: unknown): string {
   const key = normalizeEstadoActuacion(estado);
   if (key === 'analizar el caso') return 'estado--verde';
   if (key === 'entrevistar al usuario') return 'estado--amarillo';
-  if (key === 'pendiente audiencia') return '';
-  if (key === 'pendiente decision de audiencia') return '';
+  if (key === 'pendiente audiencia') return 'estado--azul';
+  if (key === 'pendiente decision de audiencia') return 'estado--azul';
   if (key === 'presentar solicitud') return 'estado--rojo';
   if (key === 'presentar recurso') return 'estado--rojo';
   if (key === 'pendiente decision') return 'estado--azul';
@@ -297,10 +297,10 @@ export function obtenerEstadoActuacion(record: unknown): EstadoActuacionInfo {
     );
   }
   if (estadoKey === 'pendiente audiencia') {
-    return buildEstadoInfo(estadoKey, 'Pendiente audiencia', '');
+    return buildEstadoInfo(estadoKey, 'Pendiente audiencia', 'estado--azul');
   }
   if (estadoKey === 'pendiente decision de audiencia') {
-    return buildEstadoInfo(estadoKey, 'Pendiente decisión de audiencia', '');
+    return buildEstadoInfo(estadoKey, 'Pendiente decisión de audiencia', 'estado--azul');
   }
   // Regla: ESTADO.SOLICITUD.1
   if (estadoKey === 'presentar solicitud') {

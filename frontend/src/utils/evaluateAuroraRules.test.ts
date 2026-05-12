@@ -353,7 +353,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
-  it('AURORA.ESTADO.RECURSO.TRAMITE.1 - si Q47 = "No concede la solicitud" y Q49 está vacía, queda "Presentar solicitud"', () => {
+  it('AURORA.ESTADO.RECURSO.TRAMITE.1 - si Q47 = "No concede la solicitud" y Q49 está vacía, cierra el caso', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -362,7 +362,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Presentar solicitud');
+    expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
   it('AURORA.ESTADO.RECURSO.TRAMITE.2 - si Q47 = "No concede la solicitud" y Q49 = "Sí", pasa a "Pendiente decisión"', () => {
@@ -378,12 +378,90 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Pendiente decisión');
   });
 
+  it('AURORA.ESTADO.RECURSO.TRAMITE.2B - blinda Q47/Q48/Q49 aunque falten aliases de bloques previos', () => {
+    const answers = {
+      [AURORA_FIELD_CATALOG.q52]: 'No concede la solicitud',
+      [AURORA_FIELD_CATALOG.q53]: 'Porque no se demostró el arraigo familiar o social de la persona privada de la libertad',
+      [AURORA_FIELD_CATALOG.q54]: 'Sí',
+      [AURORA_FIELD_CATALOG.b5NormalSentidoResuelveSolicitud]: '',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.derivedStatus).toBe('Pendiente decisión');
+  });
+
+  it('AURORA.ESTADO.B5B.DECISION_SIN_SENTIDO.1 - Q46 con fecha y Q47 en "-" queda Pendiente decisión', () => {
+    const answers = {
+      [AURORA_FIELD_CATALOG.b5NormalDecision]: '2026-05-01',
+      [AURORA_FIELD_CATALOG.q52]: '-',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.derivedStatus).toBe('Pendiente decisión');
+  });
+
+  it('AURORA.ESTADO.B5A.DECISION_SIN_SENTIDO.1 - Q51 con fecha y Q52 en "-" queda Pendiente decisión', () => {
+    const answers = {
+      [AURORA_FIELD_CATALOG.q40]: 'Utilidad publica (solo para mujeres)',
+      [AURORA_FIELD_CATALOG.q51]: '2026-05-01',
+      [AURORA_FIELD_CATALOG.q52]: '-',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.derivedStatus).toBe('Pendiente decisión');
+  });
+
+  it('AURORA.ESTADO.B5.PARCIAL.1 - datos de bloque 5 sin radicación quedan Presentar solicitud, no Analizar', () => {
+    const answers = {
+      [AURORA_FIELD_CATALOG.b5NormalSolicitudInpec]: '2026-04-28',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.derivedStatus).toBe('Presentar solicitud');
+  });
+
+  it('AURORA.ESTADO.B5.RADICACION.1 - radicación de bloque 5 sin decisión queda Pendiente decisión, no Analizar', () => {
+    const answers = {
+      [AURORA_FIELD_CATALOG.b5NormalRadicacion]: '2026-04-29',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.derivedStatus).toBe('Pendiente decisión');
+  });
+
   it('AURORA.CIERRE.RECURSO.TRAMITE.1 - si Q49 = "No", el caso queda cerrado', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
       [AURORA_FIELD_CATALOG.q52]: 'No concede la solicitud',
       [AURORA_FIELD_CATALOG.q54]: 'No',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.derivedStatus).toBe('Caso cerrado');
+  });
+
+  it('AURORA.ESTADO.RECURSO.UTILIDAD.1 - si utilidad pública niega y Q54 = "Sí", pasa a "Pendiente decisión"', () => {
+    const answers = {
+      ...buildBloque3Base(),
+      ...buildBloque4Base(),
+      [AURORA_FIELD_CATALOG.q40]: 'Utilidad publica (solo para mujeres)',
+      [AURORA_FIELD_CATALOG.q52]: 'Niega utilidad pública',
+      [AURORA_FIELD_CATALOG.q54]: 'Sí',
+      [AURORA_FIELD_CATALOG.q56]: '',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.derivedStatus).toBe('Pendiente decisión');
+  });
+
+  it('AURORA.CIERRE.RECURSO.UTILIDAD.1 - si utilidad pública niega y Q54 está vacía, cierra el caso', () => {
+    const answers = {
+      ...buildBloque3Base(),
+      ...buildBloque4Base(),
+      [AURORA_FIELD_CATALOG.q40]: 'Utilidad publica (solo para mujeres)',
+      [AURORA_FIELD_CATALOG.q52]: 'Niega utilidad pública',
+      [AURORA_FIELD_CATALOG.q54]: '',
     };
 
     const result = evaluateAuroraRules({ answers });
@@ -407,7 +485,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Pendiente decisión');
   });
 
-  it('AURORA.ESTADO.DECISION_SIN_RADICACION.1 - sin radicacion (Q45/Q50) se mantiene "Presentar solicitud" aunque exista decision', () => {
+  it('AURORA.ESTADO.DECISION_SIN_RADICACION.1 - si existe fecha de decisión sin sentido, queda "Pendiente decisión"', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -415,7 +493,6 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Presentar solicitud');
+    expect(result.derivedStatus).toBe('Pendiente decisión');
   });
 });
-

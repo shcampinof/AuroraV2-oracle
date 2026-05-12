@@ -265,7 +265,7 @@ function getColumnWidth(col) {
     __nombreUsuario__: 145,
     __defensor__: 120,
     __lugarPrivacion__: 155,
-    __estadoTramite__: 100,
+    __estadoTramite__: 130,
     __departamentoReclusion__: 140,
     __municipioReclusion__: 130,
   };

@@ -28,6 +28,22 @@ const KEY_CALIFICACION_CONDUCTA = 'Calificación de conducta';
 const KEY_FECHA_RECURSO_AURORA_LEGACY = 'Fecha de recurso en caso desfavorable';
 const KEY_FECHA_PRESENTACION_RECURSO = 'Fecha de presentación del recurso';
 const KEY_FECHA_DECISION_RECURSO = 'Fecha de la decisión del recurso';
+const ALIASES_SE_PRESENTA_RECURSO = [
+  'Se presenta recurso',
+  '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?',
+  '¿SE RECURRIO EN CASO DE DECISION NEGATIVA?',
+];
+const ALIASES_RADICACION_UTILIDAD = [
+  'Fecha de radicación de solicitud de utilidad pública',
+  'Fecha de radicacion de solicitud de utilidad publica',
+  'Fecha de radicación de la solicitud de utilidad pública',
+  'Fecha de radicacion de la solicitud de utilidad publica',
+];
+const ALIASES_CELESTE_Q21_ACTUACION = [
+  'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS',
+  'Actuación a adelantar',
+  'Actuacion a adelantar',
+];
 
 // AURORA (PPL CONDENADOS)
 const OPCIONES_SITUACION_JURIDICA = ['Condenado', 'Sindicado'];
@@ -51,12 +67,16 @@ const OPCIONES_ENFOQUE_ETNICO = [
 ];
 const OPCIONES_LUGAR_PRIVACION = ['CDT', 'ERON'];
 const OPCIONES_FASE_TRATAMIENTO = [
-  'Observación',
-  'Alta',
-  'Mediana',
-  'Mínima',
-  'Confianza',
-  'No reporta',
+  { value: 'OBS', label: 'Observación' },
+  { value: 'ALT', label: 'Alta' },
+  { value: 'MED', label: 'Mediana' },
+  { value: 'MIN', label: 'Mínima' },
+  { value: 'CON', label: 'Confianza' },
+  { value: 'SIN', label: 'No reporta' },
+];
+const OPCIONES_REQUERIMIENTOS_JUDICIALES = [
+  { value: 'S', label: 'Sí' },
+  { value: 'N', label: 'No' },
 ];
 const OPCIONES_CALIFICACION_CONDUCTA = [
   'Ejemplar',
@@ -1105,6 +1125,13 @@ const CAMPOS_AURORA_DESDE_P29 = [
   'Resumen del analisis del caso',
 ];
 
+const RESUMEN_ANALISIS_KEYS = [
+  'Resumen del análisis del caso',
+  'Resumen del analisis del caso',
+  'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO',
+  'RESUMEN DEL ANALISIS JURIDICO DEL PRESENTE CASO',
+];
+
 function normalizeFieldKey(value) {
   return String(value ?? '')
     .normalize('NFD')
@@ -1213,7 +1240,7 @@ function Campo({
   maxDate = '',
 }) {
   const isDisabled = Boolean(readOnly || disabled);
-  const canClear = isCampoLimpiableDesdeBloque3(name);
+  const canClear = isCampoLimpiableDesdeBloque3(name) && !isDefensorFieldName(name);
   const clearTitle = `Limpiar ${displayText(label)}`;
   const clearValue = () => {
     if (isDisabled || !canClear) return;
@@ -1226,12 +1253,25 @@ function Campo({
     </label>
   );
   if (type === 'select') {
-    const normalizedValue = value === '-' ? '' : value ?? '';
+    const rawValue = value === '-' ? '' : String(value ?? '');
     const normalizedOptions = (options || OPCIONES_SI_NO).map((opt) => {
       const optionValue = typeof opt === 'string' ? opt : String(opt?.value ?? '');
       const optionLabel = typeof opt === 'string' ? opt : String(opt?.label ?? opt?.value ?? '');
       return { value: optionValue, label: optionLabel };
     });
+    const normalizedRawValue = normalizeFieldKey(rawValue);
+    const matchedOption = normalizedOptions.find((opt) => {
+      const normalizedOptionValue = normalizeFieldKey(opt.value);
+      const normalizedOptionLabel = normalizeFieldKey(opt.label);
+      return (
+        opt.value === rawValue ||
+        normalizedOptionValue === normalizedRawValue ||
+        normalizedOptionLabel === normalizedRawValue ||
+        (normalizedRawValue === 's' && normalizedOptionLabel === 'si') ||
+        (normalizedRawValue === 'n' && normalizedOptionLabel === 'no')
+      );
+    });
+    const normalizedValue = matchedOption ? matchedOption.value : '';
     const hasDashOption = normalizedOptions.some((opt) => String(opt?.value ?? '').trim() === '-');
     const selectedLabel = normalizedOptions.find((opt) => opt.value === normalizedValue)?.label ?? '';
     const selectTitle = selectedLabel ? displayText(selectedLabel) : undefined;
@@ -1479,6 +1519,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   const [calificacionesDraft, setCalificacionesDraft] = useState({});
   const bloque2AuroraRef = useRef(null);
   const formularioDetalleRef = useRef(null);
+  const defensoresRefreshAtRef = useRef(0);
 
   const triggerFormularioAutoScroll = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -1506,22 +1547,38 @@ export default function FormularioAtencion({ numeroInicial }) {
     if (numeroInicial) buscarRegistro(numeroInicial);
   }, [numeroInicial]);
 
-  useEffect(() => {
-    let ignore = false;
-    const cargarDefensores = async () => {
-      try {
-        const catalogo = await getDefensoresCatalogo();
-        if (ignore) return;
-        setDefensoresCatalogo(Array.isArray(catalogo) ? catalogo : []);
-      } catch (e) {
-        reportError(e, 'formulario-entrevista:defensores-catalogo');
-      }
-    };
-    cargarDefensores();
-    return () => {
-      ignore = true;
-    };
+  const cargarDefensoresFormulario = useCallback(async ({ force = false } = {}) => {
+    const now = Date.now();
+    if (!force && now - defensoresRefreshAtRef.current < 5000) return;
+    defensoresRefreshAtRef.current = now;
+
+    try {
+      const catalogo = await getDefensoresCatalogo();
+      setDefensoresCatalogo(Array.isArray(catalogo) ? catalogo : []);
+    } catch (e) {
+      reportError(e, 'formulario-entrevista:defensores-catalogo');
+    }
   }, []);
+
+  useEffect(() => {
+    cargarDefensoresFormulario({ force: true });
+  }, [cargarDefensoresFormulario]);
+
+  useEffect(() => {
+    const refrescarDefensores = () => cargarDefensoresFormulario({ force: true });
+    const refrescarSiVisible = () => {
+      if (document.visibilityState === 'visible') refrescarDefensores();
+    };
+
+    window.addEventListener('focus', refrescarDefensores);
+    window.addEventListener('aurora:defensores-updated', refrescarDefensores);
+    document.addEventListener('visibilitychange', refrescarSiVisible);
+    return () => {
+      window.removeEventListener('focus', refrescarDefensores);
+      window.removeEventListener('aurora:defensores-updated', refrescarDefensores);
+      document.removeEventListener('visibilitychange', refrescarSiVisible);
+    };
+  }, [cargarDefensoresFormulario]);
 
   const opcionesDefensores = useMemo(() => {
     const dedup = new Set();
@@ -1539,10 +1596,6 @@ export default function FormularioAtencion({ numeroInicial }) {
   }, [registro]);
   const tiempoPrivacionMeses = useMemo(() => {
     if (!registro) return '';
-
-    const rawDays = String(registro['Tiempo que la persona lleva privada de la libertad (en días)'] ?? '').trim();
-    const days = Number(rawDays.replace(/[^\d.-]/g, ''));
-    if (Number.isFinite(days)) return String(Math.floor(days / 30));
 
     const rawFecha = String(registro['Fecha de captura'] ?? '').trim();
     if (!rawFecha) return '';
@@ -1698,6 +1751,14 @@ export default function FormularioAtencion({ numeroInicial }) {
       }
 
       const normalizedName = normalizeFieldName(name);
+      const isResumenAnalisis = RESUMEN_ANALISIS_KEYS.some((alias) => normalizeFieldName(alias) === normalizedName);
+      if (isResumenAnalisis) {
+        RESUMEN_ANALISIS_KEYS.forEach((key) => {
+          setFieldValueAcrossAliases(base, key, value);
+        });
+        return wrapRegistroForLookup(base);
+      }
+
       const isP36 = normalizedName === normalizeFieldName('Otras solicitudes a tramitar');
       if (isP36) {
         const rawSelections = Array.isArray(value) ? value : parseP36Selections(value);
@@ -1715,6 +1776,36 @@ export default function FormularioAtencion({ numeroInicial }) {
             : sanitizedSelections;
         const serialized = serializeP36Selections(nextSelections);
         setFieldValueAcrossAliases(base, name, serialized);
+        return wrapRegistroForLookup(base);
+      }
+
+      const isSePresentaRecurso = ALIASES_SE_PRESENTA_RECURSO.some(
+        (alias) => normalizeFieldName(alias) === normalizedName
+      );
+      if (isSePresentaRecurso) {
+        ALIASES_SE_PRESENTA_RECURSO.forEach((key) => {
+          setFieldValueAcrossAliases(base, key, value);
+        });
+        return wrapRegistroForLookup(base);
+      }
+
+      const isRadicacionUtilidad = ALIASES_RADICACION_UTILIDAD.some(
+        (alias) => normalizeFieldName(alias) === normalizedName
+      );
+      if (isRadicacionUtilidad) {
+        ALIASES_RADICACION_UTILIDAD.forEach((key) => {
+          setFieldValueAcrossAliases(base, key, value);
+        });
+        return wrapRegistroForLookup(base);
+      }
+
+      const isCelesteQ21Actuacion =
+        flow === 'sindicado' &&
+        ALIASES_CELESTE_Q21_ACTUACION.some((alias) => normalizeFieldName(alias) === normalizedName);
+      if (isCelesteQ21Actuacion) {
+        ALIASES_CELESTE_Q21_ACTUACION.forEach((key) => {
+          setFieldValueAcrossAliases(base, key, value);
+        });
         return wrapRegistroForLookup(base);
       }
 
@@ -1864,7 +1955,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     [requierePruebasBloque4]
   );
   const sePresentaRecursoBloque5 = useMemo(
-    () => readRegistroTextByAliases(registro, ['Se presenta recurso']),
+    () => readRegistroTextByAliases(registro, ALIASES_SE_PRESENTA_RECURSO),
     [registro]
   );
   const fechaPresentacionRecursoBloque5 = useMemo(
@@ -1919,7 +2010,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   );
   const saltoAuroraDesdeCeleste = false;
   const auroraActivo = useMemo(() => flow === 'condenado' || saltoAuroraDesdeCeleste, [flow, saltoAuroraDesdeCeleste]);
-  const maxAllowedFutureDateIso = useMemo(() => buildTodayPlusDaysIso(5), []);
+  const maxAllowedFutureDateIso = useMemo(() => buildTodayPlusDaysIso(30), []);
   const fechaRecepcionPruebasTramite = useMemo(
     () =>
       readRegistroTextByAliases(registro, [
@@ -1947,13 +2038,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     [registro]
   );
   const fechaPresentacionSolicitudUtilidad = useMemo(
-    () =>
-      readRegistroTextByAliases(registro, [
-        'Fecha de radicación de solicitud de utilidad pública',
-        'Fecha de radicacion de solicitud de utilidad publica',
-        'Fecha de radicación de la solicitud de utilidad pública',
-        'Fecha de radicacion de la solicitud de utilidad publica',
-      ]),
+    () => readRegistroTextByAliases(registro, ALIASES_RADICACION_UTILIDAD),
     [registro]
   );
   const minFechaPresentacionTramiteIso = useMemo(
@@ -1999,7 +2084,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     const fechas = [...secuenciaTramite, ...secuenciaUtilidad].filter((item) => item.iso);
     const futura = fechas.find((item) => isIsoDateAfter(item.iso, maxAllowedFutureDateIso));
     if (futura) {
-      return `${futura.label} no puede superar ${maxAllowedFutureDateIso} (hoy + 5 días).`;
+      return `${futura.label} no puede superar ${maxAllowedFutureDateIso} (hoy + 30 días).`;
     }
 
     for (let i = 1; i < secuenciaTramite.length; i += 1) {
@@ -2511,13 +2596,21 @@ export default function FormularioAtencion({ numeroInicial }) {
     setRegistro((prev) => {
       if (!prev) return prev;
       const currentTramite = String(prev['Estado del trámite'] ?? '').trim();
+      const currentAccion = String(prev['Acción a realizar'] ?? '').trim();
       const nextCaso = estadoTramiteSindicado === 'Caso cerrado' ? 'Cerrado' : 'Activo';
       const currentCaso = String(prev['Estado del caso'] ?? '').trim();
-      if (currentTramite === estadoTramiteSindicado && currentCaso === nextCaso) return prev;
+      if (
+        currentTramite === estadoTramiteSindicado &&
+        currentAccion === estadoTramiteSindicado &&
+        currentCaso === nextCaso
+      ) {
+        return prev;
+      }
 
       return wrapRegistroForLookup({
         ...unwrapRegistro(prev),
         'Estado del trámite': estadoTramiteSindicado,
+        'Acción a realizar': estadoTramiteSindicado,
         'Estado del caso': nextCaso,
       });
     });
@@ -3032,6 +3125,18 @@ export default function FormularioAtencion({ numeroInicial }) {
         .slice(0, 4)
         .map((item) => ({ ...(item.snapshot || buildCalificacionSnapshot(null)) }));
       if (auroraActivo) {
+        const recursoActual = readRegistroTextByAliases(payloadBase, ALIASES_SE_PRESENTA_RECURSO);
+        if (recursoActual) {
+          ALIASES_SE_PRESENTA_RECURSO.forEach((key) => {
+            setFieldValueAcrossAliases(payloadBase, key, recursoActual);
+          });
+        }
+        const radicacionUtilidadActual = readRegistroTextByAliases(payloadBase, ALIASES_RADICACION_UTILIDAD);
+        if (radicacionUtilidadActual) {
+          ALIASES_RADICACION_UTILIDAD.forEach((key) => {
+            setFieldValueAcrossAliases(payloadBase, key, radicacionUtilidadActual);
+          });
+        }
         const estadoTramiteActual = String(auroraRuleState?.derivedStatus || '').trim();
         if (estadoTramiteActual) payloadBase['Estado del trámite'] = estadoTramiteActual;
         payloadBase['Estado del caso'] = estadoTramiteActual === 'Caso cerrado' || casoCerrado ? 'Cerrado' : 'Activo';
@@ -3040,8 +3145,17 @@ export default function FormularioAtencion({ numeroInicial }) {
         }
       }
       if (flow === 'sindicado') {
+        const actuacionSindicadoActual = readRegistroTextByAliases(payloadBase, ALIASES_CELESTE_Q21_ACTUACION);
+        if (actuacionSindicadoActual) {
+          ALIASES_CELESTE_Q21_ACTUACION.forEach((key) => {
+            setFieldValueAcrossAliases(payloadBase, key, actuacionSindicadoActual);
+          });
+        }
         const estadoTramiteSindicado = String(celesteRuleState?.derivedStatus || '').trim();
-        if (estadoTramiteSindicado) payloadBase['Estado del trámite'] = estadoTramiteSindicado;
+        if (estadoTramiteSindicado) {
+          payloadBase['Estado del trámite'] = estadoTramiteSindicado;
+          payloadBase['Acción a realizar'] = estadoTramiteSindicado;
+        }
         payloadBase['Estado del caso'] = estadoTramiteSindicado === 'Caso cerrado' ? 'Cerrado' : 'Activo';
       }
       const updated = await updatePpl(doc, buildUpdatePayload(payloadBase));
@@ -3063,6 +3177,9 @@ export default function FormularioAtencion({ numeroInicial }) {
       );
       const nextTipo = String(updated?.tipo ?? tipoRegistro ?? '').trim();
       if (nextTipo) setTipoRegistro(nextTipo);
+      if (updated?.registro && typeof updated.registro === 'object') {
+        setRegistro(wrapRegistroForLookup({ ...updated.registro, __tipoApi: nextTipo || tipoRegistro }));
+      }
 
       if (allowPartialAuroraSave) {
         setError(`${partialSaveMessage} Por favor complete el resto del bloque.`);
@@ -3512,7 +3629,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                   type="select"
                   value={registro['¿ Cuenta con requerimientos judiciales por otros procesos ?']}
                   onChange={handleChange}
-                  options={OPCIONES_SI_NO}
+                  options={OPCIONES_REQUERIMIENTOS_JUDICIALES}
                 />
                 <div className="form-field calificacion-resumen-field">
                   <label>{displayText('Resumen de calificaciones de conducta (últimas 4)')}</label>
@@ -4341,19 +4458,19 @@ export default function FormularioAtencion({ numeroInicial }) {
           )}
 
           <div className="actions-center"> 
-            <button className="save-button" type="button" onClick={handleGenerarPdfCasoActual}>
-              GENERAR CONSOLIDADO (PDF)
-            </button>
-
             <button className="save-button" type="button" onClick={handleGuardar}>
               GUARDAR ENTREVISTA
             </button>
 
             {guardadoOk && (
-              <button className="save-button secondary" type="button" onClick={handleConsultarOtro}>
+              <button className="save-button" type="button" onClick={handleConsultarOtro}>
                 CONSULTAR OTRO PPL
               </button>
             )}
+
+            <button className="save-button" type="button" onClick={handleGenerarPdfCasoActual}>
+              GENERAR CONSOLIDADO (PDF)
+            </button>
           </div>
         </div>
           )}
@@ -4362,7 +4479,3 @@ export default function FormularioAtencion({ numeroInicial }) {
     </>
   );
 }
-
-
-
-

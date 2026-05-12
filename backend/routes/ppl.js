@@ -524,7 +524,7 @@ function resolveDefensorFromRegistro(registro) {
   const directKeys = [
     'Defensor(a) Publico(a) Asignado para tramitar la solicitud',
     'Defensor(a) Público(a) Asignado para tramitar la solicitud',
-    'Defensor(a) Público(a) Asignado para tramitar la solicitud',
+    'Defensor(a) P?blico(a) Asignado para tramitar la solicitud',
     'Defensor',
     'defensorAsignado',
   ];
@@ -586,12 +586,21 @@ function extractDefensorFromPayload(payload) {
     'Defensor',
     'Defensor(a) Publico(a) Asignado para tramitar la solicitud',
     'Defensor(a) Público(a) Asignado para tramitar la solicitud',
-    'Defensor(a) Público(a) Asignado para tramitar la solicitud',
+    'Defensor(a) P?blico(a) Asignado para tramitar la solicitud',
   ];
 
   for (const key of keys) {
     if (!hasOwn(key)) continue;
     return String(source[key] ?? '').trim();
+  }
+
+  for (const [key, value] of Object.entries(source)) {
+    const normalized = normalizeText(key).replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const isDefensorField =
+      normalized === 'defensor a publico a asignado para tramitar la solicitud' ||
+      normalized === 'defensor asignado' ||
+      normalized === 'defensor';
+    if (isDefensorField) return String(value ?? '').trim();
   }
 
   return null;
@@ -734,7 +743,7 @@ router.get('/condenados', async (req, res) => {
   }
 });
 
-// Validar cedula PAG contra catalogo CSV
+// Validar cedula PAG contra catalogo Oracle
 // GET /api/ppl/pag/:cedula/validar
 router.get('/pag/:cedula/validar', async (req, res) => {
   const cedula = String(req.params?.cedula || '').trim();
@@ -794,6 +803,7 @@ router.post('/asignar-defensor', async (req, res) => {
     const pagAsignador = pag?.nombre ? `${pag.nombre} (${pag.cedula})` : String(pag.cedula || '').trim();
     const updated = await consolidado.assignDefensor(documentos, defensorNombre, {
       pagAsignador,
+      pagNombre: String(pag?.nombre || '').trim(),
       pagCedula: pag.cedula,
       defensorCedula,
     });

@@ -143,6 +143,28 @@ function isNiegaQ26(value: unknown): boolean {
   return normalize(value).includes('niega la solicitud');
 }
 
+function deriveBloque5Status(answers: CelesteRecord): CelesteDerivedStatus | '' {
+  const q24 = getAnswerByKey(answers, FIELD.q24);
+  const q25 = getAnswerByKey(answers, FIELD.q25);
+  const q26 = getAnswerByKey(answers, FIELD.q26);
+  const q28 = getAnswerByKey(answers, FIELD.q28);
+  const q29 = getAnswerByKey(answers, FIELD.q29);
+  const q30 = getAnswerByKey(answers, FIELD.q30);
+  const q31 = getAnswerByKey(answers, FIELD.q31);
+
+  if (isFilled(q30) || isFilled(q31)) return 'Caso cerrado';
+  if (isRevocaOSustituyeQ26(q26)) return 'Caso cerrado';
+  if (isNiegaQ26(q26)) {
+    if (normalizeYesNo(q28) === 'si') return 'Pendiente decisión';
+    return 'Caso cerrado';
+  }
+  if (isFilled(q29) || normalizeYesNo(q28) === 'si') return 'Pendiente decisión';
+  if (isFilled(q25) && !isFilled(q26)) return 'Pendiente decisión de audiencia';
+  if (isFilled(q24) && !isFilled(q25)) return 'Pendiente audiencia';
+  if ([q24, q25, q26, q28].some((value) => isFilled(value))) return 'Presentar solicitud';
+  return '';
+}
+
 function areMandatoryFieldsFilled(answers: CelesteRecord, requiredKeys: string[]): boolean {
   return requiredKeys.every((key) => isFilled(getAnswerByKey(answers, key)));
 }
@@ -163,43 +185,16 @@ function resolveVisibleBlocks(answers: CelesteRecord, locked: boolean): CelesteB
 function deriveStatus(answers: CelesteRecord): CelesteDerivedStatus {
   const q21 = getAnswerByKey(answers, FIELD.q21);
   const q23 = getAnswerByKey(answers, FIELD.q23);
-  const q24 = getAnswerByKey(answers, FIELD.q24);
-  const q25 = getAnswerByKey(answers, FIELD.q25);
-  const q26 = getAnswerByKey(answers, FIELD.q26);
-  const q28 = getAnswerByKey(answers, FIELD.q28);
-  const q29 = getAnswerByKey(answers, FIELD.q29);
-  const q30 = getAnswerByKey(answers, FIELD.q30);
-  const q31 = getAnswerByKey(answers, FIELD.q31);
 
   // Regla 2
   if (isNoSeAvanzaraQ21(q21)) return 'Caso cerrado';
-  // Cierre por resultado final de recurso (fecha o sentido diligenciados).
-  if (isFilled(q30)) return 'Caso cerrado';
-  if (isFilled(q31)) return 'Caso cerrado';
+  const bloque5Status = deriveBloque5Status(answers);
+  if (bloque5Status) return bloque5Status;
   // Regla 1
   if (!areMandatoryFieldsFilled(answers, REQ_BLOQUE_3)) return 'Analizar el caso';
   // Regla 3
   if (!isSeAvanzaraQ21(q21)) return 'Analizar el caso';
   if (!isFilled(q23)) return 'Entrevistar al usuario';
-
-  // Nuevos estados intermedios de audiencia.
-  if (isFilled(q24) && !isFilled(q25)) return 'Pendiente audiencia';
-  if (isFilled(q25) && !isFilled(q26)) return 'Pendiente decisión de audiencia';
-
-  const has24And25 = isFilled(q24) && isFilled(q25);
-  if (has24And25 && isRevocaOSustituyeQ26(q26)) {
-    // Regla 5
-    return 'Caso cerrado';
-  }
-
-  if (has24And25 && isNiegaQ26(q26)) {
-    // Regla 7
-    if (normalizeYesNo(q28) === 'no') return 'Caso cerrado';
-    // Regla 9
-    if (isFilled(q29)) return 'Pendiente decisión';
-    // Reglas 6 y 8
-    return 'Presentar recurso';
-  }
 
   // Regla 4
   return 'Presentar solicitud';

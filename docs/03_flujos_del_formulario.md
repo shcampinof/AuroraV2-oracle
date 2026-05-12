@@ -129,10 +129,10 @@ Reglas vigentes de cierre en Aurora:
 - Regla adicional de tramite normal:
   - si Q47 (`Sentido de la decision`, campo tecnico Q52) esta diligenciada con valor distinto de `No concede la solicitud`,
   - el caso se marca como cerrado.
-  - si Q47 = `No concede la solicitud`, el caso no se cierra por esa pregunta; pasa a flujo de recurso:
-    - Q49 vacia -> `Presentar solicitud`
-    - Q49 = `Si` y Q52 vacia -> `Pendiente decision`
-    - Q49 = `No` -> `Caso cerrado`
+  - si Q47 = `No concede la solicitud`, pasa a flujo de recurso:
+    - Q49 vacia o `No` -> `Caso cerrado`
+    - Q49 = `Si` y no hay decision del recurso -> `Pendiente decision`
+    - decision del recurso diligenciada -> `Caso cerrado`
 
 Persistencia:
 
@@ -178,12 +178,14 @@ Definicion en `formRules.aurora.ts`:
 - `Presentar solicitud`: Q29, Q37, Q38 y Q40 diligenciadas, pero falta:
   - Q50 en "Bloque 5. Utilidad Publica", o
   - Q45 en "Bloque 5. Tramite de la solicitud".
-  - En tramite normal, tambien aplica cuando Q47 = `No concede la solicitud` y Q49 aun no esta diligenciada.
+  - Tambien aplica si ya hay datos preparatorios de bloque 5 pero aun no hay radicacion/presentacion.
 - `Pendiente decision`: Q29, Q37, Q38 y Q40 diligenciadas, con:
   - Q50 en "Bloque 5. Utilidad Publica" o Q45 en "Bloque 5. Tramite de la solicitud",
   - y sin Q51 en "Bloque 5. Utilidad Publica" o Q46 en "Bloque 5. Tramite de la solicitud".
-  - En tramite normal, tambien aplica cuando Q47 = `No concede la solicitud`, Q49 = `Si` y Q52 esta vacia.
-- `Caso cerrado`: prevalece por reglas de cierre (ejemplo: `NO PROCEDE NADA`).
+  - Tambien aplica cuando la decision es negativa y se marca recurso = `Si`, hasta que exista decision del recurso.
+  - Tambien aplica cuando Q51 (utilidad) o Q46 (tramite normal) tienen fecha, pero el sentido de decision esta vacio o `-`.
+- `Caso cerrado`: prevalece por reglas de cierre (ejemplo: `NO PROCEDE NADA`). Si la decision es negativa y recurso esta en `No` o vacio, el caso queda cerrado.
+- Blindaje: si existe cualquier dato de bloque 5, el estado no debe volver a `Analizar el caso`.
 
 Compatibilidad:
 
@@ -197,12 +199,13 @@ Compatibilidad:
 `derivedStatusRules` en Aurora evalua en este orden:
 
 1. `Caso cerrado`
-2. `Pendiente decision` por recurso en tramite normal (Q47 = `No concede la solicitud`, Q49 = `Si`, Q52 vacia)
-3. `Presentar solicitud` por recurso en tramite normal (Q47 = `No concede la solicitud`, Q49 vacia)
+2. `Pendiente decision` por recurso en decision negativa (recurso = `Si` y sin decision de recurso)
+3. `Pendiente decision` por fecha de decision sin sentido diligenciado
 4. `Pendiente decision` (Q50/Q45 diligenciada y Q51/Q46 sin diligenciar)
-5. `Presentar solicitud` (Q29/Q37/Q38/Q40 diligenciadas y falta Q50/Q45)
-6. `Entrevistar al usuario` (Q29/Q37 diligenciadas y falta Q38 o Q40)
-7. `Analizar el caso` (fallback)
+5. `Presentar solicitud` por datos de bloque 5 sin radicacion/presentacion
+6. `Presentar solicitud` (Q29/Q37/Q38/Q40 diligenciadas y falta Q50/Q45)
+7. `Entrevistar al usuario` (Q29/Q37 diligenciadas y falta Q38 o Q40)
+8. `Analizar el caso` (fallback)
 
 Esto evita casos donde, con formulario ya avanzado, el estado se quedaba en `Analizar el caso`.
 
@@ -257,14 +260,14 @@ Estados/accion a impulsar en sindicados:
 2. Si Q21 inicia con `No se avanzará...` -> `Caso cerrado`.
 3. Si Q21 inicia con `Se avanzará...` -> `Entrevistar al usuario`.
 4. Si Q23 esta diligenciada -> `Presentar solicitud`.
-5. Si Q24 esta diligenciada y Q25 no -> `Pendiente audiencia` (sin semaforo verde/amarillo/rojo).
-6. Si Q25 esta diligenciada y Q26 no -> `Pendiente decisión de audiencia` (sin semaforo verde/amarillo/rojo).
+5. Si Q24 esta diligenciada y Q25 no -> `Pendiente audiencia` (`estado--azul`).
+6. Si Q25 esta diligenciada y Q26 no o esta en `-` -> `Pendiente decisión de audiencia` (`estado--azul`).
 7. Si Q24 y Q25 estan diligenciadas y Q26 = `Revoca...` o `Sustituye...` -> `Caso cerrado`.
-8. Si Q24 y Q25 estan diligenciadas y Q26 = `Niega la solicitud` -> `Presentar recurso`.
-9. Si Q28 = `No` -> `Caso cerrado`.
-10. Si Q28 = `Si` -> se mantiene `Presentar recurso`.
-11. Si Q29 tiene fecha -> `Pendiente decisión`.
-12. Si Q30 (fecha de la decisión del recurso) o Q31 (sentido) tienen respuesta -> `Caso cerrado`.
+8. Si Q24 y Q25 estan diligenciadas, Q26 = `Niega la solicitud` y Q28 esta vacia o `No` -> `Caso cerrado`.
+9. Si Q28 = `Si` -> `Pendiente decisión`.
+10. Si Q29 tiene fecha -> se mantiene `Pendiente decisión`.
+11. Si Q30 (fecha de la decisión del recurso) o Q31 (sentido) tienen respuesta -> `Caso cerrado`.
+12. Blindaje: cualquier dato de bloque 5 de sindicados se evalua antes del fallback de bloque 3, para no volver a `Analizar el caso`.
 
 
 
@@ -283,6 +286,3 @@ Sobre el estado actual del repo:
 - `npm --prefix frontend run lint` -> OK
 - `npm --prefix frontend test -- --run src/utils/evaluateCelesteRules.test.ts` -> OK
 - `npm --prefix frontend run build` -> OK
-
-
-

@@ -21,17 +21,19 @@ AURORA es una aplicacion web para atencion juridica de personas privadas de la l
 
 - Expone endpoints bajo prefijo `/api`.
 - Organiza rutas por modulo:
+  - `backend/routes/auth.js`
   - `backend/routes/ppl.js`
   - `backend/routes/defensores.js`
   - `backend/routes/formatos.js`
+- Protege rutas funcionales con JWT propio emitido por login local temporal o SSO Azure AD.
 - Usa repositorios de acceso a datos:
-  - `backend/db/consolidado.repo.js`
-  - `backend/db/defensores.repo.js`
+  - `backend/db/oracleConsolidado.repo.js`
+  - `backend/repositories/oracle/*.js`
 
 ## 2.3 Persistencia
 
-- Fuente principal: CSV (`backend/data/consolidado_ppl.csv`).
-- Fuente auxiliar de defensores: CSV (`backend/data/defensores.csv`).
+- Fuente principal: Oracle, mediante repositorios bajo `backend/repositories/oracle/`.
+- Los CSV en `backend/data/` quedan como insumos/mock historicos para desarrollo y referencia.
 - Catalogo de formatos: mock en `backend/data/formatos.mock.js`.
 
 ## 3. Navegacion principal (frontend)
@@ -66,12 +68,11 @@ La app usa navegacion por hash (`frontend/src/App.jsx`) y estas vistas:
 
 ## 6. Riesgos tecnicos observables en codigo
 
-- Persistencia CSV con reescritura completa en actualizaciones (`saveRaw` en `consolidado.repo.js`).
 - Normalizacion intensiva de claves para tolerar variantes de codificacion.
-- No hay suite automatizada de backend (script `test` solo imprime mensaje).
+- La suite backend automatizada actual cubre configuracion de autenticacion; falta ampliar a rutas e integracion Oracle.
 
-## 7. TODO de arquitectura
+## 7. Pendientes de arquitectura
 
-- TODO: agregar diagrama de componentes (frontend/backend/repositorios/CSV).
-- TODO: definir convencion oficial de codificacion de texto para claves CSV y labels de formulario.
-- TODO: documentar estrategia de despliegue (ambientes, variables, puertos, observabilidad).
+- Agregar diagrama de componentes (frontend/backend/repositorios Oracle).
+- Definir convencion oficial de codificacion de texto para claves de BD y labels de formulario.
+- Documentar estrategia de despliegue (ambientes, variables, puertos, observabilidad).

@@ -2,7 +2,7 @@
 
 ## 1. Base URL
 
-- Default local: `http://localhost:4000/api`
+- Default local: `http://localhost:7860/api`
 - Fuente: `backend/index.js` y `frontend/src/services/api.js`
 
 ## 2. Salud
@@ -11,9 +11,24 @@
 |---|---|---|
 | GET | `/health` | Verificacion operativa del backend |
 
-Respuesta actual: `{ ok: true, message: "Backend AURORA operativo (modo MOCK)" }`.
+Respuesta actual: `{ ok: true, message: "Backend AURORA operativo (modo ORACLE v2 híbrido)" }`.
 
-## 3. PPL
+## 3. Autenticacion
+
+| Metodo | Path | Uso |
+|---|---|---|
+| GET | `/auth/config` | Publica si login local y Azure AD estan habilitados |
+| POST | `/auth/login` | Login local temporal. Body: `{ "username": "...", "password": "..." }` |
+| POST | `/auth/azure-ad` | Valida `idToken` de Microsoft identity platform y emite JWT de AURORA |
+| GET | `/auth/me` | Devuelve usuario autenticado |
+
+Notas de seguridad:
+
+- `/ppl`, `/formatos` y `/defensores` requieren `Authorization: Bearer <token>`.
+- En `NODE_ENV=production`, el login local queda deshabilitado por defecto si `AUTH_LOCAL_ADMIN_ENABLED` no esta definido.
+- En produccion, `AUTH_JWT_SECRET` debe estar configurado con un secreto fuerte; no se acepta el placeholder del ejemplo.
+
+## 4. PPL
 
 | Metodo | Path | Uso |
 |---|---|---|
@@ -43,21 +58,21 @@ Filtros relevantes de `/ppl/condenados`:
 - `potencialSubrogado=proximos_requisito_temporal`: agrupa `Preliminar Prision Domiciliaria` y `Preliminar Libertad condicional`.
 - `potencialSubrogado=no_reunen_requisitos`: excluye las categorias anteriores.
 
-## 4. Defensores
+## 5. Defensores
 
 | Metodo | Path | Uso |
 |---|---|---|
-| GET | `/defensores` | Lista desde `defensores.csv` |
-| GET | `/defensores?source=condenados` | Lista deduplicada desde consolidado (solo condenados) |
-| POST | `/defensores` | Crea defensor en `defensores.csv` (body: `{ "nombre": "NOMBRE COMPLETO" }`) |
+| GET | `/defensores` | Lista desde `DNDP.DEFENSORES` |
+| GET | `/defensores?source=condenados` | Lista deduplicada desde asignaciones vigentes de PPL condenadas en Oracle |
+| POST | `/defensores` | Crea defensor en `DNDP.DEFENSORES` (body: `{ "cedula": "123", "nombre": "NOMBRE COMPLETO" }`) |
 
 Errores observables:
 
 - `400` si `nombre` no viene o contiene caracteres diferentes a letras y espacios.
-- `409` si el defensor ya existe (en `defensores.csv` o en el consolidado de condenados).
+- `409` si el defensor ya existe en el catalogo Oracle o en asignaciones vigentes de condenados.
 - `500` para errores no controlados de persistencia.
 
-## 5. Formatos
+## 6. Formatos
 
 | Metodo | Path | Uso |
 |---|---|---|
@@ -67,16 +82,15 @@ Errores observables:
 Errores observables:
 
 - `404` si `id` no existe en mock.
-- `500` si el archivo esperado no existe en `backend/public/formatos/`.
+- `404` si el formato no existe.
 
-## 6. Notas de contrato actuales
+## 7. Notas de contrato actuales
 
-- La API no implementa autenticacion/autorizacion.
 - La API responde JSON para rutas `/api/*`.
-- El endpoint de descarga usa `res.download` (respuesta de archivo).
+- El endpoint de descarga redirige a `FORMATOS_BASE_URL` o al repositorio configurado por defecto.
 
-## 7. TODO de contrato API
+## 8. Pendientes de contrato API
 
-- TODO: definir contrato formal OpenAPI con esquemas de request/response.
-- TODO: documentar codigos de error por endpoint con ejemplos reales.
-- TODO: definir politica de versionado (`/api/v1`, compatibilidad y deprecaciones).
+- Definir contrato formal OpenAPI con esquemas de request/response.
+- Documentar codigos de error por endpoint con ejemplos reales.
+- Definir politica de versionado (`/api/v1`, compatibilidad y deprecaciones).

@@ -5,7 +5,7 @@ const consolidado = require('../db/oracleConsolidado.repo');
 const router = express.Router();
 
 // GET /api/defensores
-// ?source=condenados -> lista unica desde la fuente principal de PPL (consolidado_ppl.csv)
+// ?source=condenados -> lista unica desde asignaciones/gestiones Oracle de PPL condenadas.
 router.get('/', async (req, res) => {
   const source = String(req.query.source || '').trim().toLowerCase();
   try {
@@ -28,7 +28,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/defensores
-// body: { nombre: string }
+// body: { cedula: string, nombre: string, correo?: string, regional?: string, cedulaPag?: string }
 router.post('/', async (req, res) => {
   try {
     const nombre = defensoresRepo.normalizeNombre(req.body?.nombre);

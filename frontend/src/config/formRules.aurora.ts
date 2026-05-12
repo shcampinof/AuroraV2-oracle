@@ -94,6 +94,7 @@ const FIELD = {
   q54: 'Se presenta recurso',
   q55: 'Fecha de recurso en caso desfavorable',
   q56: 'Sentido de la decisión que resuelve recurso',
+  fechaDecisionRecurso: 'Fecha de la decisión del recurso',
   b5NormalRecepcionPruebas: 'Fecha de recepción de pruebas aportadas por el usuario (si aplica)',
   b5NormalSolicitudInpec: 'Fecha de solicitud de documentos al Inpec (si aplica)',
   b5NormalRadicacion: 'Fecha de presentación de la solicitud a la autoridad',
@@ -167,7 +168,10 @@ function keyVariants(value: unknown): string[] {
 }
 
 function isFilled(value: unknown): boolean {
-  return toText(value) !== '';
+  const text = toText(value);
+  if (!text) return false;
+  const normalized = normalize(text);
+  return normalized !== '-' && normalized !== '--' && normalized !== 'null' && normalized !== 'undefined' && normalized !== 'seleccione';
 }
 
 function get(record: FormRecord, key: string): string {
@@ -336,6 +340,36 @@ function getFechaDecision(record: FormRecord): string {
   return getAny(record, DECISION_TRAMITE_ALIASES);
 }
 
+function hasFechaDecisionSinSentido(record: FormRecord): boolean {
+  return isFilled(getFechaDecision(record)) && !isFilled(get(record, FIELD.q52));
+}
+
+function hasBloque5Data(record: FormRecord): boolean {
+  const keys = [
+    FIELD.q43,
+    FIELD.q44,
+    FIELD.q45,
+    FIELD.q46,
+    FIELD.q47,
+    FIELD.q48,
+    FIELD.q49,
+    FIELD.q50,
+    FIELD.q51,
+    FIELD.q52,
+    FIELD.q53,
+    FIELD.q54,
+    FIELD.q55,
+    FIELD.q56,
+    FIELD.fechaDecisionRecurso,
+    FIELD.b5NormalRecepcionPruebas,
+    FIELD.b5NormalSolicitudInpec,
+    FIELD.b5NormalRadicacion,
+    FIELD.b5NormalDecision,
+    FIELD.b5NormalSentidoResuelveSolicitud,
+  ];
+  return keys.some((key) => isFilled(get(record, key)));
+}
+
 function decisionUsuarioPermiteContinuar(value: unknown): boolean {
   const v = normalize(value);
   if (!v) return false;
@@ -350,8 +384,24 @@ function isTramiteNormalNoConcede(record: FormRecord): boolean {
   return !isUtilidadPublicaFlow(record) && isNoConcedeSubrogadoPenal(get(record, FIELD.q52));
 }
 
+function isUtilidadPublicaNiega(record: FormRecord): boolean {
+  return isUtilidadPublicaFlow(record) && equalsInsensitive(get(record, FIELD.q52), 'Niega utilidad pública');
+}
+
+function isDecisionNegativa(record: FormRecord): boolean {
+  return isTramiteNormalNoConcede(record) || isUtilidadPublicaNiega(record);
+}
+
 function isRecursoPresentado(value: unknown): boolean {
   return equalsAnyInsensitive(value, ['Sí', 'Si', 'S?']);
+}
+
+function hasDecisionRecurso(record: FormRecord): boolean {
+  return (
+    isFilled(get(record, FIELD.fechaDecisionRecurso)) ||
+    isFilled(get(record, FIELD.q56)) ||
+    isFilled(get(record, FIELD.b5NormalSentidoResuelveSolicitud))
+  );
 }
 
 function isFormularioBloqueado(record: FormRecord): boolean {
@@ -365,8 +415,6 @@ function isCasoCerrado(record: FormRecord): boolean {
   const q45 = get(record, FIELD.q45);
   const q52 = get(record, FIELD.q52);
   const q54 = get(record, FIELD.q54);
-  const q56 = get(record, FIELD.q56);
-  const q51Tramite = get(record, FIELD.b5NormalSentidoResuelveSolicitud);
   const isUtilidad = isUtilidadPublicaFlow(record);
 
   if (areAllNegativeInProcedencias30a34(record) && !hasPositiveP36Request(record)) return true;
@@ -375,10 +423,13 @@ function isCasoCerrado(record: FormRecord): boolean {
   }
   if (includesAnyInsensitive(actuacion, ['ninguna', 'no procede nada'])) return true;
   if (equalsInsensitive(q44, 'No') || equalsInsensitive(q45, 'No')) return true;
-  if (q54 && equalsInsensitive(q54, 'No')) return true;
+  if (isDecisionNegativa(record)) {
+    if (isRecursoPresentado(q54)) return hasDecisionRecurso(record);
+    return true;
+  }
   if (!isUtilidad && isFilled(q52) && !isNoConcedeSubrogadoPenal(q52)) return true;
-  if (isFilled(q56)) return true;
-  if (isFilled(q51Tramite)) return true;
+  if (isUtilidad && isFilled(q52) && !isUtilidadPublicaNiega(record)) return true;
+  if (hasDecisionRecurso(record)) return true;
   return false;
 }
 
@@ -638,36 +689,32 @@ export const derivedStatusRules: DerivedStatusRule[] = [
     when: (record) => isCasoCerrado(record),
   },
   {
-    id: 'estado_pendiente_decision_recurso_tramite',
+    id: 'estado_pendiente_decision_recurso',
     status: 'Pendiente decisi\u00f3n',
     when: (record) => {
-      if (!hasAnalisisCompleto(record)) return false;
-      if (!hasBloque4Base(record)) return false;
-      if (!isTramiteNormalNoConcede(record)) return false;
+      if (!isDecisionNegativa(record)) return false;
       if (!isRecursoPresentado(get(record, FIELD.q54))) return false;
-      return !isFilled(get(record, FIELD.b5NormalSentidoResuelveSolicitud));
+      return !hasDecisionRecurso(record);
     },
   },
   {
-    id: 'estado_presentar_solicitud_recurso_tramite',
-    status: 'Presentar solicitud',
-    when: (record) => {
-      if (!hasAnalisisCompleto(record)) return false;
-      if (!hasBloque4Base(record)) return false;
-      if (!isTramiteNormalNoConcede(record)) return false;
-      return !isFilled(get(record, FIELD.q54));
-    },
+    id: 'estado_pendiente_sentido_decision',
+    status: 'Pendiente decisi\u00f3n',
+    when: (record) => hasFechaDecisionSinSentido(record),
   },
   {
     id: 'estado_pendiente_decision',
     status: 'Pendiente decisi\u00f3n',
     when: (record) => {
-      if (!hasAnalisisCompleto(record)) return false;
-      if (!hasBloque4Base(record)) return false;
       const tieneRadicacion = isFilled(getFechaRadicacion(record));
       const tieneDecision = isFilled(getFechaDecision(record));
       return tieneRadicacion && !tieneDecision;
     },
+  },
+  {
+    id: 'estado_presentar_solicitud_bloque5_iniciado',
+    status: 'Presentar solicitud',
+    when: (record) => hasBloque5Data(record) && !isFilled(getFechaRadicacion(record)),
   },
   {
     id: 'estado_presentar_solicitud',

@@ -1,4 +1,6 @@
-﻿function normalizeApiBase(base) {
+﻿import { getAuthToken } from './authStorage.js';
+
+function normalizeApiBase(base) {
   return String(base || '').trim().replace(/\/+$/, '');
 }
 
@@ -64,7 +66,7 @@ const CONFIGURED_API_BASE = ensureApiSuffix(
 
 const DEFAULT_API_BASE = '/api';
 
-const API_BASE = shouldUseConfiguredApiBase(CONFIGURED_API_BASE) ? CONFIGURED_API_BASE : DEFAULT_API_BASE;
+export const API_BASE = shouldUseConfiguredApiBase(CONFIGURED_API_BASE) ? CONFIGURED_API_BASE : DEFAULT_API_BASE;
 
 const DEFAULT_FETCH_TIMEOUT_MS = 120000;
 
@@ -87,6 +89,10 @@ async function fetchJson(url, options = {}, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS
   try {
     const requestOptions = {
       ...(options || {}),
+      headers: {
+        ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}),
+        ...(options?.headers || {}),
+      },
       signal: controller.signal,
     };
     try {
@@ -266,22 +272,27 @@ export async function getCondenadosFilterOptions(options = {}) {
 }
 
 export async function getDefensores() {
-  const res = await fetchJson(`${API_BASE}/defensores`);
+  const res = await fetchJson(`${API_BASE}/defensores`, { cache: 'no-store' });
   if (!res.ok) throw new Error('Error consultando defensores');
   return readJsonOrThrow(res, 'Error consultando defensores'); // { defensores }
 }
 
 export async function getDefensoresCondenados() {
-  const res = await fetchJson(`${API_BASE}/defensores?source=condenados`);
+  const res = await fetchJson(`${API_BASE}/defensores?source=condenados`, { cache: 'no-store' });
   if (!res.ok) throw new Error('Error consultando defensores');
   return readJsonOrThrow(res, 'Error consultando defensores'); // { defensores }
 }
 
-export async function createDefensor(nombre) {
+export async function createDefensor(payloadOrNombre) {
+  const payload =
+    payloadOrNombre && typeof payloadOrNombre === 'object'
+      ? payloadOrNombre
+      : { nombre: payloadOrNombre };
+
   const res = await fetchJson(`${API_BASE}/defensores`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nombre }),
+    body: JSON.stringify(payload),
   });
 
   const data = await res.json().catch(() => ({}));

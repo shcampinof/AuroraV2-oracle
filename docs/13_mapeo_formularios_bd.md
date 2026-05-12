@@ -8,7 +8,10 @@ Documento generado desde el codigo actual. La notacion usada es `TABLA>COLUMNA`.
 - Tabla del caso/situacion penal: `DNDP.SITUACION_CARCELARIA`.
 - Tabla de actuaciones/gestion juridica: `DNDP.GESTION_JURIDICA`.
 - Tabla 1 a 1 de conducta: `DNDP.CALIFICACION_CONDUCTA`.
-- Catalogos operativos: `DNDP.PAG` y `DNDP.DEFENSORES`.
+- Asignacion vigente e historica de defensor: `DNDP.ASIGNACION`.
+- Catalogos operativos: `DNDP.REGIONALES`, `DNDP.PAG` y `DNDP.DEFENSORES`.
+- Fuente consolidada recomendada para lectura: `DNDP.VW_DETALLE_CON_DEFENSOR`, o joins equivalentes entre `PERSONA`, situacion activa, `ASIGNACION` vigente, ultima `GESTION_JURIDICA` y `CALIFICACION_CONDUCTA`.
+- Segun `docs/DICCIONARIO_MODELO_DNDP.html`, `GESTION_JURIDICA` ya no contiene campos de defensor/PAG; esa informacion se centraliza en `ASIGNACION`.
 - Los tres flujos documentados aqui son:
   - Aurora - condenados, tramite normal.
   - Aurora - condenados, utilidad publica.
@@ -62,7 +65,7 @@ Documento generado desde el codigo actual. La notacion usada es `TABLA>COLUMNA`.
 
 | Pregunta / campo UI | BD | Estado |
 |---|---|---|
-| 28. Defensor(a) publico(a) asignado | `GESTION_JURIDICA>DEFENSOR` y opcionalmente `GESTION_JURIDICA>CEDULA_DEFENSOR` | Lee/escribe; asignacion usa catalogo |
+| 28. Defensor(a) publico(a) asignado | `ASIGNACION>NOMBRE_DEFENSOR` y opcionalmente `ASIGNACION>CEDULA_DEFENSOR` | Lee desde asignacion vigente (`FECHA_FIN IS NULL`); al guardar el formulario reemplaza/cierra la asignacion vigente segun el valor diligenciado; no vive en `GESTION_JURIDICA` |
 | 29. Fecha de analisis juridico del caso | `GESTION_JURIDICA>FECHA_ANALISIS` | Lee/escribe |
 | 30. Procedencia de libertad condicional | `GESTION_JURIDICA>LIBERTAD_CONDICIONAL` | Lee/escribe |
 | 31. Procedencia de prision domiciliaria de mitad de pena | `GESTION_JURIDICA>PRISION_DOMICILIARIA_MITAD_PENA` | Lee/escribe |
@@ -128,8 +131,8 @@ Documento generado desde el codigo actual. La notacion usada es `TABLA>COLUMNA`.
 | 15. Numero de proceso | `SITUACION_CARCELARIA>PROCESO` | Lee/escribe |
 | 16. Delitos | `SITUACION_CARCELARIA>DELITOS` | Lee/escribe |
 | 17. Fecha de captura | `SITUACION_CARCELARIA>FECHA_CAPTURA` | Lee/escribe |
-| 18. Tiempo privada de la libertad en meses | Sin columna directa | Calculado en frontend desde `PRIVACION` o `FECHA_CAPTURA`; no guarda en BD |
-| 19. Defensor(a) publico(a) asignado | `GESTION_JURIDICA>DEFENSOR` y opcionalmente `GESTION_JURIDICA>CEDULA_DEFENSOR` | Lee/escribe |
+| 18. Tiempo privada de la libertad en meses | Sin columna directa | Calculado en frontend siempre desde `SITUACION_CARCELARIA>FECHA_CAPTURA`; no guarda en BD |
+| 19. Defensor(a) publico(a) asignado | `ASIGNACION>NOMBRE_DEFENSOR` y opcionalmente `ASIGNACION>CEDULA_DEFENSOR` | Lee desde asignacion vigente (`FECHA_FIN IS NULL`); al guardar el formulario reemplaza/cierra la asignacion vigente segun el valor diligenciado |
 | 20. Fecha de analisis juridico del caso | `GESTION_JURIDICA>FECHA_ANALISIS` | Lee/escribe |
 | 21. Analisis juridico y actuacion a desplegar | `GESTION_JURIDICA>ACTUACION_ADELANTAR` | Lee/escribe |
 | 22. Resumen del analisis juridico del presente caso | `GESTION_JURIDICA>RESUMEN_ANALISIS_CASO` | Lee/escribe |
@@ -147,14 +150,15 @@ Documento generado desde el codigo actual. La notacion usada es `TABLA>COLUMNA`.
 
 | Campo UI / operativo | BD | Estado |
 |---|---|---|
-| Validacion de cedula PAG | `PAG>CEDULA`, `PAG>NOMBRE_PAG` | Lee catalogo |
-| Cedula del PAG que asigna | `GESTION_JURIDICA>CEDULA_PAG` | Guarda al asignar/reasignar defensor |
-| Nombre/cadena PAG asignador | `GESTION_JURIDICA>PAG` | Guarda texto tipo `Nombre (cedula)` |
-| Nuevo defensor | `DEFENSORES>CEDULA`, `DEFENSORES>NOMBRE` y `GESTION_JURIDICA>DEFENSOR`, `GESTION_JURIDICA>CEDULA_DEFENSOR` | Lee catalogo y guarda asignacion |
+| Validacion de cedula PAG | `PAG>CEDULA_PAG`, `PAG>NOMBRE_PAG`, `PAG>REGIONAL`, `PAG>CORREO` | Lee catalogo Oracle |
+| Cedula del PAG que asigna | `ASIGNACION>CEDULA_PAG` | Snapshot historico al asignar/reasignar defensor |
+| Nombre PAG asignador | `ASIGNACION>NOMBRE_PAG` | Snapshot historico al asignar/reasignar defensor |
+| Nuevo defensor | `DEFENSORES>CEDULA`, `DEFENSORES>NOMBRE` y `ASIGNACION>NOMBRE_DEFENSOR`, `ASIGNACION>CEDULA_DEFENSOR` | Lee catalogo y guarda una nueva asignacion vigente |
 | Crear defensor | `DEFENSORES>CEDULA`, `DEFENSORES>NOMBRE`, `DEFENSORES>CORREO`, `DEFENSORES>REGIONAL`, `DEFENSORES>CEDULA_PAG` | Inserta catalogo |
 | Potenciales beneficiarios / proximos a cumplir requisito temporal | `SITUACION_CARCELARIA>CATEGORIZACION` | Lee para filtro; beneficiarios: Prision Domiciliaria y Libertad condicional, Prision Domiciliaria, Revisar por pena, Libertad condicional, Utilidad Publica; proximos: Preliminar Prision Domiciliaria, Preliminar Libertad condicional |
 | Accion a impulsar en tabla PAG | `GESTION_JURIDICA>ACCION_REALIZAR` | Lee valor directo de base de datos |
 | Filtros departamento/municipio/lugar/documento | `SITUACION_CARCELARIA>DEPARTAMENTO`, `MUNICIPIO`, `ESTABLECIMIENTO`; `PERSONA>NUMERO` | Lee |
+| Filtro defensor | `ASIGNACION>NOMBRE_DEFENSOR` o `DEFENSORES>NOMBRE` por `ASIGNACION>CEDULA_DEFENSOR` | Lee desde asignacion vigente |
 
 ## Otros campos del aplicativo
 
@@ -163,7 +167,7 @@ Documento generado desde el codigo actual. La notacion usada es `TABLA>COLUMNA`.
 | Estado del caso | Sin columna Oracle directa | Derivado en frontend como Activo/Cerrado; no se lee desde BD |
 | Estado del tramite | Sin columna Oracle directa | Derivado por reglas Aurora/Celeste y por `ACCION_REALIZAR`/`ACTUACION_ADELANTAR` en listados |
 | Accion a impulsar / Accion a realizar | `GESTION_JURIDICA>ACCION_REALIZAR` | Lee/escribe si llega en payload; usado en tabla PAG |
-| Fecha de asignacion del PAG | Sin columna mapeada actualmente | En listados Oracle se proyecta como `NULL`; no guarda |
+| Fecha de asignacion del PAG | `ASIGNACION>FECHA_ASIGNACION` | Lee desde asignacion vigente; se guarda al asignar/reasignar defensor |
 | Herramienta | Sin columna Oracle mapeada | Campo legado/CSV; no persiste en Oracle |
 | redirectedToAurora | Sin columna Oracle mapeada | Control de flujo legado; no persiste en Oracle |
 | posibleActuacionJudicial | Derivado de `GESTION_JURIDICA>ACTUACION_ADELANTAR` | No es columna |
@@ -200,12 +204,23 @@ Documento generado desde el codigo actual. La notacion usada es `TABLA>COLUMNA`.
 | `ID_GESTION` | Interna para historial/actuacion activa |
 | `ID_SITUACION` | Interna para relacion con situacion |
 | `FECHA_REGISTRO` | Se asigna al insertar y ordena historial; no UI |
-| `CEDULA_DEFENSOR` | Se guarda desde catalogo/asignacion; no se diligencia manualmente |
-| `CEDULA_PAG` | Se guarda al asignar defensor; no se muestra como pregunta |
-| `PAG` | Guarda texto de asignador PAG; no es pregunta del formulario juridico |
+| Defensor/PAG | No aplica en el modelo nuevo; esos campos fueron removidos y viven en `DNDP.ASIGNACION` |
 | `FECHA_RECURSO_DESFAVORABLE` | Alias legacy; se mantiene compatibilidad, pero el campo nuevo principal es `FECHA_PRESENTACION_RECURSO` |
 | `CONFIRMACION_PROCEDENCIA_VENCIMIENTO` | Mapeada para Celeste/legado, pero no aparece como pregunta independiente visible en el formulario actual |
 | `SENTIDO_DECISION_RESUELVE_RECURSO` | Usada por utilidad publica, por la pregunta 52 de tramite normal y por Celeste Q31 |
+
+### `DNDP.ASIGNACION`
+
+| Columna | Uso actual |
+|---|---|
+| `ID_ASIGNACION` | Interna; identificador historico de la asignacion |
+| `ID_PERSONA` | Relaciona la asignacion con `PERSONA.ID_PERSONA` |
+| `CEDULA_DEFENSOR` | FK opcional hacia `DEFENSORES.CEDULA`; se guarda al asignar defensor desde catalogo |
+| `NOMBRE_DEFENSOR` | Snapshot del nombre del defensor al momento de la asignacion; fuente principal para mostrar defensor asignado |
+| `CEDULA_PAG` | Snapshot de la cedula del PAG al momento de la asignacion |
+| `NOMBRE_PAG` | Snapshot del nombre del PAG al momento de la asignacion |
+| `FECHA_ASIGNACION` | Fecha de inicio de la asignacion vigente/historica; alimenta la columna "Fecha de asignacion del PAG" |
+| `FECHA_FIN` | `NULL` indica asignacion vigente; si tiene fecha, la asignacion es historica |
 
 ### `DNDP.CALIFICACION_CONDUCTA`
 
@@ -220,12 +235,42 @@ Documento generado desde el codigo actual. La notacion usada es `TABLA>COLUMNA`.
 
 - `Estado del caso`: derivado en frontend; no se lee desde una columna.
 - `Estado del tramite`: derivado por reglas; no se lee desde una columna.
-- `Fecha de asignacion del PAG`: proyectada como `NULL` en listados.
 - `Herramienta`: legado/CSV, sin mapeo Oracle.
 - `redirectedToAurora`: control de flujo, sin mapeo Oracle.
 - `Fecha de actualizacion de datos (corte)`: constante de UI.
+
+## Regla vigente para decisiones negativas y recursos
+
+Aplica a los tres flujos, usando las preguntas equivalentes de cada uno:
+
+- Aurora 5A utilidad publica: decision Q52, recurso Q54, decision del recurso Q56/Q57.
+- Aurora 5B tramite normal: decision Q47, recurso Q49, decision del recurso Q51/Q52.
+- Celeste sindicados: decision Q26, recurso Q28, decision del recurso Q30/Q31.
+
+Estados derivados:
+
+- Cualquier dato diligenciado en bloque 5 impide retroceder a `Analizar el caso`.
+- Datos preparatorios de bloque 5 sin radicacion/presentacion -> `Presentar solicitud`.
+- Radicacion/presentacion diligenciada y sin fecha de decision -> `Pendiente decision`.
+- Fecha de decision de autoridad diligenciada y sentido de decision vacio o `-` -> `Pendiente decision`.
+- Decision negativa + recurso vacio o `No` -> `Caso cerrado`.
+- Decision negativa + recurso `Si` + sin decision del recurso -> `Pendiente decision`.
+- Decision negativa + recurso `Si` + decision del recurso diligenciada -> `Caso cerrado`.
+- Decision favorable de autoridad -> `Caso cerrado`.
+
+Casos equivalentes cubiertos:
+
+- Aurora 5A: Q51 con fecha y Q52 vacia/`-` queda `Pendiente decision`.
+- Aurora 5B: Q46 con fecha y Q47 vacia/`-` queda `Pendiente decision`.
+- Celeste: Q24 sin Q25 queda `Pendiente audiencia`; Q25 con Q26 vacia/`-` queda `Pendiente decision de audiencia`; Q26 negativa con Q28 `Si` queda `Pendiente decision`.
+
+Blindaje de guardado por aliases:
+
+- Q50 de Aurora 5A sincroniza las variantes `Fecha de radicación de solicitud de utilidad pública` y `Fecha de radicación de la solicitud de utilidad pública` antes de guardar en `FECHA_RADICACION_UTILIDAD`.
+- Q21 de Celeste sincroniza `PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS` con `Actuación a adelantar` antes de guardar en `ACTUACION_ADELANTAR`.
 - `Tiempo que la persona lleva privada de la libertad (en meses)`: calculado en frontend para Celeste.
 ## Recomendaciones de ajuste
 
 1. Decidir si `Estado del caso` y `Estado del tramite` deben persistirse en `GESTION_JURIDICA`; hoy son derivados.
-2. Definir si `ATENCION_MEDICA`, `GESTACION` y `CABEZA_FAMILIA` volveran a UI o se retiraran del contrato activo.
+2. Mantener la lectura de defensor/PAG desde `ASIGNACION` vigente (`FECHA_FIN IS NULL`) y evitar volver a escribir esos datos en `GESTION_JURIDICA`.
+3. Definir si `ATENCION_MEDICA`, `GESTACION` y `CABEZA_FAMILIA` volveran a UI o se retiraran del contrato activo.

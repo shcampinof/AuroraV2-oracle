@@ -14,8 +14,10 @@ npm run test
 
 ## Entorno
 
-Crear `frontend/.env` con:
+Por defecto, el servidor de desarrollo usa `http://localhost:5174` y proxy hacia el backend en `http://localhost:7860`.
+Para cambiarlo localmente, crear `frontend/.env.local` con:
 
 ```env
-VITE_API_BASE_URL=http://localhost:4000/api
+VITE_DEV_PORT=5174
+VITE_DEV_API_TARGET=http://localhost:7860
 ```
