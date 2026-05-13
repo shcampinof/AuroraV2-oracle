@@ -1,0 +1,138 @@
+# Infraestructura Aurora
+
+Fecha de generación: 2026-05-12
+
+## Introducción
+
+Este documento describe la infraestructura técnica identificada desde el repositorio. No incluye información contractual ni credenciales. Los valores sensibles deben ser administrados por el equipo técnico responsable del ambiente.
+
+## Ambiente identificado
+
+Durante la revisión se identificó el siguiente ambiente local:
+
+| Elemento | Valor observado |
+|---|---|
+| Sistema operativo | Linux localhost.localdomain 5.15.0-314.193.5.5.el9uek.x86_64 |
+| Node.js | v20.19.6 |
+| npm | 10.8.2 |
+| Carpeta del proyecto | `/home/dndp/proyectos_dndp/aurora` |
+
+No se pudo validar en esta revisión el sistema operativo ni la topología del servidor productivo.
+
+## Carpetas principales
+
+| Carpeta / archivo | Uso |
+|---|---|
+| `frontend/` | Aplicación React + Vite. |
+| `backend/` | API Express y acceso a datos. |
+| `backend/routes/` | Rutas HTTP de autenticación, salud y negocio. |
+| `backend/repositories/oracle/` | Consultas y escrituras Oracle. |
+| `backend/db/` | Pool Oracle y repositorios de datos. |
+| `backend/data/` | CSV y catálogo mock de formatos. |
+| `docs/` | Documentación técnica previa del proyecto. |
+| `BD Documentation/` | Documentación recibida del modelo de base de datos. |
+| `DOCUMENTACION_TECNICA_AURORA/` | Documentación técnica generada en esta revisión. |
+| `Dockerfile` | Build de frontend y backend en una imagen. |
+| `docker-compose.yml` | Servicio Docker Compose `aurora`. |
+
+## Puertos utilizados
+
+| Puerto | Componente | Observación |
+|---|---|---|
+| `7860` | Backend Express | Puerto por defecto mediante `PORT`. |
+| `5174` | Vite dev server | Puerto por defecto en `frontend/vite.config.js`. |
+| `5175` | Vite alterno | Usado en pruebas cuando `5174` estaba ocupado. |
+| `1521` | Oracle | Valor por defecto de `ORACLE_PORT`. |
+
+## Dependencias necesarias
+
+Para ejecución tradicional:
+
+- Node.js 20.
+- npm.
+- Acceso de red a Oracle si se usan datos reales.
+- Variables de entorno completas para backend.
+
+Para despliegue contenedorizado:
+
+- Docker.
+- Docker Compose, si se usa `docker-compose.yml`.
+- Acceso desde el host Docker hacia Oracle.
+
+## Variables de entorno
+
+Variables detectadas o documentadas:
+
+| Variable | Uso |
+|---|---|
+| `PORT` | Puerto del backend. |
+| `NODE_ENV` | Modo de ejecución. En producción debe ser `production`. |
+| `ENABLE_STARTUP_WARMUP` | Precarga opcional de datos al iniciar. |
+| `CORS_ORIGIN` | Lista de orígenes permitidos. |
+| `FORMATOS_BASE_URL` | Base externa para descargas de formatos. |
+| `AUTH_JWT_SECRET` | Secreto de firma JWT. Obligatorio en producción. |
+| `AUTH_LOCAL_ADMIN_ENABLED` | Habilita o deshabilita login local. |
+| `AUTH_LOCAL_ADMIN_USERNAME` | Usuario local si se habilita. |
+| `AUTH_LOCAL_ADMIN_PASSWORD` | Password local si se habilita. |
+| `AUTH_TOKEN_TTL` | Duración de token. |
+| `AUTH_REMEMBER_TOKEN_TTL` | Duración de token recordado. |
+| `AUTH_TOKEN_ISSUER` | Emisor JWT. |
+| `AUTH_TOKEN_AUDIENCE` | Audiencia JWT. |
+| `AZURE_AD_TENANT_ID` | Tenant Azure AD. |
+| `AZURE_AD_CLIENT_ID` | Client ID de Azure AD. |
+| `AZURE_AD_ALLOWED_EMAIL_DOMAINS` | Dominios permitidos. |
+| `AZURE_AD_REQUIRED_GROUP_IDS` | Grupos requeridos. |
+| `AZURE_AD_REQUIRED_APP_ROLES` | Roles requeridos. |
+| `ORACLE_USER` | Usuario Oracle. |
+| `ORACLE_PASSWORD` | Password Oracle. |
+| `ORACLE_HOST` | Host Oracle. |
+| `ORACLE_PORT` | Puerto Oracle. |
+| `ORACLE_SERVICE_NAME` | Service name Oracle. |
+| `ORACLE_SCHEMA` | Esquema Oracle. |
+| `ORACLE_GESTION_ID_SEQUENCE` | Secuencia opcional para gestión jurídica. |
+| `ORACLE_POOL_MIN` | Mínimo del pool. |
+| `ORACLE_POOL_MAX` | Máximo del pool. |
+| `ORACLE_POOL_INCREMENT` | Incremento del pool. |
+| `ORACLE_POOL_TIMEOUT` | Timeout del pool. |
+| `VITE_API_BASE_URL` | Base de API para build frontend. |
+| `VITE_DEV_API_TARGET` | Backend usado por proxy Vite. |
+| `VITE_DEV_PORT` | Puerto de Vite en desarrollo. |
+| `API_BASE_URL` | Base usada por scripts de regresión API. |
+| `API_AUTH_TOKEN` | Token opcional para scripts API. |
+
+## Consideraciones de red
+
+- El backend debe poder resolver y alcanzar `ORACLE_HOST:ORACLE_PORT`.
+- Si se despliega con Docker, la conectividad se debe validar desde el host o contenedor.
+- Si el frontend se sirve desde el backend, las llamadas deben usar `/api` en el mismo origen.
+- Si se separan frontend y backend en dominios distintos, se debe configurar `CORS_ORIGIN`.
+
+## Desarrollo y producción
+
+En desarrollo se puede ejecutar backend y frontend por separado:
+
+```bash
+npm --prefix backend run dev
+npm --prefix frontend run dev
+```
+
+En producción se recomienda:
+
+- Compilar frontend con `npm --prefix frontend run build`.
+- Servir el frontend compilado desde Express o desde la imagen Docker existente.
+- Definir `NODE_ENV=production`.
+- Definir `AUTH_JWT_SECRET` fuerte.
+- Mantener `AUTH_LOCAL_ADMIN_ENABLED=false`, salvo necesidad temporal controlada.
+
+## Observaciones sobre fuentes de datos
+
+Durante la revisión se identificó Oracle como fuente principal mediante `backend/db/oraclePool.js`. También existen CSV en `backend/data/`, incluyendo `consolidado_ppl.csv`, `PAG.csv` y `defensores.csv`; por su contenido probable deben tratarse como información sensible.
+
+No se pudo validar en esta revisión si los CSV deben mantenerse en el repositorio para producción o si son insumos históricos de desarrollo.
+
+## Recomendaciones finales
+
+- Documentar por ambiente los valores requeridos de Oracle sin incluir contraseñas en el repositorio.
+- Validar conectividad Oracle antes de liberar el sistema.
+- Mantener `.env` y `.env.*` fuera de control de versiones.
+- Revisar periódicamente el tamaño del bundle frontend y las dependencias.
