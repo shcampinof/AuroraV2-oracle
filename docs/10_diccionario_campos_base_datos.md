@@ -1,4 +1,4 @@
-# AURORA - Campos para base de datos (version no CSV)
+# AURORA - Campos para base de datos
 
 
 
@@ -137,7 +137,7 @@ Campo que hoy existe en el archivo actual de defensores:
 
 ## Inventario canonico actual de columnas persistidas
 
-Esta es la lista canonica que hoy reconoce el backend. Si se migra desde CSV a base de datos, estas son las variables reales que ya existen.
+Esta es la lista canonica que hoy reconoce el backend para la integración con base de datos.
 
 ### Identificacion, ubicacion y proceso
 
@@ -296,7 +296,7 @@ Por eso conviene guardar por separado:
 
 ## Alias y duplicidades que conviene unificar
 
-No vale la pena repetir columnas por variaciones heredadas del CSV. En la nueva base esto deberia quedar unificado.
+No vale la pena repetir columnas por variaciones heredadas. En la base esto deberia quedar unificado.
 
 Casos importantes:
 
@@ -317,16 +317,16 @@ Si la idea es dejar la base ordenada, este seria el criterio:
 4. Guardar `pag_id` y `defensor_id` al menos en `actuaciones`.
 5. Agregar `fecha_asignacion_pag`, aunque hoy no este formalizada como columna de formulario.
 6. Separar `estado_caso_raw` de `estado_tramite_logico`.
-7. Eliminar de la nueva base toda duplicidad nacida por aliases del CSV.
+7. Eliminar de la base toda duplicidad nacida por aliases historicos.
 
 ## Fuentes del inventario
 
 El inventario se consolido revisando estas piezas del proyecto:
 
-- `backend/db/consolidado.repo.js`
+- `backend/db/oracleConsolidado.repo.js`
 - `backend/routes/ppl.js`
-- `backend/db/pag.repo.js`
-- `backend/db/defensores.repo.js`
+- `backend/repositories/oracle/pagRepository.js`
+- `backend/repositories/oracle/defensoresRepository.js`
 - `frontend/src/pages/FormularioAtencion.jsx`
 - `frontend/src/config/formRules.aurora.ts`
 - `frontend/src/config/formRules.celeste.ts`

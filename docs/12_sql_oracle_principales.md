@@ -1,5 +1,7 @@
 # SQL principales Oracle (AuroraV2-oracle)
 
+Nota de ambiente: el codigo conserva SQL con prefijo `DNDP.`, pero `backend/db/oraclePool.js` reemplaza ese prefijo por `ORACLE_SCHEMA` cuando la variable esta configurada. Para pruebas de base de datos se debe usar un esquema distinto a `DNDP`.
+
 ## 1. CTE situación activa
 ```sql
 WITH ranked_situacion AS (
@@ -34,14 +36,23 @@ ORDER BY TO_CHAR(p.NUMERO), NVL(g.FECHA_REGISTRO, s.FECHA_REGISTRO), NVL(g.ID_GE
 
 ## 3. Distinct defensores (source=condenados)
 ```sql
-SELECT DISTINCT TRIM(g.DEFENSOR) AS DEFENSOR
+SELECT DISTINCT TRIM(COALESCE(TO_NCHAR(a.NOMBRE_DEFENSOR), TO_NCHAR(d.NOMBRE))) AS DEFENSOR
 FROM ranked_situacion s
 JOIN DNDP.PERSONA p ON p.ID_PERSONA = s.ID_PERSONA
-JOIN DNDP.GESTION_JURIDICA g ON g.ID_SITUACION = s.ID_SITUACION
+LEFT JOIN (
+  SELECT a.*,
+         ROW_NUMBER() OVER (
+           PARTITION BY a.ID_PERSONA
+           ORDER BY a.FECHA_ASIGNACION DESC NULLS LAST, a.ID_ASIGNACION DESC
+         ) AS RN
+  FROM DNDP.ASIGNACION a
+  WHERE a.FECHA_FIN IS NULL
+) a ON a.ID_PERSONA = p.ID_PERSONA AND a.RN = 1
+LEFT JOIN DNDP.DEFENSORES d ON d.CEDULA = a.CEDULA_DEFENSOR
 WHERE s.RN = 1
   AND <scope_depto>
   AND <tipo_condenado>
-  AND TRIM(NVL(g.DEFENSOR, '')) <> ''
+  AND TRIM(NVL(COALESCE(TO_NCHAR(a.NOMBRE_DEFENSOR), TO_NCHAR(d.NOMBRE)), '')) <> ''
 ORDER BY DEFENSOR
 ```
 
@@ -71,3 +82,22 @@ WHERE ID_GESTION = :idGestion
 ```sql
 SELECT 1 AS DB_OK FROM dual
 ```
+
+## 8. Base de pruebas
+
+El script `backend/scripts/test-db/setup-test-db.js` crea las 12 tablas documentadas en `BD Documentation/DICCIONARIO_MODELO_DNDP.html` y carga datos semilla controlados para pruebas de integracion:
+
+- `PERSONA.NUMERO = 900000001` para flujo condenado.
+- `PERSONA.NUMERO = 900000002` para flujo sindicado.
+- `PAG.CEDULA_PAG = 900001`.
+- `DEFENSORES.CEDULA = 900002`.
+
+Comando:
+
+```bash
+DOTENV_CONFIG_PATH=/ruta/aurora/backend/.env.test npm --prefix backend run test-db:setup
+```
+
+El comando se niega a ejecutarse si el esquema efectivo es `DNDP`, salvo autorizacion explicita con `ALLOW_DNDP_TEST_SETUP=1`.
+
+Si alguna tabla ya existe pero le faltan columnas esperadas por el diccionario, el script falla con `TEST_DB_SCHEMA_MISMATCH` para evitar correr pruebas contra una estructura incompleta.

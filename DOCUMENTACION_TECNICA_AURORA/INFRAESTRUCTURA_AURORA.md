@@ -1,6 +1,6 @@
 # Infraestructura Aurora
 
-Fecha de generación: 2026-05-12
+Fecha: 2026-05-13
 
 ## Introducción
 
@@ -28,7 +28,7 @@ No se pudo validar en esta revisión el sistema operativo ni la topología del s
 | `backend/routes/` | Rutas HTTP de autenticación, salud y negocio. |
 | `backend/repositories/oracle/` | Consultas y escrituras Oracle. |
 | `backend/db/` | Pool Oracle y repositorios de datos. |
-| `backend/data/` | CSV y catálogo mock de formatos. |
+| `backend/data/` | Catálogo local de formatos. |
 | `docs/` | Documentación técnica previa del proyecto. |
 | `BD Documentation/` | Documentación recibida del modelo de base de datos. |
 | `DOCUMENTACION_TECNICA_AURORA/` | Documentación técnica generada en esta revisión. |
@@ -53,10 +53,10 @@ Para ejecución tradicional:
 - Acceso de red a Oracle si se usan datos reales.
 - Variables de entorno completas para backend.
 
-Para despliegue contenedorizado:
+Para despliegue recomendado:
 
 - Docker.
-- Docker Compose, si se usa `docker-compose.yml`.
+- Docker Compose.
 - Acceso desde el host Docker hacia Oracle.
 
 ## Variables de entorno
@@ -116,19 +116,15 @@ npm --prefix backend run dev
 npm --prefix frontend run dev
 ```
 
-En producción se recomienda:
+En producción se recomienda desplegar con Docker Compose. La ejecución tradicional queda como alternativa para diagnóstico o ambientes donde Docker no esté disponible.
 
-- Compilar frontend con `npm --prefix frontend run build`.
-- Servir el frontend compilado desde Express o desde la imagen Docker existente.
 - Definir `NODE_ENV=production`.
 - Definir `AUTH_JWT_SECRET` fuerte.
 - Mantener `AUTH_LOCAL_ADMIN_ENABLED=false`, salvo necesidad temporal controlada.
 
 ## Observaciones sobre fuentes de datos
 
-Durante la revisión se identificó Oracle como fuente principal mediante `backend/db/oraclePool.js`. También existen CSV en `backend/data/`, incluyendo `consolidado_ppl.csv`, `PAG.csv` y `defensores.csv`; por su contenido probable deben tratarse como información sensible.
-
-No se pudo validar en esta revisión si los CSV deben mantenerse en el repositorio para producción o si son insumos históricos de desarrollo.
+Oracle es la fuente de datos de negocio mediante `backend/db/oraclePool.js` y `backend/repositories/oracle/`. El repositorio no debe depender de archivos locales para información de PPL, PAG o defensores.
 
 ## Recomendaciones finales
 

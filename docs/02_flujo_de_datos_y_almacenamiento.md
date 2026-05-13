@@ -1,149 +1,67 @@
-# AURORA - Data Flow y Almacenamiento (Backend)
+# AURORA - Flujo de datos y almacenamiento
 
-## 1. Archivo fuente principal
+## 1. Fuente principal
 
-- Archivo: `backend/data/consolidado_ppl.csv`
-- Ruta usada por el backend: `CSV_PATH = path.join(__dirname, '..', 'data', 'consolidado_ppl.csv')`
-- Alcance operativo actual: solo carga registros de `Antioquia`, `Norte de Santander`, `Cauca` y `Santander`.
-- Modulo principal: `backend/db/consolidado.repo.js`
+La fuente operativa de Aurora es Oracle. El backend accede a la base por medio de:
 
-## 2. Carga lazy con `rawCache`
-
-Estado interno del repositorio:
-
-- `rawCache`: filas del CSV en memoria.
-- `rawHeaders`: encabezados originales tal como vienen en el CSV (incluye vacios).
-- `headers`: encabezados saneados/unicos usados como claves internas.
-- `headerByNorm`: indice `header normalizado -> header saneado`.
-
-Comportamiento:
-
-1. `getRaw()` verifica `rawCache`.
-2. Si `rawCache` es `null`, ejecuta `loadRaw()`.
-3. `loadRaw()` lee el archivo completo (`fs.readFileSync`) y lo parsea.
-4. Desde ese momento, las lecturas usan cache en memoria y no vuelven a leer disco automaticamente.
-
-Parseo actual (`csv-parse/sync`):
-
-- `bom: true`
-- `skip_empty_lines: true`
-- `relax_quotes: true`
-- `relax_column_count: true`
-- `columns: (h) => sanitizeHeaders(h)`
-
-## 3. Normalizacion de headers
-
-La normalizacion ocurre en varias capas:
-
-## 3.1 Saneamiento estructural (`sanitizeHeaders`)
-
-- `trim()` de encabezados.
-- Si un header viene vacio, se reemplaza por `__extra_<indice>`.
-- Si hay repetidos, se vuelve unico con sufijo `__2`, `__3`, etc.
-
-## 3.2 Normalizacion para busqueda (`norm`)
-
-- Intenta corregir mojibake (`maybeDecodeMojibake`).
-- Quita tildes (NFD + remove diacritics).
-- Colapsa espacios.
-- Pasa a minusculas.
-
-## 3.3 Indice de equivalencias (`buildHeaderIndex`)
-
-Para cada columna, el modulo indexa:
-
-- `norm(header_original) -> header_saneado`
-- `norm(header_saneado) -> header_saneado`
-
-Esto permite resolver claves aunque cambien acentos, mayusculas o algunos problemas de codificacion.
-
-## 4. Busqueda por documento
-
-Funcion principal: `getByDocumento(documento)`.
-
-Proceso:
-
-1. Normaliza solo con `trim()` el valor de entrada.
-2. Resuelve la columna documento con `getDocumentoKey()`, que prueba en este orden:
-   - `Número de identificación`
-   - `Numero de identificacion`
-   - `numeroIdentificacion`
-3. Recorre `rawCache` y compara igualdad exacta de string (solo `trim()`), sin conversion numerica.
-4. Retorna la primera fila que coincide o `null`.
-
-## 5. Guardado: reescritura total del CSV
-
-Funcion: `saveRaw(rows)`.
-
-Comportamiento exacto:
-
-1. Toma headers desde `rawHeaders` (no desde una reconstruccion parcial).
-2. Serializa la cabecera completa en una linea.
-3. Serializa cada fila usando el orden de `headers` saneados.
-4. Escapa valores CSV con `csvEscape` (comas, saltos de linea, comillas).
-5. Escribe todo el archivo de nuevo con `fs.writeFileSync(CSV_PATH, lines.join('\n'), 'utf8')`.
-
-No hay append incremental: cada persistencia reemplaza el contenido completo del archivo.
-
-## 6. Que pasa si se cambia manualmente `consolidado_ppl.csv`
-
-## 6.1 Cambio manual antes de la primera lectura del proceso
-
-- Si el backend aun no cargo `rawCache`, la siguiente llamada a `getRaw()` leerá el archivo ya modificado.
-
-## 6.2 Cambio manual despues de que `rawCache` ya esta cargado
-
-- El repositorio no tiene recarga automatica de archivo.
-- Las lecturas seguiran usando la version en memoria (stale respecto al disco).
-- Para reflejar el cambio manual, se requiere reiniciar el proceso backend (o reinicializar `rawCache`, cosa que no expone API publica).
-
-## 6.3 Cambio manual mientras el backend sigue operando y luego guarda
-
-- Si ocurre un `updateByDocumento`, `createActuacionByDocumento` o `assignDefensor` que dispare `saveRaw`, se reescribe el CSV completo desde la copia en memoria.
-- En ese escenario, cambios manuales hechos solo en disco y no cargados en `rawCache` pueden perderse.
-
-## 7. Notas de consistencia observables
-
-- Cache de proceso unico (sin coordinacion entre multiples instancias).
-- Sin bloqueo de archivo ni control transaccional.
-- Las columnas faltantes pueden agregarse en runtime con `ensureColumn`, y quedan persistidas en la siguiente reescritura total.
-
-## 8. Flujo de defensores (`DNDP.DEFENSORES`)
-
-Archivos fuente:
-
+- `backend/db/oraclePool.js`
+- `backend/db/oracleConsolidado.repo.js`
+- `backend/repositories/oracle/personaRepository.js`
+- `backend/repositories/oracle/gestionRepository.js`
+- `backend/repositories/oracle/asignacionRepository.js`
 - `backend/repositories/oracle/defensoresRepository.js`
-- `backend/routes/defensores.js`
+- `backend/repositories/oracle/pagRepository.js`
 
-Comportamiento actual:
+El repositorio no debe depender de archivos locales para consultar o guardar información de PPL, PAG, defensores o actuaciones.
 
-1. `GET /api/defensores` lee `DNDP.DEFENSORES` y devuelve opciones con `CEDULA` como `id`.
-2. `GET /api/defensores?source=condenados` lee asignaciones vigentes de personas condenadas en Oracle.
-3. `POST /api/defensores` valida `cedula` y `nombre` e inserta en `DNDP.DEFENSORES`.
-4. Antes de crear, verifica duplicado por cedula en `DNDP.DEFENSORES` y por nombre en asignaciones vigentes de condenados.
+## 2. Pool y ejecución SQL
 
-Codigos de error observables:
+`backend/db/oraclePool.js` crea el pool de conexiones con las variables `ORACLE_*` y expone:
 
-- `400 INVALID_DEFENSOR_NAME`
-- `409 DUPLICATE_DEFENSOR`
-- `500 DEFENSOR_CREATE_ERROR`
+- `execute`: ejecuta consultas y reemplaza referencias `DNDP.` por el esquema configurado.
+- `healthCheck`: valida conectividad con Oracle.
+- `closePool`: cierra conexiones durante el apagado del proceso.
 
-## 9. Politica de codificacion UTF-8 (global)
+`ORACLE_SCHEMA` permite apuntar a un esquema distinto sin cambiar cada consulta. Si no se define, se usa `ORACLE_USER`.
 
-Para evitar mojibake en UI, reglas y fuentes CSV, el repositorio aplica UTF-8 de forma obligatoria.
+## 3. Consulta de personas
+
+`personaRepository.js` arma los listados y detalles desde `PERSONA`, `SITUACION_CARCELARIA`, `GESTION_JURIDICA`, `ASIGNACION` y tablas relacionadas. La fachada `oracleConsolidado.repo.js` mantiene el contrato que consumen las rutas actuales.
+
+Flujo general:
+
+1. El frontend llama rutas bajo `/api/ppl`.
+2. `backend/routes/ppl.js` valida parámetros y autenticación.
+3. La ruta consulta la fachada o repositorios Oracle.
+4. La respuesta se normaliza para mantener compatibilidad con la interfaz.
+
+## 4. Escrituras
+
+Las escrituras de negocio se hacen contra Oracle:
+
+- Creación y actualización de actuaciones jurídicas.
+- Actualización de situación carcelaria.
+- Asignación o reasignación de defensor.
+- Creación de defensores.
+- Calificaciones de conducta cuando aplica.
+
+Las pruebas de escritura deben ejecutarse únicamente contra un esquema temporal, nunca contra el esquema operativo.
+
+## 5. Catálogo de formatos
+
+El único archivo local de datos que permanece en `backend/data/` es `formatos.mock.js`. Este archivo contiene el catálogo de formatos descargables y no reemplaza la base de datos de negocio.
+
+## 6. Política de codificación UTF-8
+
+Para evitar mojibake en UI, reglas y documentación, el repositorio aplica UTF-8 de forma obligatoria.
 
 Controles implementados:
 
 - `.editorconfig` fija `charset = utf-8` y `end_of_line = lf`.
-- `.gitattributes` normaliza fin de linea y marca `.csv`, `.md`, `.js/.ts/.jsx/.tsx`, `.json`, etc. como texto.
-- Scripts de verificacion global en raiz:
+- `.gitattributes` normaliza fin de línea para documentación, JavaScript, TypeScript, JSON y hojas de estilo.
+- Scripts de verificación global en raíz:
   - `npm run encoding:normalize`
   - `npm run encoding:check`
-
-Cobertura del control:
-
-- Frontend, backend y docs (`.js/.jsx/.ts/.tsx/.mjs/.cjs/.md/.json/.css/...`).
-- Archivos CSV legados/versionados para referencia o pruebas locales, no como fuente operativa de defensores.
 
 Flujo operativo recomendado:
 

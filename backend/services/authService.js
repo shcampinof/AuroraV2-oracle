@@ -14,7 +14,7 @@ const EXAMPLE_LOCAL_ADMIN_PASSWORD = 'change-this-temporary-password';
 
 const jwksClients = new Map();
 
-function csv(value) {
+function parseList(value) {
   return String(value || '')
     .split(',')
     .map((item) => item.trim())
@@ -129,9 +129,9 @@ function getAzureAdConfig() {
   return {
     tenantId: tenantId.trim(),
     clientId: clientId.trim(),
-    allowedDomains: csv(process.env.AZURE_AD_ALLOWED_EMAIL_DOMAINS || process.env.AZURE_ALLOWED_EMAIL_DOMAINS),
-    requiredGroups: csv(process.env.AZURE_AD_REQUIRED_GROUP_IDS || process.env.AZURE_REQUIRED_GROUP_IDS),
-    requiredRoles: csv(process.env.AZURE_AD_REQUIRED_APP_ROLES || process.env.AZURE_REQUIRED_APP_ROLES),
+    allowedDomains: parseList(process.env.AZURE_AD_ALLOWED_EMAIL_DOMAINS || process.env.AZURE_ALLOWED_EMAIL_DOMAINS),
+    requiredGroups: parseList(process.env.AZURE_AD_REQUIRED_GROUP_IDS || process.env.AZURE_REQUIRED_GROUP_IDS),
+    requiredRoles: parseList(process.env.AZURE_AD_REQUIRED_APP_ROLES || process.env.AZURE_REQUIRED_APP_ROLES),
   };
 }
 

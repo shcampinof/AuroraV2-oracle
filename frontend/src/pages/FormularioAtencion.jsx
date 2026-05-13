@@ -463,7 +463,7 @@ function resolveTipoFromText(value) {
 }
 
 function computeFlow(formData, fallbackTipo = '') {
-  // Regla principal: flujo por "Situación Jurídica"; fallback por tipo informado por API cuando el CSV viene vacío.
+  // Regla principal: flujo por "Situación Jurídica"; fallback por tipo informado por API.
   const fromSituacion = resolveTipoFromText(formData?.['Situación Jurídica']);
   if (fromSituacion) return fromSituacion;
 
@@ -944,7 +944,7 @@ function parseDateParts(rawValue) {
       month = a;
       day = b;
     } else if (a <= 12 && b <= 12) {
-      // CSVs tipo Excel suelen traer M/D/YYYY con hora; formularios manuales suelen venir D/M/YYYY.
+      // Algunas fuentes tipo Excel traen M/D/YYYY con hora; formularios manuales suelen venir D/M/YYYY.
       if (hasTime) {
         month = a;
         day = b;

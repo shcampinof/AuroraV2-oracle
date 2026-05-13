@@ -1,7 +1,11 @@
-const API_BASE = String(process.env.API_BASE_URL || 'http://localhost:7860/api').replace(/\/+$/, '');
+const path = require('path');
+
+require('dotenv').config({ path: process.env.DOTENV_CONFIG_PATH || path.join(__dirname, '..', '.env') });
+
+const API_BASE = String(process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 7860}/api`).replace(/\/+$/, '');
 const API_AUTH_TOKEN = String(process.env.API_AUTH_TOKEN || '').trim();
-const API_LOGIN_USERNAME = String(process.env.API_LOGIN_USERNAME || 'admin').trim();
-const API_LOGIN_PASSWORD = String(process.env.API_LOGIN_PASSWORD || 'admin').trim();
+const API_LOGIN_USERNAME = String(process.env.API_LOGIN_USERNAME || process.env.AUTH_LOCAL_ADMIN_USERNAME || 'admin').trim();
+const API_LOGIN_PASSWORD = String(process.env.API_LOGIN_PASSWORD || process.env.AUTH_LOCAL_ADMIN_PASSWORD || 'admin').trim();
 
 async function fetchJson(path, options = {}) {
   const url = `${API_BASE}${path}`;

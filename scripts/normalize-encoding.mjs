@@ -15,7 +15,6 @@ const TEXT_EXTENSIONS = new Set([
   '.html',
   '.json',
   '.md',
-  '.csv',
   '.svg',
   '.xml',
   '.ini',

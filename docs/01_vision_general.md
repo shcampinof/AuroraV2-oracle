@@ -33,8 +33,8 @@ AURORA es una aplicacion web para atencion juridica de personas privadas de la l
 ## 2.3 Persistencia
 
 - Fuente principal: Oracle, mediante repositorios bajo `backend/repositories/oracle/`.
-- Los CSV en `backend/data/` quedan como insumos/mock historicos para desarrollo y referencia.
-- Catalogo de formatos: mock en `backend/data/formatos.mock.js`.
+- Oracle es la fuente operativa de datos de negocio.
+- Catalogo de formatos: `backend/data/formatos.mock.js`.
 
 ## 3. Navegacion principal (frontend)
 

@@ -1,32 +1,37 @@
 # Guía de despliegue Aurora
 
-Fecha de generación: 2026-05-12
+Fecha: 2026-05-13
 
 ## Introducción
 
-Esta guía está pensada para apoyar el despliegue y mantenimiento técnico del sistema Aurora. La información parte del repositorio revisado y no incluye credenciales reales.
+Esta guía describe el despliegue operativo de Aurora. El despliegue recomendado para Aurora es mediante Docker Compose, usando el archivo `.env` creado manualmente en el servidor.
+
+El repositorio oficial es:
+
+```text
+https://github.com/shcampinof/AuroraV2-oracle
+```
+
+El repositorio debe tratarse como privado. Se mantiene público de manera temporal para facilitar el despliegue.
 
 ## Requisitos previos
 
-- Node.js 20.
-- npm 10 o compatible.
-- Acceso al repositorio privado.
-- Acceso de red a Oracle.
+- Docker.
+- Docker Compose.
+- Acceso al repositorio.
+- Acceso de red desde el servidor hacia Oracle.
 - Variables de entorno autorizadas por el administrador técnico o DBA.
-- Docker y Docker Compose si se usa despliegue contenedorizado.
 
 ## Clonar el repositorio
 
 ```bash
-git clone <URL_DEL_REPOSITORIO>
-cd aurora
+git clone https://github.com/shcampinof/AuroraV2-oracle
+cd AuroraV2-oracle
 ```
-
-No se pudo validar en esta revisión una URL real del repositorio. Debe ser entregada por el responsable del repositorio privado.
 
 ## Configurar variables de entorno
 
-El archivo `.env` real no debe subirse al repositorio. Para despliegue debe crearse manualmente en el servidor a partir de `.env.example`, usando los valores reales entregados por el administrador técnico o DBA autorizado.
+El archivo `.env` real no debe subirse al repositorio. Debe crearse manualmente en el servidor a partir de `.env.example`, usando valores reales del ambiente.
 
 ```bash
 cp .env.example .env
@@ -34,6 +39,7 @@ cp .env.example .env
 
 Variables críticas:
 
+- `HOST_PORT`
 - `PORT`
 - `NODE_ENV`
 - `AUTH_JWT_SECRET`
@@ -47,11 +53,63 @@ Variables críticas:
 - `ORACLE_SERVICE_NAME`
 - `ORACLE_SCHEMA`
 
-Para ejecución tradicional del backend también puede usarse `backend/.env`, siguiendo la plantilla `backend/.env.example`.
+## Despliegue principal con Docker
 
-## Instalación de dependencias
+Construir y levantar el servicio:
 
-Desde la raíz:
+```bash
+docker compose up --build -d
+```
+
+Verificar estado del contenedor:
+
+```bash
+docker compose ps
+```
+
+Revisar logs:
+
+```bash
+docker compose logs -f aurora
+```
+
+Reiniciar el servicio:
+
+```bash
+docker compose restart aurora
+```
+
+Validar salud de la aplicación:
+
+```bash
+curl http://localhost:7860/api/health
+curl http://localhost:7860/api/health/db
+```
+
+Abrir la aplicación:
+
+```text
+http://localhost:7860
+```
+
+Detener el servicio:
+
+```bash
+docker compose down
+```
+
+Reconstruir después de cambios:
+
+```bash
+docker compose build --no-cache aurora
+docker compose up -d
+```
+
+## Despliegue alternativo tradicional con Node.js
+
+Este camino se conserva solo para desarrollo, diagnóstico o ambientes donde Docker no esté disponible.
+
+Instalar dependencias:
 
 ```bash
 npm install
@@ -59,92 +117,17 @@ npm --prefix backend install
 npm --prefix frontend install
 ```
 
-## Ejecución local de backend
-
-```bash
-npm --prefix backend run dev
-```
-
-Por defecto el backend usa `PORT=7860`.
-
-Validación:
-
-```bash
-curl http://localhost:7860/api/health
-curl http://localhost:7860/api/health/db
-```
-
-## Ejecución local de frontend
-
-```bash
-npm --prefix frontend run dev
-```
-
-El puerto por defecto configurado para Vite es `5174`. Si está ocupado:
-
-```bash
-VITE_DEV_PORT=5175 npm --prefix frontend run dev -- --host 127.0.0.1
-```
-
-En desarrollo, Vite proxifica `/api` y `/downloads` hacia `VITE_DEV_API_TARGET` o `http://localhost:7860`.
-
-## Compilar frontend para producción
+Compilar frontend:
 
 ```bash
 npm --prefix frontend run build
 ```
 
-El backend puede servir el frontend si el build se ubica en `backend/public/app`. El `Dockerfile` del proyecto realiza esta copia automáticamente durante el build de imagen.
-
-## Ejecutar backend en producción tradicional
+Iniciar backend:
 
 ```bash
 NODE_ENV=production npm --prefix backend run start:prod
 ```
-
-Antes de iniciar en producción:
-
-- Definir `AUTH_JWT_SECRET`.
-- Confirmar que `AUTH_LOCAL_ADMIN_ENABLED=false`, salvo excepción temporal documentada.
-- Confirmar conectividad a Oracle.
-- Confirmar que `.env` no está versionado.
-
-## Despliegue con Docker
-
-El repositorio cuenta con `Dockerfile` y `docker-compose.yml`. El despliegue Docker usa un solo servicio: compila el frontend y lo sirve desde el backend Express.
-
-Preparar entorno:
-
-```bash
-cp .env.example .env
-```
-
-Construir y levantar:
-
-```bash
-docker compose up --build -d
-```
-
-Ver logs:
-
-```bash
-docker compose logs -f aurora
-```
-
-Validar:
-
-```bash
-curl http://localhost:7860/api/health
-curl http://localhost:7860/api/health/db
-```
-
-Detener:
-
-```bash
-docker compose down
-```
-
-No se pudo validar en esta revisión la construcción Docker real porque Docker no estaba instalado en el ambiente local.
 
 ## Validar conexión a base de datos
 
@@ -164,6 +147,9 @@ npm --prefix backend run smoke:oracle
 
 | Acción | Comando |
 |---|---|
+| Estado Docker | `docker compose ps` |
+| Logs Docker | `docker compose logs -f aurora` |
+| Reiniciar Docker | `docker compose restart aurora` |
 | Prueba backend | `npm --prefix backend test` |
 | Lint frontend | `npm --prefix frontend run lint` |
 | Tests frontend | `npm --prefix frontend run test` |
@@ -176,12 +162,10 @@ npm --prefix backend run smoke:oracle
 
 | Síntoma | Revisión sugerida |
 |---|---|
-| `/api/health` no responde | Verificar proceso backend, puerto y logs. |
+| `/api/health` no responde | Verificar `docker compose ps`, puerto publicado y logs. |
 | `/api/health/db` falla | Revisar `ORACLE_*`, red, firewall, service name y permisos. |
 | Login falla en producción | Revisar `AUTH_JWT_SECRET`, Azure AD o estado de login local. |
-| Frontend no llama al backend | Revisar `VITE_API_BASE_URL`, proxy Vite o CORS. |
-| Puerto `5174` ocupado | Usar `VITE_DEV_PORT`. |
-| Advertencia de bundle Vite | No bloquea el build, pero conviene revisar code splitting. |
+| Frontend no llama al backend | Revisar que el build use `/api` y que el contenedor esté sirviendo el mismo origen. |
 
 ## Recomendaciones finales
 

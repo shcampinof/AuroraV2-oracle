@@ -27,14 +27,19 @@ Cobertura actual de tests observada:
 
 ## 1.2 Backend
 
-- Script `test` actual: imprime `No backend tests configured`.
-- No se encontraron archivos de prueba backend en este repositorio.
+- Script `test`: valida configuracion de autenticacion (`backend/scripts/auth-config.test.js`).
+- Script `smoke:oracle`: valida conexion Oracle con `SELECT 1 AS DB_OK FROM dual`.
+- Script `test:api`: valida endpoints principales de lectura con autenticacion.
+- Script `test-db:setup`: crea tablas y datos semilla en un esquema Oracle de pruebas.
+- Script `test:api:write`: valida escrituras controladas contra la base de pruebas (`PUT /ppl/:documento`, `POST /ppl/:documento/actuaciones`, `POST /defensores`, `POST /ppl/asignar-defensor`).
+
+Durante la revision del 2026-05-12 no se ejecutaron escrituras porque `.env.test` apuntaba efectivamente al esquema `DNDP`. El setup de base de pruebas se nego a correr por proteccion. Para habilitar la suite de escritura se debe configurar `ORACLE_SCHEMA` con un esquema temporal distinto a `DNDP`.
 
 ## 2. Objetivo de estrategia (alineado al codigo actual)
 
 - Validar reglas de formulario por flujo (Aurora/Celeste).
 - Validar contratos de API usados por frontend.
-- Reducir riesgo en persistencia CSV (lectura/escritura y actuacion nueva).
+- Reducir riesgo en persistencia Oracle (lectura/escritura y actuacion nueva).
 
 ## 3. Enfoque vigente
 
@@ -54,7 +59,7 @@ El detalle de casos, criterios de salida y política de severidad está formaliz
   - ampliar pruebas de `evaluateAuroraRules`.
   - crear pruebas para `evaluateCelesteRules`.
 - Backend:
-  - pruebas de `consolidado.repo.js`:
+  - pruebas de repositorios Oracle:
     - `computeTipo`
     - normalizacion de headers
     - `updateByDocumento`
@@ -62,7 +67,7 @@ El detalle de casos, criterios de salida y política de severidad está formaliz
 
 ## 4.2 Nivel integracion
 
-- Pruebas de rutas Express con fixtures CSV controlados:
+- Pruebas de rutas Express contra esquema Oracle temporal:
   - `GET/PUT /api/ppl/:documento`
   - `GET/POST /api/ppl/:documento/actuaciones`
   - `GET /api/ppl/condenados` (sin `tipo`) valida que solo retorne `condenado` y excluya `sindicado` (regresion critica para PAG).
@@ -77,7 +82,7 @@ El detalle de casos, criterios de salida y política de severidad está formaliz
 ## 5. Criterios minimos de calidad sugeridos
 
 - Ejecutar en CI:
-  - `root: npm run encoding:check` (bloquea mojibake y archivos no UTF-8, incluyendo CSV fuente)
+  - `root: npm run encoding:check` (bloquea mojibake y archivos no UTF-8)
   - `root: npm run qa:smoke`
 - Definir un baseline de cobertura para utilidades de reglas.
 

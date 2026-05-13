@@ -9,7 +9,7 @@ Este protocolo cubre:
 - flujo Aurora (personas condenadas);
 - flujo Celeste (personas sindicadas);
 - asignación de defensores y listados operativos;
-- persistencia de actuaciones en CSV e historial;
+- persistencia de actuaciones en Oracle e historial;
 - contratos API críticos;
 - calidad de codificación de texto (UTF-8 y mojibake).
 
@@ -28,7 +28,7 @@ Este protocolo cubre:
 ### 3.1 Entrada para ejecutar protocolo
 
 - rama integrada y sin conflictos;
-- datos base cargados (`backend/data/consolidado_ppl.csv`, `defensores.csv`);
+- datos base disponibles en Oracle;
 - variables de entorno del backend configuradas según entorno local.
 
 ### 3.2 Criterios de salida para aprobar versión

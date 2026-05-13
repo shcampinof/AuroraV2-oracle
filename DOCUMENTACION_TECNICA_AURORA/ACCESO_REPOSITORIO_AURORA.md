@@ -1,10 +1,10 @@
 # Acceso al repositorio Aurora
 
-Fecha de generación: 2026-05-12
+Fecha: 2026-05-13
 
 ## Introducción
 
-Este documento establece recomendaciones técnicas para el acceso y manejo del repositorio privado de Aurora. No incluye una URL real porque no se identificó una URL oficial de repositorio en los archivos revisados.
+Este documento establece recomendaciones técnicas para el acceso y manejo del repositorio Aurora.
 
 ## Descripción del repositorio privado
 
@@ -16,7 +16,13 @@ El repositorio contiene:
 - Plantillas de variables de entorno.
 - Archivos de datos locales que podrían contener información sensible.
 
-Por el tipo de información y el propósito del sistema, se recomienda mantenerlo como repositorio privado.
+El repositorio oficial es:
+
+```text
+https://github.com/shcampinof/AuroraV2-oracle
+```
+
+El repositorio debe tratarse como privado. Actualmente se deja público de manera temporal para facilitar el despliegue, y se recomienda volver a restringir el acceso cuando termine esa actividad.
 
 ## Cuentas autorizadas
 
@@ -30,9 +36,7 @@ Se recomienda:
 
 ## Rama principal sugerida
 
-El README menciona publicación en `main`. En los comandos de revisión también se observó referencia a `master`.
-
-No se pudo validar en esta revisión cuál es la rama principal oficial del repositorio remoto. Se recomienda que OTI o el administrador del repositorio confirme una rama principal única.
+La rama principal operativa observada para este repositorio es `master`.
 
 ## Proceso para solicitar acceso
 
@@ -47,7 +51,7 @@ Flujo recomendado:
 ## Buenas prácticas para clonar
 
 ```bash
-git clone <URL_DEL_REPOSITORIO_PRIVADO>
+git clone https://github.com/shcampinof/AuroraV2-oracle
 cd aurora
 git status
 ```
@@ -74,7 +78,7 @@ Evitar trabajar directamente sobre la rama principal.
 - Ejecutar pruebas relevantes.
 - Revisar `git status`.
 - Revisar `git diff`.
-- Confirmar que no se agregaron `.env`, dumps, CSV sensibles nuevos o credenciales.
+- Confirmar que no se agregaron `.env`, dumps, exportaciones de datos o credenciales.
 - Evitar subir `node_modules`.
 - Documentar cambios relevantes en Markdown si afectan operación.
 
@@ -89,7 +93,7 @@ Evitar trabajar directamente sobre la rama principal.
 - `node_modules/`
 - Respaldos de base de datos.
 - Archivos con credenciales.
-- Exportaciones con datos personales no anonimizados.
+- Exportaciones o muestras con datos personales no anonimizados.
 
 ## Uso de `.gitignore`
 

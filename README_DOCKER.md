@@ -1,60 +1,37 @@
-# Aurora Docker (Hugging Face Spaces)
+# Aurora Docker
 
-Este proyecto se ejecuta en un unico contenedor Docker:
+La guia principal de despliegue esta en `GUIA_DESPLIEGUE_AURORA.md`.
+
+Resumen de arquitectura:
 
 - `frontend/` (Vite + React) se compila en build de produccion.
 - `backend/` (Node.js + Express) sirve API REST y archivos estaticos del frontend.
 - El servicio web unico escucha en `PORT` (por defecto `7860`).
 
-## Construir imagen
+## Docker Compose
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+```
+
+Verificacion:
+
+```bash
+curl http://localhost:7860/api/health
+curl http://localhost:7860/api/health/db
+```
+
+## Docker directo
 
 ```bash
 docker build -t aurora-app .
+docker run --env-file .env -p 7860:7860 aurora-app
 ```
-
-Opcional (si quieres cambiar la base de API en build del frontend):
-
-```bash
-docker build -t aurora-app --build-arg VITE_API_BASE_URL=/api .
-```
-
-## Ejecutar en local
-
-```bash
-docker run -p 7860:7860 aurora-app
-```
-
-Con puerto configurable:
-
-```bash
-docker run -e PORT=7860 -p 7860:7860 aurora-app
-```
-
-## Verificacion rapida
-
-- Frontend: `http://localhost:7860`
-- Health API: `http://localhost:7860/api/health`
 
 ## Variables de entorno
 
-Minimas para ejecucion:
-
-- `PORT` (opcional): puerto HTTP del servidor Express. Default: `7860`.
-- `AUTH_JWT_SECRET`: requerido en `NODE_ENV=production`; usar un secreto fuerte y unico del ambiente.
-- `AZURE_AD_TENANT_ID` y `AZURE_AD_CLIENT_ID`: requeridos para habilitar SSO institucional.
-- `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_HOST`, `ORACLE_PORT`, `ORACLE_SERVICE_NAME`: requeridos para datos reales.
-
-Opcionales de build frontend:
-
-- `VITE_API_BASE_URL` (build arg): URL base para API en el bundle frontend. Default: `/api`.
-
-Seguridad:
-
-- `AUTH_LOCAL_ADMIN_ENABLED` queda deshabilitado por defecto en produccion si se omite.
-- Si se habilita login local temporal, no usar `admin/admin`.
-- `CORS_ORIGIN` vacio permite todos los origenes solo en desarrollo local; en produccion se limita a same-origin salvo allowlist explicita.
-
-No se incluyen credenciales ni archivos `.env` dentro de la imagen. Si agregas integraciones sensibles (tokens, DB URI, etc.), inyectalas como variables de entorno al desplegar.
+Usar `.env.example` como plantilla y crear un `.env` local con valores reales. No versionar `.env`, `backend/.env` ni `backend/.env.test`.
 
 ## Uso en Hugging Face Spaces (Docker)
 

@@ -9,7 +9,9 @@
     "start:prod": "node index.js",
     "dev": "nodemon index.js",
     "smoke:oracle": "node scripts/oracle-smoke.js",
-    "test:api": "node scripts/api-regression.js"
+    "test:api": "node scripts/api-regression.js",
+    "test:api:write": "node scripts/api-write-regression.js",
+    "test-db:setup": "node scripts/test-db/setup-test-db.js"
   },
   "keywords": [],
   "author": "",
@@ -17,7 +19,6 @@
   "type": "commonjs",
   "dependencies": {
     "cors": "^2.8.5",
-    "csv-parse": "^6.1.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.1",

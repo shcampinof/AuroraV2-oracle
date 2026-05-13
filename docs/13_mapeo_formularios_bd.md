@@ -168,7 +168,7 @@ Documento generado desde el codigo actual. La notacion usada es `TABLA>COLUMNA`.
 | Estado del tramite | Sin columna Oracle directa | Derivado por reglas Aurora/Celeste y por `ACCION_REALIZAR`/`ACTUACION_ADELANTAR` en listados |
 | Accion a impulsar / Accion a realizar | `GESTION_JURIDICA>ACCION_REALIZAR` | Lee/escribe si llega en payload; usado en tabla PAG |
 | Fecha de asignacion del PAG | `ASIGNACION>FECHA_ASIGNACION` | Lee desde asignacion vigente; se guarda al asignar/reasignar defensor |
-| Herramienta | Sin columna Oracle mapeada | Campo legado/CSV; no persiste en Oracle |
+| Herramienta | Sin columna Oracle mapeada | Campo legado; no persiste en Oracle |
 | redirectedToAurora | Sin columna Oracle mapeada | Control de flujo legado; no persiste en Oracle |
 | posibleActuacionJudicial | Derivado de `GESTION_JURIDICA>ACTUACION_ADELANTAR` | No es columna |
 | Fecha de actualizacion de datos (corte) | Constante UI `15/04/2026` | No viene de BD |
@@ -235,7 +235,7 @@ Documento generado desde el codigo actual. La notacion usada es `TABLA>COLUMNA`.
 
 - `Estado del caso`: derivado en frontend; no se lee desde una columna.
 - `Estado del tramite`: derivado por reglas; no se lee desde una columna.
-- `Herramienta`: legado/CSV, sin mapeo Oracle.
+- `Herramienta`: legado, sin mapeo Oracle.
 - `redirectedToAurora`: control de flujo, sin mapeo Oracle.
 - `Fecha de actualizacion de datos (corte)`: constante de UI.
 

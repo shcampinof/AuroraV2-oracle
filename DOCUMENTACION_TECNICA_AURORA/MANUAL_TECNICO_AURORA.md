@@ -1,6 +1,6 @@
 # Manual técnico Aurora
 
-Fecha de generación: 2026-05-12
+Fecha: 2026-05-13
 
 ## Introducción
 
@@ -18,14 +18,14 @@ Aurora apoya la gestión de atención jurídica de personas privadas de la liber
 | Backend | Node.js, Express |
 | Autenticación | JWT, Azure AD opcional |
 | Base de datos | Oracle mediante `oracledb` |
-| Datos complementarios | CSV y mock de formatos |
+| Datos complementarios | Catálogo local de formatos |
 | Pruebas | Vitest, scripts Node |
-| Despliegue | Docker y ejecución tradicional Node |
+| Despliegue | Docker Compose como camino principal |
 
 ## Arquitectura general
 
 ```text
-Usuario -> Frontend React -> Backend Express /api -> Oracle / CSV / formatos
+Usuario -> Frontend React -> Backend Express /api -> Oracle
 ```
 
 En producción, el backend puede servir el frontend compilado. El despliegue Docker usa un contenedor único que compila `frontend/` y copia `dist` a `backend/public/app`.
@@ -117,18 +117,23 @@ npm --prefix frontend run dev
 
 ## Despliegue
 
-Opción tradicional:
+El despliegue recomendado para Aurora es mediante Docker Compose, usando el archivo `.env` creado manualmente en el servidor.
 
-```bash
-npm --prefix frontend run build
-NODE_ENV=production npm --prefix backend run start:prod
-```
-
-Opción Docker:
+Despliegue principal:
 
 ```bash
 cp .env.example .env
 docker compose up --build -d
+docker compose ps
+docker compose logs -f aurora
+docker compose restart aurora
+```
+
+Despliegue alternativo tradicional:
+
+```bash
+npm --prefix frontend run build
+NODE_ENV=production npm --prefix backend run start:prod
 ```
 
 No se pudo validar en esta revisión el build Docker real porque Docker no estaba instalado en el ambiente de trabajo.

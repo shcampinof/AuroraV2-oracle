@@ -8,6 +8,8 @@ No se cambió la lógica funcional del sistema. Durante la revisión se ejecutó
 
 Después de la primera ejecución se ajustaron dos scripts de prueba: `backend/scripts/oracle-smoke.js` para cargar `backend/.env` y `backend/scripts/api-regression.js` para autenticarse antes de consultar rutas protegidas. Estos cambios no modifican reglas de negocio ni persistencia.
 
+Actualización 2026-05-12: se hizo `git pull` y se revisó la nueva carpeta `BD Documentation/`. Con esa documentación se dejó preparado un flujo de base Oracle de pruebas mediante `ORACLE_SCHEMA`, `backend/scripts/test-db/setup-test-db.js` y `backend/scripts/api-write-regression.js`. No se ejecutaron escrituras reales porque `.env.test` apuntaba efectivamente al esquema `DNDP`.
+
 ## 2. Ambiente de revisión
 
 | Elemento | Valor |
@@ -28,12 +30,12 @@ El proyecto cuenta con una aplicación frontend en React + Vite y un backend en 
 | Carpeta / archivo | Descripción observada |
 |---|---|
 | `package.json` | Scripts generales de codificación y QA (`encoding:check`, `qa:smoke`). |
-| `backend/` | API Express, rutas, servicios, middleware de autenticación, repositorios Oracle y datos CSV. |
+| `backend/` | API Express, rutas, servicios, middleware de autenticación y repositorios Oracle. |
 | `backend/package.json` | Scripts `test`, `start`, `dev`, `smoke:oracle`, `test:api`. |
 | `backend/index.js` | Configura Express, Helmet, CORS, rutas `/api`, frontend estático si existe build y puerto `PORT` o `7860`. |
 | `backend/routes/` | Rutas `auth`, `health`, `ppl`, `defensores`, `formatos`. |
 | `backend/db/oraclePool.js` | Pool Oracle y endpoint de salud DB mediante `SELECT 1 AS DB_OK FROM dual`. |
-| `backend/data/` | CSV y mock de formatos: `consolidado_ppl.csv`, `PAG.csv`, `defensores.csv`, `formatos.mock.js`. |
+| `backend/data/` | Catálogo local de formatos: `formatos.mock.js`. |
 | `frontend/` | Cliente React con páginas, componentes, servicios API y pruebas unitarias. |
 | `frontend/package.json` | Scripts `dev`, `build`, `lint`, `preview`, `test`. |
 | `frontend/vite.config.js` | Puerto por defecto `5174`, proxy `/api` y `/downloads` hacia `http://localhost:7860`. |
@@ -55,6 +57,14 @@ Variables de entorno detectadas en código: `PORT`, `NODE_ENV`, `ENABLE_STARTUP_
 | `backend/` | `npm start` | Exitoso | Backend levantó en `7860`; se validaron endpoints y luego se cerró el proceso iniciado. |
 | `backend/` | `PORT=7861 npm run dev` | Exitoso | Nodemon levantó backend en `7861`; se validó `/api/health` y se cerró con `Ctrl+C`. |
 | `backend/` | `API_BASE_URL=http://localhost:7861/api npm run test:api` | Exitoso | Después del ajuste, hace login local o usa `API_AUTH_TOKEN` y valida rutas protegidas de lectura. |
+| raíz | `git pull --ff-only origin master` | Exitoso | Incorporó `BD Documentation/` con diccionario, diagrama, log, documento explicativo y manual PDF del modelo. |
+| `backend/` | `npm test` | Exitoso | Revalidado después del pull; `auth-config checks passed`. |
+| `backend/` | `DOTENV_CONFIG_PATH=/home/dndp/proyectos_dndp/aurora/backend/.env.test npm --prefix backend run test-db:setup` | Fallido controlado | El script se negó a ejecutarse porque el esquema efectivo era `DNDP`; no se modificaron datos. |
+| `backend/` | `DOTENV_CONFIG_PATH=/home/dndp/proyectos_dndp/aurora/backend/.env.test npm --prefix backend run smoke:oracle` | Exitoso | Validó conectividad Oracle con `DB_OK: 1` usando `.env.test`; no realiza escrituras. |
+| `backend/` | `DOTENV_CONFIG_PATH=/home/dndp/proyectos_dndp/aurora/backend/.env.test npm --prefix backend start` | Exitoso | Backend levantó en `7862` con `.env.test`; al cerrar con `Ctrl+C` se observó un aviso `NJS-064: connection pool is closing`. |
+| `backend/` | `DOTENV_CONFIG_PATH=/home/dndp/proyectos_dndp/aurora/backend/.env.test npm --prefix backend run test:api` | Exitoso | Validó `health`, `health/db`, listado PPL, detalle e historial con `.env.test`; solo lectura. |
+| `backend/` | `node --check backend/scripts/test-db/setup-test-db.js` | Exitoso | Validación sintáctica del script de creación de base de pruebas. |
+| `backend/` | `node --check backend/scripts/api-write-regression.js` | Exitoso | Validación sintáctica del script de regresión de escrituras. |
 | `frontend/` | `npm run lint` | Exitoso | Sin errores reportados. |
 | `frontend/` | `npm run test` | Exitoso | 4 archivos de prueba, 79 pruebas pasadas. |
 | `frontend/` | `npm run build` | Exitoso con advertencia | Build generado; advertencia por chunk JS mayor a 500 kB. |
@@ -92,7 +102,12 @@ Variables de entorno detectadas en código: `PORT`, `NODE_ENV`, `ENABLE_STARTUP_
 | AUR-025 | API/Formatos | Funcional | Formato inexistente | `GET /api/formatos/no-existe/download` con token | HTTP 404 | HTTP 404 `Formato no encontrado` | Aprobado | Manejo correcto. |
 | AUR-026 | API | Técnica | Script de regresión API | `API_BASE_URL=http://localhost:7861/api npm run test:api` | Todos los checks pasan | Checks HTTP 200 para `health`, `health/db`, listado PPL, documento e historial | Aprobado | El script ahora autentica solicitudes protegidas. |
 | AUR-027 | Formularios | Funcional | Edición de información | PUT/POST de negocio | Persistencia controlada | No ejecutado | No ejecutado | No se hicieron escrituras sobre Oracle para no alterar datos. |
-| AUR-028 | Seguridad | Técnica | Revisión básica de archivos sensibles | `git check-ignore`, `git ls-files`, búsqueda de `.env` | `.env` no versionado | `backend/.env` ignorado; solo `.env.example` versionado | Aprobado con observación | Hay CSV con datos personales en `backend/data/`. |
+| AUR-028 | Seguridad | Técnica | Revisión básica de archivos sensibles | `git check-ignore`, `git ls-files`, búsqueda de `.env` | `.env` no versionado | `backend/.env` ignorado; solo `.env.example` versionado | Aprobado | No se deben versionar exportaciones con datos personales. |
+| AUR-029 | Base de datos | Técnica | Revisar documentación nueva de BD | Revisar `BD Documentation/` | Identificar tablas y objetos relevantes | Se identificaron 12 tablas principales, vista y procedimientos mencionados en manual/documento | Aprobado | No se encontró `BD.sql` ejecutable en la carpeta recibida. |
+| AUR-030 | Base de datos | Técnica | Preparar esquema Oracle de pruebas | Crear script con tablas y semilla controlada | Script disponible sin tocar producción | Se creó `backend/scripts/test-db/setup-test-db.js` | Aprobado | Crea las 12 tablas del diccionario y una semilla pequeña para pruebas de integración. |
+| AUR-031 | Base de datos | Seguridad | Evitar escrituras sobre esquema operativo | Ejecutar `test-db:setup` con `.env.test` actual | Debe bloquearse si el destino es `DNDP` | Falló de forma controlada con `TEST_DB_REFUSED_DNDP_SCHEMA` | Aprobado | No se modificaron datos. |
+| AUR-032 | API/DB | Funcional | Preparar regresión de escrituras | Crear script de prueba para `PUT`, `POST actuaciones`, `POST defensores` y asignación | Script disponible para base temporal | Se creó `backend/scripts/api-write-regression.js` | Pendiente de ejecución | Requiere `ORACLE_SCHEMA` distinto a `DNDP` y backend levantado con `.env.test`. |
+| AUR-033 | Configuración | Técnica | Validar variables de `.env.test` sin exponer valores | Revisar presencia de variables | Variables críticas configuradas | `PORT`, `ORACLE_*`, `AUTH_*` presentes; `ORACLE_SCHEMA` ausente | Aprobado con observación | Al faltar `ORACLE_SCHEMA`, el esquema efectivo queda como `ORACLE_USER`. |
 
 ## 6. Pruebas de backend y API
 
@@ -122,7 +137,17 @@ Endpoints detectados:
 
 El script `npm run test:api` inicialmente falló porque consultaba `/ppl/condenados` sin token. Se ajustó `backend/scripts/api-regression.js` para obtener un token mediante `/auth/login` o aceptar `API_AUTH_TOKEN` desde el entorno. Después del ajuste, la regresión API pasó contra el backend levantado en `7861`.
 
-Para pruebas de escritura no se recomienda usar la base Oracle operativa. La alternativa técnica más limpia es un esquema Oracle temporal con las mismas tablas mínimas y variables `ORACLE_*` apuntando a ese esquema. Otra opción, más local pero con más trabajo, es introducir un modo de repositorios de prueba basado en fixtures CSV o en memoria para ejecutar rutas `PUT` y `POST` sin conectarse a Oracle.
+Para pruebas de escritura no se recomienda usar la base Oracle operativa. La alternativa técnica más limpia es un esquema Oracle temporal con las mismas tablas mínimas y variables `ORACLE_*` apuntando a ese esquema.
+
+Después del pull se dejó implementado el soporte para esa alternativa de esquema temporal. El backend ahora puede reemplazar las referencias `DNDP.` por el valor de `ORACLE_SCHEMA` al ejecutar SQL. El script `npm --prefix backend run test-db:setup` crea las 12 tablas documentadas, valida columnas esperadas y carga datos semilla de prueba, pero se bloquea si el destino efectivo es `DNDP`. En esta revisión el bloqueo se activó correctamente porque `.env.test` no tenía `ORACLE_SCHEMA` y por tanto el destino era `DNDP`.
+
+Comandos preparados para ejecutar cuando exista un esquema temporal, por ejemplo `DNDP_TEST`:
+
+```bash
+DOTENV_CONFIG_PATH=/home/dndp/proyectos_dndp/aurora/backend/.env.test npm --prefix backend run test-db:setup
+DOTENV_CONFIG_PATH=/home/dndp/proyectos_dndp/aurora/backend/.env.test npm --prefix backend run test:api
+DOTENV_CONFIG_PATH=/home/dndp/proyectos_dndp/aurora/backend/.env.test npm --prefix backend run test:api:write
+```
 
 ## 7. Pruebas de frontend
 
@@ -141,9 +166,11 @@ La ejecución de `npm run dev` con el puerto por defecto falló porque `5174` ya
 - `git ls-files` mostró versionado `backend/.env.example`, pero no `backend/.env`.
 - No hay `.gitignore` en la raíz; existen `.gitignore` en `backend/` y `frontend/`.
 - Durante la revisión se encontró un archivo real `backend/.env` en el entorno local. No se publican sus valores en este documento.
+- Durante la revisión se encontró `backend/.env.test`. Se validó solo la presencia de variables, sin publicar valores.
+- `backend/.env.test` no define `ORACLE_SCHEMA`; con la configuración actual el esquema efectivo de prueba queda como `DNDP`, por lo que no se ejecutaron escrituras.
 - El `.env` local contiene variables Oracle y de puerto, pero no contiene variables `AUTH_*`. En modo desarrollo eso permitió login local con credenciales por defecto del servicio.
 - El código usa Helmet, deshabilita `x-powered-by`, aplica CORS configurable, limita JSON a `256kb`, protege rutas de negocio con JWT y aplica rate limit en login.
-- `backend/data/consolidado_ppl.csv`, `backend/data/PAG.csv` y `backend/data/defensores.csv` contienen datos personales o institucionales. Se recomienda tratarlos como datos sensibles antes de compartir el repositorio privado.
+- No se deben versionar exportaciones con datos personales o institucionales. Cualquier insumo de prueba debe ser anónimo y controlado.
 - `backend/.env.example` contiene valores de ejemplo para autenticación y Oracle. Antes de compartir o desplegar, se deben reemplazar secretos, evitar credenciales por defecto y validar que el archivo de ejemplo no contenga datos operativos reales.
 - No se pudo validar SSO Azure AD en esta revisión porque `AZURE_AD_TENANT_ID` y `AZURE_AD_CLIENT_ID` no estaban configurados en la respuesta de `/api/auth/config`.
 - No se pudo validar una revisión completa de exposición histórica de secretos en Git; esta revisión se limitó al árbol de trabajo actual.
@@ -151,7 +178,7 @@ La ejecución de `npm run dev` con el puerto por defecto falló porque `5174` ya
 Recomendaciones antes de compartir el repositorio privado:
 
 1. Confirmar que `backend/.env` nunca se agregue al control de versiones.
-2. Revisar si los CSV de `backend/data/` deben anonimizarse, cifrarse o excluirse del repositorio.
+2. Mantener fuera del repositorio exportaciones o respaldos con datos personales.
 3. Definir `AUTH_JWT_SECRET`, `AUTH_LOCAL_ADMIN_ENABLED=false` o credenciales no predeterminadas para ambientes no locales.
 4. Configurar Azure AD si el ingreso institucional es obligatorio.
 5. Revisar el estado de `node_modules` y lockfiles antes de entregar el repositorio; el working tree ya tenía múltiples cambios previos.
@@ -164,19 +191,22 @@ Recomendaciones antes de compartir el repositorio privado:
 - `npm run test:api` fue ajustado y valida rutas protegidas de lectura con autenticación.
 - El frontend compila y prueba correctamente, con advertencia de tamaño de bundle.
 - El puerto frontend por defecto `5174` estaba ocupado durante la revisión.
-- Hay datos CSV sensibles en el repositorio local.
+- Los datos operativos deben mantenerse en Oracle y fuera del repositorio.
 - No se ejecutaron operaciones de escritura sobre Oracle.
+- La carpeta `BD Documentation/` documenta el modelo DNDP, pero no incluye un script `BD.sql` listo para crear todos los objetos.
+- Se dejó preparado un setup de base de pruebas y una regresión de escrituras, pendientes de ejecución contra un esquema temporal distinto a `DNDP`.
 
 ## 10. Recomendaciones
 
 1. Crear un ambiente de datos temporal para pruebas de escritura: preferiblemente un esquema Oracle de pruebas; como alternativa local, repositorios mock con fixtures.
-2. Agregar pruebas de integración para rutas Express con autenticación, incluyendo casos 401, 404 y errores de validación.
-3. Crear pruebas controladas para `PUT /api/ppl/:documento`, `POST /api/ppl/:documento/actuaciones`, `POST /api/defensores` y `POST /api/ppl/asignar-defensor` en un ambiente de datos de prueba.
-4. Revisar el tamaño del bundle frontend y considerar `import()` por rutas o `manualChunks`.
-5. Definir un `.env.example` de frontend si se espera configurar `VITE_API_BASE_URL`, `VITE_DEV_API_TARGET` o `VITE_DEV_PORT`.
-6. Revisar la política de versionamiento de datos CSV antes de compartir el repositorio.
-7. Resolver o documentar los cambios existentes del working tree, especialmente `node_modules`, lockfiles y archivos de documentación.
+2. Definir `ORACLE_SCHEMA` en `backend/.env.test` con un esquema temporal, por ejemplo `DNDP_TEST`, antes de ejecutar `test-db:setup` o `test:api:write`.
+3. Agregar pruebas de integración para rutas Express con autenticación, incluyendo casos 401, 404 y errores de validación.
+4. Ejecutar `test:api:write` solo después de confirmar que el backend está levantado con `.env.test` y que el esquema efectivo no es `DNDP`.
+5. Revisar el tamaño del bundle frontend y considerar `import()` por rutas o `manualChunks`.
+6. Definir un `.env.example` de frontend si se espera configurar `VITE_API_BASE_URL`, `VITE_DEV_API_TARGET` o `VITE_DEV_PORT`.
+7. Revisar la política de versionamiento de datos antes de compartir el repositorio.
+8. Resolver o documentar los cambios existentes del working tree, especialmente `node_modules`, lockfiles y archivos de documentación.
 
 ## 11. Conclusión
 
-El resultado fue satisfactorio para esta etapa de revisión técnica: instalación, lint, pruebas frontend, build, prueba backend, arranque de servicios y endpoints principales de lectura respondieron correctamente. Las fallas encontradas en scripts auxiliares fueron ajustadas y validadas. Las operaciones de escritura no se ejecutaron para evitar modificar datos Oracle durante esta revisión.
+El resultado fue satisfactorio para esta etapa de revisión técnica: instalación, lint, pruebas frontend, build, prueba backend, arranque de servicios y endpoints principales de lectura respondieron correctamente. Las fallas encontradas en scripts auxiliares fueron ajustadas y validadas. Las operaciones de escritura no se ejecutaron porque el ambiente de prueba aún apunta al esquema `DNDP`; quedó preparado el flujo para repetirlas cuando exista un esquema temporal aislado.

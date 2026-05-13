@@ -1,4 +1,4 @@
-const { getOracleConfig } = require('../config/oracle');
+const { getOracleConfig, getOracleSchema } = require('../config/oracle');
 
 let oracleDriver = null;
 let poolPromise = null;
@@ -62,12 +62,13 @@ async function execute(sql, binds = {}, options = {}) {
     const pool = await getPool();
     conn = await pool.getConnection();
     const oracledb = getOracleDriver();
+    const effectiveSql = String(sql || '').replace(/\bDNDP\./g, `${getOracleSchema()}.`);
     const execOptions = {
       outFormat: oracledb.OUT_FORMAT_OBJECT,
       autoCommit: false,
       ...options,
     };
-    return await conn.execute(sql, binds, execOptions);
+    return await conn.execute(effectiveSql, binds, execOptions);
   } catch (err) {
     throw toDbError(err, { operation: options?.operation || 'execute' });
   } finally {

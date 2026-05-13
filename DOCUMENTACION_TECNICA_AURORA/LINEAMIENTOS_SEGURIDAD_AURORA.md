@@ -1,6 +1,6 @@
 # Lineamientos de seguridad Aurora
 
-Fecha de generación: 2026-05-12
+Fecha: 2026-05-13
 
 ## Introducción
 
@@ -26,7 +26,7 @@ Esta información debe tratarse como sensible. No se debe compartir por fuera de
 |---|---|
 | Exposición de credenciales | Publicar `.env`, cadenas Oracle o secretos JWT. |
 | Acceso no autorizado | Uso de credenciales locales débiles o mala configuración de SSO. |
-| Exposición de datos personales | Versionar CSV o archivos con datos sensibles. |
+| Exposición de datos personales | Versionar exportaciones, respaldos o archivos con datos sensibles. |
 | Escrituras sobre producción | Ejecutar pruebas de escritura contra el esquema operativo. |
 | CORS amplio | Permitir orígenes no controlados en producción. |
 | Falta de trazabilidad | No registrar despliegues, errores o acciones críticas. |
@@ -64,16 +64,14 @@ Durante la revisión se ajustó el patrón de `.gitignore` para ignorar:
 - Evitar enviar ZIP del repositorio por correo.
 - Revisar cambios antes de hacer merge a la rama principal.
 
-## Datos sensibles en CSV, JSON u otros archivos
+## Datos sensibles en archivos locales
 
-Se identificaron CSV en `backend/data/`. Se recomienda:
+Se recomienda:
 
-- Validar si deben permanecer versionados.
-- Anonimizar datos si se usan para desarrollo o pruebas.
 - No cargar respaldos productivos al repositorio.
 - No publicar muestras con documentos reales en documentación.
-
-No se pudo validar en esta revisión si todos los CSV corresponden a datos reales o anonimizados.
+- Mantener datos de prueba anonimizados y controlados.
+- Tratar exportaciones operativas como información sensible.
 
 ## Usuarios y roles
 
@@ -120,7 +118,7 @@ El backend registra errores en consola para operaciones principales. Se recomien
 - [ ] Confirmar que no se incluye `.env`.
 - [ ] Confirmar que no se incluye `.env.test` con credenciales.
 - [ ] Revisar `git status`.
-- [ ] Revisar archivos CSV con datos personales.
+- [ ] Revisar que no existan archivos locales con datos personales.
 - [ ] Confirmar que `.env.example` no tiene valores reales.
 - [ ] Ejecutar pruebas disponibles.
 - [ ] Revisar que no haya tokens en documentación o logs.

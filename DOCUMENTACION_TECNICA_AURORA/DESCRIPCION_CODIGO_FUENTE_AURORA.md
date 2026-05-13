@@ -1,6 +1,6 @@
 # Descripción del código fuente Aurora
 
-Fecha de generación: 2026-05-12
+Fecha: 2026-05-13
 
 ## Introducción
 
@@ -13,7 +13,7 @@ Este documento describe la estructura del repositorio Aurora y los archivos prin
 | `README.md` | Resumen del proyecto, estado y validaciones previas. |
 | `package.json` | Scripts generales de QA y codificación. |
 | `frontend/` | Aplicación de usuario en React. |
-| `backend/` | API, autenticación, repositorios y datos. |
+| `backend/` | API, autenticación, repositorios Oracle y catálogo de formatos. |
 | `docs/` | Documentación técnica existente. |
 | `BD Documentation/` | Material recibido sobre el modelo de datos. |
 | `Dockerfile` | Imagen de despliegue de un solo servicio. |
@@ -89,7 +89,6 @@ Rutas:
 | `backend/repositories/oracle/pagRepository.js` | Validación de PAG. |
 | `backend/repositories/oracle/situacionRepository.js` | Actualización de situación carcelaria. |
 | `backend/repositories/oracle/calificacionConductaRepository.js` | Calificaciones de conducta. |
-| `backend/db/consolidado.repo.js` | Repositorio CSV legado o alternativo. |
 
 ## Scripts disponibles
 
@@ -136,7 +135,6 @@ Backend:
 - `express-rate-limit`
 - `oracledb`
 - `dotenv`
-- `csv-parse`
 
 Frontend:
 
@@ -173,5 +171,5 @@ Frontend:
 - Mantener sincronizada la documentación de rutas cuando cambie `backend/routes/`.
 - No modificar repositorios Oracle sin validar impacto en `FormularioAtencion` y `AsignacionDefensores`.
 - Ejecutar `npm run qa:smoke` antes de entregar cambios relevantes.
-- Revisar si los CSV sensibles deben permanecer versionados.
+- Mantener fuera del repositorio cualquier exportación de datos sensible.
 - Mantener `.env.example` actualizado cada vez que se agregue una variable de entorno.

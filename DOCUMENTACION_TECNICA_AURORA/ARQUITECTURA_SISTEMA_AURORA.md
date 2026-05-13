@@ -1,6 +1,6 @@
 # Arquitectura del sistema Aurora
 
-Fecha de generación: 2026-05-12
+Fecha: 2026-05-13
 
 ## Introducción
 
@@ -17,7 +17,7 @@ El proyecto cuenta con una arquitectura web separada en frontend y backend:
 - Frontend: aplicación React construida con Vite.
 - Backend: API Node.js con Express.
 - Base de datos: conexión Oracle mediante el paquete `oracledb`.
-- Datos complementarios: archivos CSV y mock de formatos dentro de `backend/data/`.
+- Datos complementarios: catálogo de formatos dentro de `backend/data/`.
 - Autenticación: JWT local y soporte para Azure AD si se configura.
 
 En producción, el backend puede servir el frontend compilado desde `backend/public/app`. El `Dockerfile` existente usa ese patrón: compila el frontend y copia el resultado al backend.
@@ -29,7 +29,6 @@ En producción, el backend puede servir el frontend compilado desde `backend/pub
 | Frontend | `frontend/` | SPA React con navegación por hash y páginas funcionales. |
 | Backend | `backend/` | API Express, autenticación, rutas de negocio y repositorios. |
 | Oracle | `backend/db/oraclePool.js`, `backend/repositories/oracle/` | Fuente principal para consultas y escrituras de negocio. |
-| CSV | `backend/data/` | Archivos de datos usados por repositorios históricos o de respaldo. |
 | Formatos | `backend/data/formatos.mock.js` | Catálogo de documentos descargables desde la Caja de Herramientas. |
 | Docker | `Dockerfile`, `docker-compose.yml` | Empaquetado de la aplicación en un servicio único. |
 
@@ -41,8 +40,8 @@ En producción, el backend puede servir el frontend compilado desde `backend/pub
 | Backend | Node.js 20, Express 5, CommonJS |
 | Seguridad | Helmet, CORS, JWT, rate limit de login |
 | Autenticación institucional | Azure AD mediante `@azure/msal-browser` y `jwks-rsa` |
-| Datos | Oracle, `oracledb`, CSV con `csv-parse` |
-| Despliegue | Docker, Docker Compose opcional |
+| Datos | Oracle, `oracledb` |
+| Despliegue | Docker, Docker Compose |
 
 ## Flujo general de comunicación
 
@@ -51,14 +50,14 @@ Usuario
   -> Frontend React/Vite
   -> Servicios frontend en frontend/src/services/
   -> Backend Express bajo /api
-  -> Repositorios Oracle o datos locales
-  -> Oracle / CSV / formatos
+  -> Repositorios Oracle y catálogo de formatos
+  -> Oracle
 ```
 
 Diagrama simple:
 
 ```text
-Usuario -> Frontend -> Backend/API -> Oracle o fuente de datos
+Usuario -> Frontend -> Backend/API -> Oracle
 ```
 
 ## Rutas API principales detectadas

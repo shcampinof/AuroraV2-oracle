@@ -80,5 +80,4 @@ Referencia funcional (campos minimos considerados):
 
 1. `POST /ppl/:documento/actuaciones` crea fila nueva.
 2. `PUT /ppl/:documento` guarda respuestas sobre actuacion activa (`actuacionId`).
-3. El backend persiste cambios en CSV consolidado.
-
+3. El backend persiste cambios en Oracle.

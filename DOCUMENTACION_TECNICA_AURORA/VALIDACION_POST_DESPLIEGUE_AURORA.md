@@ -1,6 +1,6 @@
 # Validación post despliegue Aurora
 
-Fecha de generación: 2026-05-12
+Fecha: 2026-05-13
 
 ## Introducción
 
@@ -13,11 +13,11 @@ Esta lista de chequeo permite validar que Aurora quedó funcionando después de 
 - [ ] Rama o tag desplegado registrado.
 - [ ] Commit desplegado registrado.
 - [ ] Ambiente identificado: desarrollo, pruebas, preproducción o producción.
-- [ ] Método de despliegue registrado: Node tradicional o Docker.
+- [ ] Método de despliegue registrado: Docker Compose.
 
 ## Variables de entorno
 
-- [ ] Existe `.env` en el servidor o variables configuradas en el entorno.
+- [ ] Existe `.env` creado manualmente en el servidor.
 - [ ] `.env` no está versionado.
 - [ ] `NODE_ENV=production` en ambiente productivo.
 - [ ] `PORT` definido o confirmado en `7860`.

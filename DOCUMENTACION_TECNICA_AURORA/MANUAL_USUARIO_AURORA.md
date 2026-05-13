@@ -1,6 +1,6 @@
 # Manual de usuario Aurora
 
-Fecha de generación: 2026-05-12
+Fecha: 2026-05-13
 
 ## Introducción
 

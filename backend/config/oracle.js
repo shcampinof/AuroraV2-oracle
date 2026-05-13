@@ -22,6 +22,21 @@ function buildConnectString(host, port, serviceName) {
   return `${host}:${port}/${serviceName}`;
 }
 
+function safeOracleIdentifier(value, fallback = 'DNDP') {
+  const raw = String(value || fallback || '').trim().toUpperCase();
+  if (!/^[A-Z][A-Z0-9_$#]*$/.test(raw)) {
+    const err = new Error(`Identificador Oracle no valido: ${raw}`);
+    err.code = 'ORACLE_CONFIG_INVALID_IDENTIFIER';
+    err.status = 500;
+    throw err;
+  }
+  return raw;
+}
+
+function getOracleSchema() {
+  return safeOracleIdentifier(process.env.ORACLE_SCHEMA || process.env.ORACLE_USER || 'DNDP');
+}
+
 function getOracleConfig() {
   const user = requiredEnv('ORACLE_USER');
   const password = requiredEnv('ORACLE_PASSWORD');
@@ -35,6 +50,7 @@ function getOracleConfig() {
     host,
     port,
     serviceName,
+    schema: getOracleSchema(),
     connectString: buildConnectString(host, port, serviceName),
     poolMin: optionalInt('ORACLE_POOL_MIN', 1),
     poolMax: optionalInt('ORACLE_POOL_MAX', 8),
@@ -49,5 +65,7 @@ function getOptionalGestionSequence() {
 
 module.exports = {
   getOracleConfig,
+  getOracleSchema,
   getOptionalGestionSequence,
+  safeOracleIdentifier,
 };

@@ -1,6 +1,6 @@
 # Descripción del modelo de datos Aurora
 
-Fecha de generación: 2026-05-12
+Fecha: 2026-05-13
 
 ## Introducción
 
@@ -10,14 +10,7 @@ Este documento complementa el modelo entidad-relación y el diccionario de datos
 
 La fuente principal es Oracle. El backend se conecta mediante `oracledb` y usa un pool en `backend/db/oraclePool.js`.
 
-También existen fuentes locales:
-
-- `backend/data/consolidado_ppl.csv`
-- `backend/data/PAG.csv`
-- `backend/data/defensores.csv`
-- `backend/data/formatos.mock.js`
-
-No se pudo validar en esta revisión si los CSV se usan en producción o si son insumos de desarrollo, respaldo o migración.
+El catálogo local de formatos se mantiene en `backend/data/formatos.mock.js`. No debe usarse como fuente de datos de negocio.
 
 ## Documentos oficiales del modelo
 
@@ -107,15 +100,6 @@ Los nombres exactos de columnas deben validarse contra el diccionario de datos.
 - `ORACLE_SCHEMA` permite apuntar a esquemas temporales de prueba.
 - El script `test-db:setup` se niega a ejecutarse contra `DNDP` salvo autorización explícita.
 - El endpoint `/api/health/db` valida conectividad con `SELECT 1 AS DB_OK FROM dual`.
-
-## Observaciones sobre CSV
-
-El repositorio incluye CSV con datos que podrían ser personales o institucionales. Se recomienda:
-
-- Confirmar si son datos reales.
-- Anonimizarlos si se usan en desarrollo.
-- Excluirlos del repositorio si no son necesarios para operación.
-- Evitar usarlos como evidencia pública.
 
 ## Recomendaciones para mantener el diccionario
 
