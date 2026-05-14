@@ -1,6 +1,6 @@
 # Manual técnico Aurora
 
-Fecha: 2026-05-13
+Fecha: 2026-05-14
 
 ## Introducción
 
@@ -65,7 +65,14 @@ Variables relevantes:
 - `VITE_DEV_API_TARGET`
 - `VITE_DEV_PORT`
 
-En desarrollo, Vite usa proxy para `/api` y `/downloads`. En producción con el backend como servidor único, se recomienda `VITE_API_BASE_URL=/api`.
+En desarrollo, Vite usa proxy para `/api`. En producción con el backend como servidor único, se recomienda `VITE_API_BASE_URL=/api`.
+
+### Estados e historial de actuaciones
+
+- `frontend/src/config/estadoActuaciones.rules.ts` es el punto común para derivar etiquetas de estado.
+- `FormularioAtencion.jsx` sincroniza `Estado del trámite` y `Estado del caso` al guardar.
+- `HistorialActuacionesPPL.jsx` recalcula la fila activa con el registro vivo del formulario, por lo que la UI puede mostrar cambios de estado antes de guardar o recargar.
+- `AsignacionDefensores.jsx` usa el mismo derivador para `Acción a impulsar`.
 
 ## Configuración de base de datos
 
@@ -138,6 +145,8 @@ NODE_ENV=production npm --prefix backend run start:prod
 
 No se pudo validar en esta revisión el build Docker real porque Docker no estaba instalado en el ambiente de trabajo.
 
+El contexto Docker excluye `.cleanup-backups/`, documentación pesada y secretos. Si se generan respaldos locales por limpiezas controladas, no deben subirse al repositorio ni copiarse a la imagen.
+
 ## Validaciones posteriores al despliegue
 
 Validar:
@@ -167,6 +176,7 @@ También se debe validar:
 | API escritura controlada | `npm --prefix backend run test:api:write` |
 | Frontend lint | `npm --prefix frontend run lint` |
 | Frontend tests | `npm --prefix frontend run test` |
+| Reglas de estado | `npm --prefix frontend run test -- estadoActuaciones.rules.test.ts evaluateAuroraRules.test.ts` |
 | Frontend build | `npm --prefix frontend run build` |
 
 Las pruebas de escritura deben ejecutarse únicamente contra un esquema temporal distinto a `DNDP`.

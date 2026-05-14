@@ -47,6 +47,15 @@ Las escrituras de negocio se hacen contra Oracle:
 
 Las pruebas de escritura deben ejecutarse únicamente contra un esquema temporal, nunca contra el esquema operativo.
 
+## 4.1 Estado de actuaciones
+
+El estado visible (`Analizar el caso`, `Entrevistar al usuario`, `Presentar solicitud`, `Pendiente decisión`, `Caso cerrado`, etc.) se trata como dato derivado de las respuestas de formulario.
+
+- En frontend, la fuente central es `frontend/src/config/estadoActuaciones.rules.ts`.
+- En listados resumidos, el backend entrega `estadoSource` con los campos necesarios para que la UI derive la etiqueta.
+- En el formulario, `Estado del trámite` y `Estado del caso` se sincronizan al guardar para conservar compatibilidad con filtros y reportes.
+- El historial mezcla la actuación activa cargada desde Oracle con el registro vivo en memoria, evitando esperar a una recarga para ver el estado actualizado.
+
 ## 5. Catálogo de formatos
 
 El único archivo local de datos que permanece en `backend/data/` es `formatos.mock.js`. Este archivo contiene el catálogo de formatos descargables y no reemplaza la base de datos de negocio.

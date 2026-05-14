@@ -27,6 +27,8 @@ Archivos principales:
    - actuacion judicial,
    - accion/estado.
 
+Desde la actualización del 2026-05-14, el componente mantiene la respuesta original del API como `actuacionesRaw` y normaliza las filas con `useMemo`. Si existe una `actuacionActivaId`, la fila activa se recalcula con el `registro` vivo del formulario. Esto permite que la columna `Accion a impulsar` cambie mientras el usuario diligencia campos, sin recargar la aplicación.
+
 ---
 
 ## 3. Criterio de actuacion iniciada
@@ -81,3 +83,4 @@ Referencia funcional (campos minimos considerados):
 1. `POST /ppl/:documento/actuaciones` crea fila nueva.
 2. `PUT /ppl/:documento` guarda respuestas sobre actuacion activa (`actuacionId`).
 3. El backend persiste cambios en Oracle.
+4. Despues de guardar, el formulario incrementa `historialRefreshToken` para recargar desde Oracle y reconciliar la vista en memoria con la persistencia.

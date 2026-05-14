@@ -210,3 +210,24 @@ Recomendaciones antes de compartir el repositorio privado:
 ## 11. Conclusión
 
 El resultado fue satisfactorio para esta etapa de revisión técnica: instalación, lint, pruebas frontend, build, prueba backend, arranque de servicios y endpoints principales de lectura respondieron correctamente. Las fallas encontradas en scripts auxiliares fueron ajustadas y validadas. Las operaciones de escritura no se ejecutaron porque el ambiente de prueba aún apunta al esquema `DNDP`; quedó preparado el flujo para repetirlas cuando exista un esquema temporal aislado.
+
+## 12. Actualización 2026-05-14 - estados, historial y documentación
+
+Cambios validados:
+
+- `HistorialActuacionesPPL.jsx` recalcula la actuación activa con el registro vivo del formulario.
+- `AsignacionDefensores.jsx` muestra `Acción a impulsar` usando el derivador central `getEstadoDisplayInfo`.
+- `.gitignore` y `.dockerignore` excluyen `.cleanup-backups/` para evitar versionar o empaquetar respaldos operativos locales.
+- Documentación técnica y de despliegue actualizada para reflejar el cálculo centralizado de estados y la dockerización vigente.
+
+Comandos ejecutados:
+
+```bash
+npm --prefix frontend run test -- estadoActuaciones.rules.test.ts evaluateAuroraRules.test.ts
+npm --prefix frontend run build
+```
+
+Resultado:
+
+- Pruebas frontend focalizadas: 2 archivos, 62 pruebas aprobadas.
+- Build frontend: exitoso. Se mantiene advertencia no bloqueante de bundle principal mayor a 500 kB.

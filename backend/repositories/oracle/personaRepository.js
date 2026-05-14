@@ -128,6 +128,53 @@ const PERSONA_COLUMNS = new Set([
   'FECHA_CREACION',
 ]);
 
+const GESTION_MEANINGFUL_ORDER_EXPR = `
+  CASE
+    WHEN g.ACCION_REALIZAR IS NOT NULL
+      OR g.FECHA_ANALISIS IS NOT NULL
+      OR g.VENCIMIENTO_TERMINOS IS NOT NULL
+      OR g.UTILIDAD_PUBLICA IS NOT NULL
+      OR g.LIBERTAD_CONDICIONAL IS NOT NULL
+      OR g.PRISION_DOMICILIARIA_MITAD_PENA IS NOT NULL
+      OR g.PROCEDENCIA_PENA_CUMPLIDA IS NOT NULL
+      OR g.PROCEDENCIA_ACUMULACION_PENAS IS NOT NULL
+      OR g.CON_QUE_PROCESOS_ACUMULAR IS NOT NULL
+      OR g.OTRAS_SOLICITUDES_TRAMITAR IS NOT NULL
+      OR g.RESUMEN_ANALISIS_CASO IS NOT NULL
+      OR g.FECHA_ENTREVISTA IS NOT NULL
+      OR g.DECISION_USUARIO IS NOT NULL
+      OR g.ACTUACION_ADELANTAR IS NOT NULL
+      OR g.REQUIERE_PRUEBAS IS NOT NULL
+      OR g.PODER_AVANZAR_SOLICITUD IS NOT NULL
+      OR g.FECHA_ENTREVISTA_PSICOSOCIAL IS NOT NULL
+      OR g.CUMPLE_REQUISITO_MARGINALIDAD IS NOT NULL
+      OR g.CUMPLE_REQUISITO_JEFATURA_HOGAR IS NOT NULL
+      OR g.REQUIERE_MISION_TRABAJO IS NOT NULL
+      OR g.FECHA_SOLICITUD_MISION_TRABAJO IS NOT NULL
+      OR g.FECHA_ASIGNACION_INVESTIGADOR IS NOT NULL
+      OR g.FECHA_RECEPCION_TODAS_PRUEBAS IS NOT NULL
+      OR g.FECHA_RECEPCION_PRUEBAS_USUARIO IS NOT NULL
+      OR g.FECHA_SOLICITUD_DOCS_INPEC IS NOT NULL
+      OR g.FECHA_REVISION_EXPEDIENTE IS NOT NULL
+      OR g.CONFIRMACION_PROCEDENCIA_VENCIMIENTO IS NOT NULL
+      OR g.FECHA_SOLICITUD_AUDIENCIA_CONTROL IS NOT NULL
+      OR g.FECHA_REALIZACION_AUDIENCIA IS NOT NULL
+      OR g.FECHA_PRESENTACION_SOLICITUD_AUTORIDAD IS NOT NULL
+      OR g.FECHA_DECISION_AUTORIDAD IS NOT NULL
+      OR g.FECHA_RADICACION_UTILIDAD IS NOT NULL
+      OR g.SENTIDO_DECISION IS NOT NULL
+      OR g.MOTIVO_DECISION_NEGATIVA IS NOT NULL
+      OR g.SE_PRESENTA_RECURSO IS NOT NULL
+      OR g.FECHA_RECURSO_DESFAVORABLE IS NOT NULL
+      OR g.FECHA_PRESENTACION_RECURSO IS NOT NULL
+      OR g.FECHA_DECISION_RECURSO IS NOT NULL
+      OR g.SENTIDO_DECISION_RESUELVE_RECURSO IS NOT NULL
+      OR g.CIERRE_CASO IS NOT NULL
+    THEN 0
+    ELSE 1
+  END
+`;
+
 function buildTipoFilter(tipo) {
   const safeTipo = String(tipo || '').trim().toLowerCase();
   if (safeTipo === 'condenado') {
@@ -136,7 +183,7 @@ function buildTipoFilter(tipo) {
   if (safeTipo === 'sindicado') {
     return "(LOWER(NVL(s.SITUACION_JURIDICA_ACTUALIZADA, '')) LIKE '%sindicad%' OR LOWER(NVL(s.SITUACION, '')) LIKE '%sindicad%')";
   }
-  return '1=1';
+  return 'TRIM(s.SITUACION) IS NOT NULL';
 }
 
 function normalizeSearchText(value) {
@@ -154,7 +201,10 @@ function buildCanonicalEstadoCase(columnRef) {
     CASE
       WHEN ${normalized} LIKE '%ANALIZAR EL CASO%' THEN 'Analizar el caso'
       WHEN ${normalized} LIKE '%ENTREVISTAR AL USUARIO%' THEN 'Entrevistar al usuario'
+      WHEN ${normalized} LIKE '%PENDIENTE AUDIENCIA%' THEN 'Pendiente audiencia'
+      WHEN ${normalized} LIKE '%PENDIENTE DECISION DE AUDIENCIA%' THEN 'Pendiente decisión de audiencia'
       WHEN ${normalized} LIKE '%PRESENTAR SOLICITUD%' THEN 'Presentar solicitud'
+      WHEN ${normalized} LIKE '%PRESENTAR RECURSO%' THEN 'Presentar recurso'
       WHEN ${normalized} LIKE '%PENDIENTE DECISION%' THEN 'Pendiente decisión'
       WHEN ${normalized} LIKE '%CASO CERRADO%' OR ${normalized} = 'CERRADO' THEN 'Caso cerrado'
       ELSE NULL
@@ -249,7 +299,10 @@ function buildCondenadosSummaryWhereClause({
     const canonicalMap = new Map([
       ['ANALIZAR EL CASO', 'Analizar el caso'],
       ['ENTREVISTAR AL USUARIO', 'Entrevistar al usuario'],
+      ['PENDIENTE AUDIENCIA', 'Pendiente audiencia'],
+      ['PENDIENTE DECISION DE AUDIENCIA', 'Pendiente decisión de audiencia'],
       ['PRESENTAR SOLICITUD', 'Presentar solicitud'],
+      ['PRESENTAR RECURSO', 'Presentar recurso'],
       ['PENDIENTE DECISION', 'Pendiente decisión'],
       ['CASO CERRADO', 'Caso cerrado'],
       ['CERRADO', 'Caso cerrado'],
@@ -328,7 +381,7 @@ async function listCondenadosSummary({
         g.*,
         ROW_NUMBER() OVER (
           PARTITION BY g.ID_SITUACION
-          ORDER BY g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
+          ORDER BY ${GESTION_MEANINGFUL_ORDER_EXPR}, g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
         ) AS RN
       FROM DNDP.GESTION_JURIDICA g
     ),
@@ -375,6 +428,7 @@ async function listCondenadosSummary({
         s.SITUACION AS "situacion",
         s.SITUACION_JURIDICA_ACTUALIZADA AS "Situacion Juridica actualizada (de conformidad con la rama judicial)",
         ${DEFENSOR_ACTIVO_EXPR} AS "Defensor(a) Publico(a) Asignado para tramitar la solicitud",
+        ${DEFENSOR_ACTIVO_EXPR} AS "Defensor(a) Público(a) Asignado para tramitar la solicitud",
         ${DEFENSOR_ACTIVO_EXPR} AS "Defensor",
         s.PENA_DIAS AS "Pena dias",
         s.TIEMPO_EFECTIVO AS "Tiempo efectivo",
@@ -387,21 +441,45 @@ async function listCondenadosSummary({
         s.DIAS_LIBERTAD AS "Dias_libertad",
         g.FECHA_ANALISIS AS "Fecha de analisis juridico del caso",
         g.RESUMEN_ANALISIS_CASO AS "Resumen del analisis del caso",
+        g.RESUMEN_ANALISIS_CASO AS "RESUMEN DEL ANALISIS JURIDICO DEL PRESENTE CASO",
         g.FECHA_ENTREVISTA AS "Fecha de entrevista",
         g.ACTUACION_ADELANTAR AS "Actuacion a adelantar",
+        g.ACTUACION_ADELANTAR AS "PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TERMINOS",
         g.LIBERTAD_CONDICIONAL AS "Procedencia de libertad condicional",
         g.PRISION_DOMICILIARIA_MITAD_PENA AS "Procedencia de prision domiciliaria de mitad de pena",
         g.UTILIDAD_PUBLICA AS "Procedencia de utilidad publica (solo para mujeres)",
         g.PROCEDENCIA_PENA_CUMPLIDA AS "Procedencia de pena cumplida",
         g.PROCEDENCIA_ACUMULACION_PENAS AS "Procedencia de acumulacion de penas",
+        g.CON_QUE_PROCESOS_ACUMULAR AS "Con que procesos debe acumular penas (si aplica)",
         g.OTRAS_SOLICITUDES_TRAMITAR AS "Otras solicitudes a tramitar",
         g.DECISION_USUARIO AS "Decision del usuario",
+        g.REQUIERE_PRUEBAS AS "Requiere pruebas",
+        g.PODER_AVANZAR_SOLICITUD AS "Poder en caso de avanzar con la solicitud",
+        g.FECHA_ENTREVISTA_PSICOSOCIAL AS "Fecha de entrevista psicosocial",
         g.CUMPLE_REQUISITO_MARGINALIDAD AS "Cumple el requisito de marginalidad",
         g.CUMPLE_REQUISITO_JEFATURA_HOGAR AS "Cumple el requisito de jefatura de hogar",
+        g.REQUIERE_MISION_TRABAJO AS "Se requiere mision de trabajo",
+        g.FECHA_SOLICITUD_MISION_TRABAJO AS "Fecha de solicitud de mision de trabajo",
+        g.FECHA_ASIGNACION_INVESTIGADOR AS "Fecha de asignacion de investigador",
+        g.FECHA_RECEPCION_TODAS_PRUEBAS AS "Fecha en la que se reciben todas las pruebas",
+        g.FECHA_RECEPCION_PRUEBAS_USUARIO AS "Fecha de recepcion de pruebas aportadas por el usuario (Si aplica)",
+        g.FECHA_SOLICITUD_DOCS_INPEC AS "Fecha de solicitud de documentos al INPEC (Si aplica)",
+        g.FECHA_REVISION_EXPEDIENTE AS "FECHA DE REVISION DEL EXPEDIENTE Y ELEMENTOS MATERIALES PROBATORIOS",
+        g.CONFIRMACION_PROCEDENCIA_VENCIMIENTO AS "CONFIRMACION DE LA PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TERMINOS",
+        g.FECHA_SOLICITUD_AUDIENCIA_CONTROL AS "FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTIAS PARA SUSTENTAR REVOCATORIA",
+        g.FECHA_REALIZACION_AUDIENCIA AS "FECHA DE REALIZACION DE AUDIENCIA",
         g.SE_PRESENTA_RECURSO AS "Se presenta recurso",
+        g.SE_PRESENTA_RECURSO AS "SE RECURRIO EN CASO DE DECISION NEGATIVA",
         g.SENTIDO_DECISION AS "Sentido de la decision",
+        g.SENTIDO_DECISION AS "SENTIDO DE LA DECISION",
+        g.MOTIVO_DECISION_NEGATIVA AS "Motivo de la decision negativa",
+        g.FECHA_RECURSO_DESFAVORABLE AS "Fecha de recurso en caso desfavorable",
+        g.FECHA_PRESENTACION_RECURSO AS "Fecha de presentacion del recurso",
         g.SENTIDO_DECISION_RESUELVE_RECURSO AS "Sentido de la decision que resuelve recurso",
-        CAST(NULL AS VARCHAR2(4000)) AS "Sentido de la decision que resuelve la solicitud",
+        g.SENTIDO_DECISION_RESUELVE_RECURSO AS "SENTIDO DE LA DECISION QUE RESUELVE RECURSO",
+        g.FECHA_DECISION_RECURSO AS "Fecha de la decision del recurso",
+        g.CIERRE_CASO AS "Cierre del caso por imposibilidad de avanzar (si aplica)",
+        g.SENTIDO_DECISION_RESUELVE_RECURSO AS "Sentido de la decision que resuelve la solicitud",
         g.FECHA_PRESENTACION_SOLICITUD_AUTORIDAD AS "Fecha de presentacion de la solicitud a la autoridad",
         g.FECHA_RADICACION_UTILIDAD AS "Fecha de radicacion de solicitud de utilidad publica",
         g.FECHA_DECISION_AUTORIDAD AS "Fecha de decision de la autoridad",
@@ -471,7 +549,7 @@ async function listDistinctCondenadosFilterOptions({
         g.*,
         ROW_NUMBER() OVER (
           PARTITION BY g.ID_SITUACION
-          ORDER BY g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
+          ORDER BY ${GESTION_MEANINGFUL_ORDER_EXPR}, g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
         ) AS RN
       FROM DNDP.GESTION_JURIDICA g
     ),

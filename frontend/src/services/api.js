@@ -201,6 +201,12 @@ export function getFormatoDownloadUrl(id) {
   return `${API_BASE}/formatos/${encodeURIComponent(id)}/download`;
 }
 
+export async function getFormatoDownloadTarget(id) {
+  const res = await fetchJson(`${API_BASE}/formatos/${encodeURIComponent(id)}/download-url`);
+  if (!res.ok) throw new Error('Error preparando descarga');
+  return readJsonOrThrow(res, 'Error preparando descarga');
+}
+
 // =====================
 // Asignacion de defensores (condenados)
 // =====================

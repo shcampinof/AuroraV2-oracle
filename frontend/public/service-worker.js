@@ -23,12 +23,7 @@ self.addEventListener('activate', (event) => {
 });
 
 function isExcludedPath(pathname) {
-  return (
-    pathname === '/api' ||
-    pathname.startsWith('/api/') ||
-    pathname === '/downloads' ||
-    pathname.startsWith('/downloads/')
-  );
+  return pathname === '/api' || pathname.startsWith('/api/');
 }
 
 self.addEventListener('fetch', (event) => {

@@ -1,56 +1,111 @@
 // Lista base de la pestana "Caja de Herramientas".
-// filename debe coincidir exactamente con el archivo en backend/public/formatos.
+// downloadUrl debe contener el enlace de descarga de SharePoint de cada formato.
 const formatos = [
   {
     id: 'f1',
-    titulo: 'INPEC-Asignacion cupo TEE - JETEE',
-    filename: 'INPEC-Asignacio\u0301n cupo TEE - JETEE.docx',
+    titulo: 'Entrevista - Pruebas tipo para arraigo',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:b:/s/DNDP-DOCUMENTACION/IQBOJ6sgTm3NRJKb1iVH76tZAZzTsQJOpr47z4f3BLtNmT8?e=Elj4mb&download=1',
   },
   {
-    id: 'f2',
-    titulo: 'JEPMS-Aplicacion retroactiva 2x3 redencion por trabajo',
-    filename: 'JEPMS-Aplicacio\u0301n retroactiva 2x3 redencio\u0301n por trabajo.docx',
+    id: 'f2', 
+    titulo: 'INPEC-Asignación cupo TEE - JETEE',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQB4Jbe6CTWfRbHzDyO-fUVfAQXNga8M5YQ8Ibi2zsluUI8?e=dwSC7c&download=1',
   },
   {
     id: 'f3',
-    titulo: 'JEPMS-Autorizacion para radicar solicitud UP',
-    filename: 'JEPMS-Autorizacio\u0301n para radicar solicitud UP.docx',
+    titulo: 'INPEC-Cambio de fase tratamiento penitenciario - CET',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQD2c5dc1ThSRoZfMselg3ubAbQoBaN_fagKsl4w5IZ-II4?e=yXEKdB&download=1',
   },
   {
     id: 'f4',
-    titulo: 'INPEC-Cambio de fase tratamiento penitenciario - CET',
-    filename: 'INPEC-Cambio de fase tratamiento penitenciario - CET.docx',
+    titulo: 'JEPMS-Acumulación jurídica de penas',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQB9wd40axNBTL7yVRyJgvH_AfaEzm_9iYXjPN_uUa4866U?e=Ni3dM6&download=1',
   },
   {
     id: 'f5',
-    titulo: 'JEPMS-Aplicacion retroactiva y analogica 2x3 redencion otras actividades',
-    filename: 'JEPMS-Aplicacio\u0301n retroactiva y analo\u0301gica 2x3 redencio\u0301n otras actividades.docx',
+    titulo: 'JEPMS-Aplicación retroactiva 2x3 redención por trabajo',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQDAVJycTdadTrfeDtv2fj1dAQmnTO85BZQus9Ru8jqJssk?e=7ifqwX&download=1',
   },
   {
     id: 'f6',
-    titulo: 'JEPMS-Acumulacion juridica de penas',
-    filename: 'JEPMS-Acumulacio\u0301n juri\u0301dica de penas.docx',
+    titulo: 'JEPMS-Aplicación retroactiva e igualitaria 2x3 redención otras actividades STP 5152 2026',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQAHhSy7mlYQRKlM9GXBVBk0AftsW-46a8XjuXGQacEeLhw?e=VltZgf&download=1',
   },
   {
     id: 'f7',
-    titulo: 'JEPMS-Solicitud libertad condicional',
-    filename: 'JEPMS-Solicitud libertad condicional.docx',
+    titulo: 'JEPMS-Autorización para radicar solicitud UP',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQAnHX5b6edyS4GYiycO75IRASyYoHu0XpG8jCsTBLuITck?e=12Xcue&download=1',
   },
   {
     id: 'f8',
-    titulo: 'Entrevista - Pruebas tipo para arraigo',
-    filename: 'Entrevista - Pruebas tipo para arraigo.pdf',
+    titulo: 'JEPMS-Solicitud Ley 2292 de 2023',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQDPH6z3xTt8T7qhChh8mSXlAQb_6d7bhnJl3bvoqUwYhO8?e=jvJ2co&download=1',
   },
   {
     id: 'f9',
-    titulo: 'JEPMS-Traslado del proceso de Distrito Judicial por traslado de persona privada de la libertad',
-    filename:
-      'JEPMS-Traslado del proceso de Distrito Judicial por traslado de persona privada de la libertad.docx',
+    titulo: 'JEPMS-Solicitud libertad condicional',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQBix5RIYey5ToGaflYtk1OBASUWFn4JH55Q-N1YZh7JBLU?e=ji9Njc&download=1',
   },
   {
     id: 'f10',
-    titulo: 'JEPMS-Solicitud prision domiciliaria',
-    filename: 'JEPMS-Solicitud prisio\u0301n domiciliaria.docx',
+    titulo: 'JEPMS-Solicitud prisión domiciliaria',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQCaX4H4a-1GRIFlrvuLesvEAQevh6YuhdNro_ZqkwXpSF0?e=Ju4yp4&download=1',
+  },
+  {
+    id: 'f11',
+    titulo: 'JEPMS-Traslado del proceso de Distrito Judicial por traslado de persona privada de la libertad',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQAPWjpc_WcCQbbyK6tgidngAUbieB2j5xZNHjLRcInZoB4?e=OhFxaQ&download=1',
+  },
+  {
+    id: 'f12',
+    titulo:
+      'UP -SD-P02-F212 Solicitud de concesión de la pena sustitutiva de prestación de servicios de utilidad pública – Ley 2292 de 2023',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQBVKUmPFDfjQLvsS6kxw_LuATZQF8Q4zpT5jkFT0_XR5MA?e=0pUnu0&download=1',
+  },
+  {
+    id: 'f13',
+    titulo: 'Utilidad Pública - Formato Entrevista',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQD780bMK2VmQ4j9eWsutlb2ARKRs1Wi64fNOdvIEFs0TxM?e=HtCttq&download=1',
+  },
+  {
+    id: 'f14',
+    titulo: 'Utilidad Pública - Guía entrevista a mujer Ley 2292',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:b:/s/DNDP-DOCUMENTACION/IQA9A8co0YgKQKkg7GCAmhrWAUxFk4-wcjConE6Avj_Z8Rg?e=7Fr5wi&download=1',
+  },
+  {
+    id: 'f15',
+    titulo: 'Utilidad Pública - Guía entrevista a terceros Ley 2292 Utilidad Publica',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:b:/s/DNDP-DOCUMENTACION/IQDt53ZaQJRPRY6GmrZsBysXAY87iJe-3CyhCqXkcZAHkd8?e=U2twWj&download=1',
+  },
+  {
+    id: 'f16',
+    titulo: 'Utilidad Pública - Manifestacion voluntad mujer',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:b:/s/DNDP-DOCUMENTACION/IQArbbby1Y9HSIIIgxs0bbMjAcS_ylaZOuXNljitxI0Xeqc?e=kKuiJ8&download=1',
+  },
+  {
+    id: 'f17',
+    titulo: 'Utilidad Pública - Plan ejecución servicios',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:b:/s/DNDP-DOCUMENTACION/IQB3aBRwMZRNRpUsVzoYLU0YAd9VbWtiMJZ_9pLROabXZww?e=pgvh2I&download=1',
+  },
+  {
+    id: 'f18',
+    titulo: 'Utilidad Pública - Poder Defensores',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQC72LjXAJbvQbNSAQCjydq6AT1uK-8H1zN_kiOT2hpqWgc?e=RPE6kH&download=1',
+  },
+  {
+    id: 'f19',
+    titulo: 'Utilidad Pública - Pruebas para recolectar - Pautas',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:b:/s/DNDP-DOCUMENTACION/IQA7q2RCVU0ZTLGhvZPdHn_6Aa3pubO5Ovow0KGUc_LmxQY?e=Hd5fDo&download=1',
+  },
+  {
+    id: 'f20',
+    titulo: 'Utilidad Pública - SD-P03-F04 Misión de Trabajo',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQCEILWewEZ7QKG8rkHEB34_AYeN2av--yEYTNrxhlE91qE?e=1GRuQf&download=1',
+  },
+  {
+    id: 'f21',
+    titulo: 'Utilidad Pública - Solicitud Ley 2292 de 2023 VF',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQAnckhNsqvdQIG2u_LskPWiAWo_gRObBR8AYOlTThyUUYU?e=WtuHec&download=1',
   },
 ];
 

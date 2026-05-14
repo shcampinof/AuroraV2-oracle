@@ -22,7 +22,10 @@ const ESTADOS_TRAMITE_OPTIONS = [
   'Analizar el caso',
   'Entrevistar al usuario',
   'Presentar solicitud',
+  'Pendiente audiencia',
+  'Pendiente decisi\u00f3n de audiencia',
   'Pendiente decisi\u00f3n',
+  'Presentar recurso',
   'Caso cerrado',
 ];
 
@@ -47,6 +50,10 @@ function getHeaderLabel(key) {
   if (!key) return '';
   if (HEADER_LABELS[key]) return HEADER_LABELS[key];
   return prettifyHeader(key);
+}
+
+function getTableHeaderLabel(key) {
+  return getHeaderLabel(key).toLocaleUpperCase('es-CO');
 }
 
 function getCellValue(row, key) {
@@ -791,6 +798,11 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       'Estado entrevista',
       'estadoEntrevista',
       'estado',
+      'Acci\u00f3n a impulsar',
+      'Accion a impulsar',
+      'Acci\u00f3n a realizar',
+      'Accion a realizar',
+      'accionImpulsar',
       'casos',
       'activeCaseId',
     ]);
@@ -804,11 +816,11 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     if (col === '__numeroIdentificacion__') return 'NÚMERO DE IDENTIFICACIÓN';
     if (col === '__nombreUsuario__') return 'NOMBRE USUARIO';
     if (col === '__defensor__') return 'DEFENSOR';
-    if (col === '__lugarPrivacion__') return 'Nombre del lugar de privación de la libertad';
-    if (col === '__estadoTramite__') return 'ESTADO';
+    if (col === '__lugarPrivacion__') return 'NOMBRE DEL LUGAR DE PRIVACIÓN DE LA LIBERTAD';
+    if (col === '__estadoTramite__') return 'ACCIÓN A IMPULSAR';
     if (col === '__departamentoReclusion__') return 'DEPARTAMENTO';
     if (col === '__municipioReclusion__') return 'MUNICIPIO';
-    return getHeaderLabel(col);
+    return getTableHeaderLabel(col);
   }
 
   function renderCell(row, col) {
@@ -892,7 +904,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
               />
 
               <DropdownField
-                label="Estado"
+                label="ESTADO / ACCIÓN A IMPULSAR"
                 value={filtrosDraft.estado}
                 onChange={(value) => setFiltroDraft('estado', value)}
                 options={estadosDisponibles}

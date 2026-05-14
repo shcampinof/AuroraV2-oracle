@@ -101,15 +101,12 @@ app.use('/api/formatos', requireAuth, formatosRoutes);
 app.use('/api/ppl', requireAuth, pplRoutes);
 app.use('/api/defensores', requireAuth, defensoresRoutes);
 
-// Sirve carpeta de formatos como estatica para enlaces directos.
-app.use('/downloads', express.static(path.join(__dirname, 'public', 'formatos')));
-
 if (hasFrontendBuild) {
   // Sirve el build del frontend ya compilado.
   app.use(express.static(frontendDistPath));
 
-  // Fallback SPA para rutas del frontend (excluye API y descargas).
-  app.get(/^\/(?!api(?:\/|$)|downloads(?:\/|$)).*/, (req, res) => {
+  // Fallback SPA para rutas del frontend (excluye API).
+  app.get(/^\/(?!api(?:\/|$)).*/, (req, res) => {
     res.sendFile(frontendIndexPath);
   });
 }

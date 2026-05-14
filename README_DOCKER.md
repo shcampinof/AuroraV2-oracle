@@ -33,6 +33,17 @@ docker run --env-file .env -p 7860:7860 aurora-app
 
 Usar `.env.example` como plantilla y crear un `.env` local con valores reales. No versionar `.env`, `backend/.env` ni `backend/.env.test`.
 
+El contexto Docker excluye dependencias, builds locales, documentación pesada, secretos y respaldos operativos locales como `.cleanup-backups/`. Esa carpeta puede existir durante limpiezas controladas de datos, pero no debe viajar en la imagen ni en Git.
+
+## Validación previa a publicar imagen
+
+```bash
+npm --prefix frontend run test -- estadoActuaciones.rules.test.ts evaluateAuroraRules.test.ts
+npm --prefix frontend run build
+```
+
+El build puede mostrar advertencia de bundle mayor a 500 kB; no bloquea el despliegue actual.
+
 ## Uso en Hugging Face Spaces (Docker)
 
 1. Sube el repositorio con este `Dockerfile` en la raiz.

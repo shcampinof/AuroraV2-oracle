@@ -98,7 +98,7 @@ Formatos detectados en código:
 - Documentos relacionados con libertad condicional, prisión domiciliaria, acumulación jurídica de penas y otros trámites.
 - Formato de entrevista o pruebas tipo para arraigo.
 
-La descarga final depende de la URL configurada en `FORMATOS_BASE_URL` o del valor por defecto del backend.
+La descarga final depende del enlace configurado para cada formato.
 
 ## Mensajes de error comunes
 

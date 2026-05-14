@@ -136,12 +136,23 @@ function getValueWithFallback(row, primary, secondary = '', fallback = '') {
   return consolidado.getValue(row, primary, consolidado.getValue(row, secondary, fallback));
 }
 
+function hasSituacionCarcelaria(row) {
+  return firstFilled(
+    getValueWithFallback(row, 'Situación Jurídica', 'Situacion Juridica', ''),
+    getValueWithFallback(row, 'situacion', 'situacionJuridica', ''),
+    row?.S_SITUACION
+  ) !== '';
+}
+
 function canonicalEstadoLabel(value) {
   const key = normalizeText(value);
   if (!key) return '';
   if (key.includes('analizar el caso')) return 'Analizar el caso';
   if (key.includes('entrevistar al usuario')) return 'Entrevistar al usuario';
+  if (key.includes('pendiente decision de audiencia')) return 'Pendiente decisión de audiencia';
+  if (key.includes('pendiente audiencia')) return 'Pendiente audiencia';
   if (key.includes('presentar solicitud')) return 'Presentar solicitud';
+  if (key.includes('presentar recurso')) return 'Presentar recurso';
   if (key.includes('pendiente decision')) return 'Pendiente decisión';
   if (key.includes('caso cerrado') || key === 'cerrado') return 'Caso cerrado';
   return '';
@@ -164,6 +175,13 @@ function resolveEstadoLabelFromRawRow(row) {
 
 function buildEstadoSource(row) {
   return {
+    'Situación Jurídica': getValueWithFallback(row, 'Situacion Juridica', 'situacion', ''),
+    'Defensor(a) Público(a) Asignado para tramitar la solicitud': getValueWithFallback(
+      row,
+      'Defensor(a) Público(a) Asignado para tramitar la solicitud',
+      'Defensor(a) Publico(a) Asignado para tramitar la solicitud',
+      ''
+    ),
     'Fecha de análisis jurídico del caso': getValueWithFallback(
       row,
       'Fecha de análisis jurídico del caso',
@@ -179,10 +197,28 @@ function buildEstadoSource(row) {
         ''
       )
     ),
+    'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO': firstFilled(
+      getValueWithFallback(
+        row,
+        'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO',
+        'RESUMEN DEL ANALISIS JURIDICO DEL PRESENTE CASO',
+        ''
+      ),
+      getValueWithFallback(row, 'Resumen del análisis del caso', 'Resumen del analisis del caso', '')
+    ),
     'Fecha de entrevista': getValueWithFallback(row, 'Fecha de entrevista', '', ''),
     'Actuación a adelantar': firstFilled(
       getValueWithFallback(row, 'Actuación a adelantar', 'Actuacion a adelantar', ''),
       getValueWithFallback(row, 'Tipo de solicitud a tramitar', '', '')
+    ),
+    'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS': firstFilled(
+      getValueWithFallback(
+        row,
+        'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS',
+        'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TERMINOS',
+        ''
+      ),
+      getValueWithFallback(row, 'Actuación a adelantar', 'Actuacion a adelantar', '')
     ),
     'Procedencia de libertad condicional': getValueWithFallback(
       row,
@@ -209,8 +245,22 @@ function buildEstadoSource(row) {
       'Procedencia de acumulacion de penas',
       ''
     ),
+    'Con qué proceso(s) debe acumular penas (si aplica)': getValueWithFallback(
+      row,
+      'Con qué proceso(s) debe acumular penas (si aplica)',
+      'Con que procesos debe acumular penas (si aplica)',
+      ''
+    ),
     'Otras solicitudes a tramitar': getValueWithFallback(row, 'Otras solicitudes a tramitar', '', ''),
     'Decisión del usuario': getValueWithFallback(row, 'Decisión del usuario', 'Decision del usuario', ''),
+    'Requiere pruebas': getValueWithFallback(row, 'Requiere pruebas', '', ''),
+    'Poder en caso de avanzar con la solicitud': getValueWithFallback(
+      row,
+      'Poder en caso de avanzar con la solicitud',
+      '',
+      ''
+    ),
+    'Fecha de entrevista psicosocial': getValueWithFallback(row, 'Fecha de entrevista psicosocial', '', ''),
     'Cumple el requisito de marginalidad': getValueWithFallback(
       row,
       'Cumple el requisito de marginalidad',
@@ -223,18 +273,126 @@ function buildEstadoSource(row) {
       '',
       ''
     ),
+    'Se requiere misión de trabajo': getValueWithFallback(
+      row,
+      'Se requiere misión de trabajo',
+      'Se requiere mision de trabajo',
+      ''
+    ),
+    'Fecha de solicitud de misión de trabajo': getValueWithFallback(
+      row,
+      'Fecha de solicitud de misión de trabajo',
+      'Fecha de solicitud de mision de trabajo',
+      ''
+    ),
+    'Fecha de asignación de investigador': getValueWithFallback(
+      row,
+      'Fecha de asignación de investigador',
+      'Fecha de asignacion de investigador',
+      ''
+    ),
+    'Fecha en la que se reciben todas las pruebas': getValueWithFallback(
+      row,
+      'Fecha en la que se reciben todas las pruebas',
+      '',
+      ''
+    ),
+    'Fecha de recepción de pruebas aportadas por el usuario (Si aplica)': getValueWithFallback(
+      row,
+      'Fecha de recepción de pruebas aportadas por el usuario (Si aplica)',
+      'Fecha de recepcion de pruebas aportadas por el usuario (Si aplica)',
+      ''
+    ),
+    'Fecha de solicitud de documentos al INPEC (Si aplica)': getValueWithFallback(
+      row,
+      'Fecha de solicitud de documentos al INPEC (Si aplica)',
+      '',
+      ''
+    ),
+    'FECHA DE REVISIÓN DEL EXPEDIENTE Y ELEMENTOS MATERIALES PROBATORIOS': getValueWithFallback(
+      row,
+      'FECHA DE REVISIÓN DEL EXPEDIENTE Y ELEMENTOS MATERIALES PROBATORIOS',
+      'FECHA DE REVISION DEL EXPEDIENTE Y ELEMENTOS MATERIALES PROBATORIOS',
+      ''
+    ),
+    'CONFIRMACIÓN DE LA PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS': getValueWithFallback(
+      row,
+      'CONFIRMACIÓN DE LA PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS',
+      'CONFIRMACION DE LA PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TERMINOS',
+      ''
+    ),
+    'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA': getValueWithFallback(
+      row,
+      'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA',
+      'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTIAS PARA SUSTENTAR REVOCATORIA',
+      ''
+    ),
+    'FECHA DE REALIZACIÓN DE AUDIENCIA': getValueWithFallback(
+      row,
+      'FECHA DE REALIZACIÓN DE AUDIENCIA',
+      'FECHA DE REALIZACION DE AUDIENCIA',
+      ''
+    ),
     'Se presenta recurso': getValueWithFallback(row, 'Se presenta recurso', '', ''),
+    '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?': getValueWithFallback(
+      row,
+      '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?',
+      'SE RECURRIO EN CASO DE DECISION NEGATIVA',
+      ''
+    ),
     'Sentido de la decisión': getValueWithFallback(row, 'Sentido de la decisión', 'Sentido de la decision', ''),
+    'SENTIDO DE LA DECISIÓN': getValueWithFallback(
+      row,
+      'SENTIDO DE LA DECISIÓN',
+      'SENTIDO DE LA DECISION',
+      ''
+    ),
+    'Motivo de la decisión negativa': getValueWithFallback(
+      row,
+      'Motivo de la decisión negativa',
+      'Motivo de la decision negativa',
+      ''
+    ),
+    'Fecha de recurso en caso desfavorable': getValueWithFallback(
+      row,
+      'Fecha de recurso en caso desfavorable',
+      '',
+      ''
+    ),
+    'Fecha de presentación del recurso': getValueWithFallback(
+      row,
+      'Fecha de presentación del recurso',
+      'Fecha de presentacion del recurso',
+      ''
+    ),
     'Sentido de la decisión que resuelve recurso': getValueWithFallback(
       row,
       'Sentido de la decisión que resuelve recurso',
       'Sentido de la decision que resuelve recurso',
       ''
     ),
+    'SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO': getValueWithFallback(
+      row,
+      'SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO',
+      'SENTIDO DE LA DECISION QUE RESUELVE RECURSO',
+      ''
+    ),
+    'Fecha de la decisión del recurso': getValueWithFallback(
+      row,
+      'Fecha de la decisión del recurso',
+      'Fecha de la decision del recurso',
+      ''
+    ),
     'Sentido de la decisión que resuelve la solicitud': getValueWithFallback(
       row,
       'Sentido de la decisión que resuelve la solicitud',
       'Sentido de la decision que resuelve la solicitud',
+      ''
+    ),
+    'Cierre del caso por imposibilidad de avanzar (si aplica)': getValueWithFallback(
+      row,
+      'Cierre del caso por imposibilidad de avanzar (si aplica)',
+      '',
       ''
     ),
     'Fecha de presentación de la solicitud a la autoridad': firstFilled(
@@ -372,7 +530,10 @@ async function getOrderedMappedRowsByTipo(tipo, version) {
   }
 
   const all = await consolidado.getAll();
-  const sourceRows = tipo === 'all' ? all : all.filter((row) => consolidado.computeTipo(row) === tipo);
+  const sourceRows =
+    tipo === 'all'
+      ? all.filter((row) => hasSituacionCarcelaria(row))
+      : all.filter((row) => consolidado.computeTipo(row) === tipo);
   const ordered = uniqueMappedRows(sourceRows.map((row) => mapCondenadoRowCached(row)));
   orderedCondenadosByTipoCache.set(key, ordered);
   return ordered;

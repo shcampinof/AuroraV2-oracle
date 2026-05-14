@@ -1,6 +1,6 @@
 # Guía de despliegue Aurora
 
-Fecha: 2026-05-13
+Fecha: 2026-05-14
 
 ## Introducción
 
@@ -105,6 +105,18 @@ docker compose build --no-cache aurora
 docker compose up -d
 ```
 
+## Validación previa al despliegue
+
+Antes de construir la imagen, ejecutar:
+
+```bash
+npm --prefix frontend run test -- estadoActuaciones.rules.test.ts evaluateAuroraRules.test.ts
+npm --prefix frontend run build
+npm --prefix backend test
+```
+
+Para cambios en formularios o actuaciones, validar manualmente que el historial actualiza la `Acción a impulsar` de la actuación activa sin recargar y que la vista de asignación usa la misma etiqueta derivada.
+
 ## Despliegue alternativo tradicional con Node.js
 
 Este camino se conserva solo para desarrollo, diagnóstico o ambientes donde Docker no esté disponible.
@@ -166,6 +178,7 @@ npm --prefix backend run smoke:oracle
 | `/api/health/db` falla | Revisar `ORACLE_*`, red, firewall, service name y permisos. |
 | Login falla en producción | Revisar `AUTH_JWT_SECRET`, Azure AD o estado de login local. |
 | Frontend no llama al backend | Revisar que el build use `/api` y que el contenedor esté sirviendo el mismo origen. |
+| Estado visible no coincide con campos diligenciados | Confirmar que la pantalla esté usando `getEstadoDisplayInfo` y que la actuación activa tenga `actuacionId`. |
 
 ## Recomendaciones finales
 

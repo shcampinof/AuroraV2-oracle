@@ -58,6 +58,12 @@ Filtros relevantes de `/ppl/condenados`:
 - `potencialSubrogado=proximos_requisito_temporal`: agrupa `Preliminar Prision Domiciliaria` y `Preliminar Libertad condicional`.
 - `potencialSubrogado=no_reunen_requisitos`: excluye las categorias anteriores.
 
+Notas de estado:
+
+- `estadoSource` resume campos usados por frontend para derivar la etiqueta de estado con `getEstadoDisplayInfo`.
+- `accionImpulsar` puede venir vacío o con valor histórico; la UI debe preferir el estado derivado para mostrar "Acción a impulsar".
+- `PUT /ppl/:documento` con `actuacionId` actualiza esa actuación. Sin `actuacionId`, el backend usa la actuación más reciente como fallback.
+
 ## 5. Defensores
 
 | Metodo | Path | Uso |
@@ -87,7 +93,7 @@ Errores observables:
 ## 7. Notas de contrato actuales
 
 - La API responde JSON para rutas `/api/*`.
-- El endpoint de descarga redirige a `FORMATOS_BASE_URL` o al repositorio configurado por defecto.
+- El endpoint de descarga redirige al `downloadUrl` configurado para cada formato.
 
 ## 8. Pendientes de contrato API
 

@@ -64,6 +64,8 @@ WHERE ID_SITUACION = :idSituacion
 ORDER BY FECHA_REGISTRO ASC NULLS LAST, ID_GESTION ASC
 ```
 
+La UI transforma cada fila de este resultado en una actuación. El estado visible no depende únicamente de una columna persistida: se deriva de las respuestas de `GESTION_JURIDICA`, la situación activa y los campos resumidos que el backend expone como `estadoSource`.
+
 ## 5. Crear actuación
 ```sql
 INSERT INTO DNDP.GESTION_JURIDICA (<columnas>)

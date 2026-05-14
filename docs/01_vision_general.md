@@ -16,6 +16,7 @@ AURORA es una aplicacion web para atencion juridica de personas privadas de la l
 - Aplica reglas de negocio de formulario en cliente:
   - `frontend/src/utils/evaluateAuroraRules.ts`
   - `frontend/src/utils/evaluateCelesteRules.ts`
+- Calcula estados visibles mediante `frontend/src/config/estadoActuaciones.rules.ts`, usado por Usuarios asignados, historial de actuaciones y asignacion de defensores.
 
 ## 2.2 Backend
 
@@ -52,6 +53,7 @@ La app usa navegacion por hash (`frontend/src/App.jsx`) y estas vistas:
 - Consulta de PPL por documento.
 - Edicion y guardado de entrevista.
 - Creacion y consulta de historial de actuaciones.
+- Recalculo en vivo de estado de la actuacion activa sin recargar la aplicacion.
 - Asignacion, reasignacion y creacion de defensores.
 - Listado y descarga de formatos.
 
@@ -75,4 +77,4 @@ La app usa navegacion por hash (`frontend/src/App.jsx`) y estas vistas:
 
 - Agregar diagrama de componentes (frontend/backend/repositorios Oracle).
 - Definir convencion oficial de codificacion de texto para claves de BD y labels de formulario.
-- Documentar estrategia de despliegue (ambientes, variables, puertos, observabilidad).
+- Ampliar observabilidad de despliegue (logs estructurados, metricas y trazabilidad de errores).

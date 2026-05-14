@@ -1,6 +1,6 @@
 # Arquitectura del sistema Aurora
 
-Fecha: 2026-05-13
+Fecha: 2026-05-14
 
 ## Introducción
 
@@ -31,6 +31,7 @@ En producción, el backend puede servir el frontend compilado desde `backend/pub
 | Oracle | `backend/db/oraclePool.js`, `backend/repositories/oracle/` | Fuente principal para consultas y escrituras de negocio. |
 | Formatos | `backend/data/formatos.mock.js` | Catálogo de documentos descargables desde la Caja de Herramientas. |
 | Docker | `Dockerfile`, `docker-compose.yml` | Empaquetado de la aplicación en un servicio único. |
+| Estados de actuaciones | `frontend/src/config/estadoActuaciones.rules.ts` | Derivación centralizada de etiquetas y semáforo para listados, historial y asignación. |
 
 ## Tecnologías utilizadas
 
@@ -87,10 +88,12 @@ Usuario -> Frontend -> Backend/API -> Oracle
 ## Consideraciones de integración
 
 - El frontend usa `VITE_API_BASE_URL`; para despliegue en el mismo origen se recomienda `/api`.
-- En desarrollo, Vite proxifica `/api` y `/downloads` hacia el backend.
+- En desarrollo, Vite proxifica `/api` hacia el backend.
 - El backend usa `ORACLE_SCHEMA` para calificar objetos Oracle; si no se define, usa `ORACLE_USER`.
 - Azure AD solo queda habilitado si existen `AZURE_AD_TENANT_ID` y `AZURE_AD_CLIENT_ID`.
 - Las rutas de negocio están protegidas por JWT mediante `requireAuth`.
+- La etiqueta visible de estado se deriva en frontend con `getEstadoDisplayInfo`; los campos persistidos `Estado del trámite` y `Estado del caso` se mantienen por compatibilidad.
+- El historial recalcula la actuación activa con el registro en memoria para evitar depender de recargas durante la edición.
 
 ## Limitaciones o puntos no validados
 

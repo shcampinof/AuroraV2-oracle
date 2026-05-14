@@ -11,11 +11,11 @@ pinned: false
 AURORA es una aplicación web para la gestión de atención jurídica de personas privadas de la libertad.
 Incluye un frontend en React y un backend en Node.js/Express, desplegados en un único contenedor Docker.
 
-## Estado Actual del Proyecto (2026-03-09)
+## Estado Actual del Proyecto (2026-05-14)
 
 - Estado general: funcional.
-- Publicación: desplegado en Hugging Face Space (`main`) con commit `adff172` el 2026-03-09.
-- Validación frontend: `lint`, `test` y `build` en verde.
+- Despliegue recomendado: contenedor único Docker/Compose, backend Express sirviendo API y frontend compilado.
+- Validación frontend reciente: pruebas de reglas de estado y build en verde.
 - Validación backend:
   - Se ejecutó una suite funcional de integración en entorno temporal aislado (backend clonado en puerto `8899`).
   - Resultado: 17/17 checks exitosos.
@@ -29,6 +29,10 @@ Incluye un frontend en React y un backend en Node.js/Express, desplegados en un 
 
 ## Cambios Técnicos Relevantes en esta actualización
 
+- Los estados de actuación se derivan con reglas centralizadas en `frontend/src/config/estadoActuaciones.rules.ts`.
+- El historial de actuaciones recalcula la fila activa con el registro vivo del formulario; así la "Acción a impulsar" se actualiza sin depender de recargar toda la aplicación.
+- La vista de asignación de defensores usa el mismo derivador para mostrar "Acción a impulsar", en lugar de depender solo del valor crudo persistido.
+- Se actualizó la exclusión de respaldos locales (`.cleanup-backups/`) para que no entren a Git ni a la imagen Docker.
 - Ajuste de configuración de Vite para usar `VITE_DEV_API_TARGET` vía entorno de Node sin romper `vitest`/`vite build`.
 - Limpieza de dependencias innecesarias en `useMemo` de `FormularioAtencion` (sin impacto funcional esperado).
 - Se mantienen cambios funcionales previos del repositorio en backend/frontend para flujo de PAG, defensores e historial.
@@ -36,9 +40,8 @@ Incluye un frontend en React y un backend en Node.js/Express, desplegados en un 
 ## Evidencia de Validación Ejecutada
 
 - Frontend:
-  - `npm run lint`
-  - `npm run test`
-  - `npm run build`
+  - `npm --prefix frontend run test -- estadoActuaciones.rules.test.ts evaluateAuroraRules.test.ts`
+  - `npm --prefix frontend run build`
 - Backend (funcional, integración):
   - pruebas API end-to-end sobre copia temporal del backend, sin modificar datos de trabajo del repositorio.
 

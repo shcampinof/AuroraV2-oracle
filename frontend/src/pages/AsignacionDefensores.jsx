@@ -11,6 +11,7 @@ import {
 } from '../services/api.js';
 import Toast from '../components/Toast.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
+import { getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
 import { displayOrDash } from '../utils/pplDisplay.js';
 import { reportError } from '../utils/reportError.js';
 
@@ -32,6 +33,11 @@ function normalizeDefensorNombre(value) {
 
 function isNombreDefensorValido(value) {
   return /^[\p{L}\s]+$/u.test(value);
+}
+
+function getAccionImpulsarDisplay(row) {
+  const estadoInfo = getEstadoDisplayInfo(row);
+  return String(estadoInfo?.label || row?.accionImpulsar || '').trim();
 }
 
 const DEFAULT_INITIAL_LIMIT = 100;
@@ -938,7 +944,7 @@ function AsignacionDefensores() {
                       <td>{displayOrDash(r.nombreUsuario)}</td>
                       <td>{displayOrDash(r.departamentoLugarReclusion)}</td>
                       <td>{displayOrDash(r.municipioLugarReclusion)}</td>
-                      <td>{displayOrDash(r.accionImpulsar)}</td>
+                      <td>{displayOrDash(getAccionImpulsarDisplay(r))}</td>
                       <td>{displayOrDash(r.defensorAsignado)}</td>
                       <td>{displayOrDash(r.lugarReclusion)}</td>
                       <td>{displayOrDash(r.autoridadCargo)}</td>

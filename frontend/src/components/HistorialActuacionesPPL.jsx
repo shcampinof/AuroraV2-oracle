@@ -336,7 +336,7 @@ export default function HistorialActuacionesPPL({
 }) {
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
   const [historialError, setHistorialError] = useState('');
-  const [actuaciones, setActuaciones] = useState([]);
+  const [actuacionesRaw, setActuacionesRaw] = useState([]);
 
   const documentoNormalizado = useMemo(() => String(numeroDocumento ?? '').trim(), [numeroDocumento]);
 
@@ -345,7 +345,7 @@ export default function HistorialActuacionesPPL({
 
     async function cargarHistorial() {
       if (!documentoNormalizado) {
-        setActuaciones([]);
+        setActuacionesRaw([]);
         setHistorialError('');
         return;
       }
@@ -357,28 +357,11 @@ export default function HistorialActuacionesPPL({
         if (!alive) return;
 
         const rows = Array.isArray(response?.actuaciones) ? response.actuaciones : [];
-        const normalizedRows = rows.map((item, idx) => {
-          const rowData = item?.registro && typeof item.registro === 'object' ? item.registro : {};
-          const tipo = resolveTipoPpl(rowData);
-          const estadoInfo = getEstadoDisplayInfo(rowData);
-          return {
-            id: String(item?.id ?? `actuacion-${idx + 1}`),
-            rowIndex: Number.isInteger(item?.rowIndex) ? Number(item.rowIndex) : idx,
-            registro: rowData,
-            iniciada: hasActuacionIniciada(rowData),
-            bloque3Iniciado: hasBloque3Diligenciado(rowData),
-            fechaAnalisisJuridico: getFechaAnalisisDisplay(rowData),
-            resumenAnalisis: getResumenAnalisisDisplay(rowData, tipo),
-            actuacionJudicial: getActuacionJudicialDisplay(rowData, tipo),
-            estadoLabel: String(estadoInfo?.label || '').trim(),
-            estadoClass: String(estadoInfo?.className || '').trim(),
-          };
-        });
-        setActuaciones(normalizedRows);
+        setActuacionesRaw(rows);
       } catch (e) {
         reportError(e, 'historial-actuaciones:cargar');
         if (!alive) return;
-        setActuaciones([]);
+        setActuacionesRaw([]);
         setHistorialError('No fue posible cargar el historial de actuaciones.');
       } finally {
         if (alive) setCargandoHistorial(false);
@@ -391,6 +374,61 @@ export default function HistorialActuacionesPPL({
       alive = false;
     };
   }, [documentoNormalizado, refreshToken]);
+
+  const actuaciones = useMemo(() => {
+    const activeId = String(actuacionActivaId || '').trim();
+    const registroActual = registro && typeof registro === 'object' ? registro : null;
+    const activeGestionId = Number(registroActual?.__oracleIdGestion || 0);
+    let activeRowFound = false;
+
+    const normalizeActuacion = (item, idx, liveRegistro = null) => {
+      const baseRegistro = item?.registro && typeof item.registro === 'object' ? item.registro : {};
+      const rowData = liveRegistro && typeof liveRegistro === 'object' ? { ...baseRegistro, ...liveRegistro } : baseRegistro;
+      const itemId = String(item?.id ?? `actuacion-${idx + 1}`);
+      const rowIndexNumber = Number(item?.rowIndex);
+      const tipo = resolveTipoPpl(rowData);
+      const estadoInfo = getEstadoDisplayInfo(rowData);
+
+      return {
+        id: itemId,
+        rowIndex: Number.isFinite(rowIndexNumber) ? rowIndexNumber : idx,
+        registro: rowData,
+        iniciada: hasActuacionIniciada(rowData),
+        bloque3Iniciado: hasBloque3Diligenciado(rowData),
+        fechaAnalisisJuridico: getFechaAnalisisDisplay(rowData),
+        resumenAnalisis: getResumenAnalisisDisplay(rowData, tipo),
+        actuacionJudicial: getActuacionJudicialDisplay(rowData, tipo),
+        estadoLabel: String(estadoInfo?.label || '').trim(),
+        estadoClass: String(estadoInfo?.className || '').trim(),
+      };
+    };
+
+    const rows = actuacionesRaw.map((item, idx) => {
+      const itemId = String(item?.id ?? `actuacion-${idx + 1}`);
+      const itemRowIndex = Number(item?.rowIndex);
+      const matchesActiveId = activeId && itemId === activeId;
+      const matchesActiveGestion = !activeId && activeGestionId > 0 && Number(itemRowIndex) === activeGestionId;
+      const shouldUseLiveRegistro = Boolean(registroActual && (matchesActiveId || matchesActiveGestion));
+      if (shouldUseLiveRegistro) activeRowFound = true;
+      return normalizeActuacion(item, idx, shouldUseLiveRegistro ? registroActual : null);
+    });
+
+    if (activeId && registroActual && !activeRowFound) {
+      rows.push(
+        normalizeActuacion(
+          {
+            id: activeId,
+            rowIndex: activeGestionId > 0 ? activeGestionId : rows.length,
+            registro: registroActual,
+          },
+          rows.length,
+          registroActual
+        )
+      );
+    }
+
+    return rows;
+  }, [actuacionesRaw, actuacionActivaId, registro]);
 
   const nombreCompleto = useMemo(() => {
     return readFirstField(registro, ['Nombre', 'Nombre usuario', 'nombreUsuario', 'nombre']) || '\u2014';

@@ -31,7 +31,7 @@ Archivos principales:
 
 - `Dockerfile`: construye el frontend y prepara el backend en modo produccion.
 - `docker-compose.yml`: levanta el servicio `aurora`.
-- `.dockerignore`: excluye dependencias, builds locales, documentacion pesada y archivos `.env`.
+- `.dockerignore`: excluye dependencias, builds locales, documentacion pesada, respaldos locales y archivos `.env`.
 - `.env.example`: plantilla de configuracion sin secretos.
 
 El `Dockerfile` usa una imagen Debian slim de Node.js 20 para mayor compatibilidad con la dependencia `oracledb`.
@@ -72,7 +72,6 @@ Variables opcionales:
 | `VITE_API_BASE_URL` | Base de API usada al compilar el frontend. Para este despliegue dejar `/api`. |
 | `CORS_ORIGIN` | Allowlist CORS separada por comas si se consume la API desde otro origen. |
 | `ENABLE_STARTUP_WARMUP` | Precarga consultas al iniciar si se define `true`. |
-| `FORMATOS_BASE_URL` | URL base alternativa para descargas de formatos. |
 | `ORACLE_POOL_MIN`, `ORACLE_POOL_MAX`, `ORACLE_POOL_INCREMENT`, `ORACLE_POOL_TIMEOUT` | Ajustes del pool Oracle. |
 
 ## Despliegue principal con Docker
@@ -126,6 +125,22 @@ Reconstruir despues de cambios:
 docker compose build --no-cache aurora
 docker compose up -d
 ```
+
+## Validacion previa al despliegue
+
+Antes de construir la imagen, ejecutar al menos:
+
+```bash
+npm --prefix frontend run test -- estadoActuaciones.rules.test.ts evaluateAuroraRules.test.ts
+npm --prefix frontend run build
+npm --prefix backend test
+```
+
+Para cambios en estados o historial, verificar manualmente que:
+
+- la columna `Accion a impulsar` en historial cambia al diligenciar el formulario activo;
+- `PAG - Asignacion de casos de condenados` muestra la misma etiqueta de estado derivada que `Usuarios asignados`;
+- despues de guardar, el historial persiste la actuacion correcta mediante `actuacionId`.
 
 ## Despliegue alternativo tradicional con Node.js
 

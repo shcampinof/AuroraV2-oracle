@@ -206,6 +206,24 @@ describe('estadoActuaciones.rules', () => {
     expect(display.className).toBe('estado--azul');
   });
 
+  it('ESTADO.SOURCE.AURORA_RECURSO.1 - fila resumida cierra con fecha de decision del recurso', () => {
+    const display = getEstadoDisplayInfo({
+      estadoSource: {
+        ...buildBloque3Base(),
+        [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(8),
+        [AURORA_FIELD_CATALOG.q40]: 'Utilidad pública (solo mujeres)',
+        'Fecha de radicacion de solicitud de utilidad publica': formatDateDaysAgo(6),
+        'Fecha de decision de la autoridad': formatDateDaysAgo(4),
+        'Sentido de la decision': 'Niega utilidad pública',
+        'Se presenta recurso': 'Sí',
+        'Fecha de la decision del recurso': formatDateDaysAgo(1),
+      },
+    });
+
+    expect(display.label).toBe('Caso cerrado');
+    expect(display.className).toBe('estado--gris');
+  });
+
   it('ESTADO.ACTUACION_RECIENTE.1 - cuando hay multiples actuaciones toma la mas reciente', () => {
     const display = getEstadoDisplayInfo({
       data: {
@@ -296,6 +314,30 @@ describe('estadoActuaciones.rules', () => {
         'SENTIDO DE LA DECISIÓN': 'Niega la solicitud',
       },
     });
+    expect(display.label).toBe('Caso cerrado');
+    expect(display.className).toBe('estado--gris');
+  });
+
+  it('ESTADO.SINDICADO.RESUMEN.1 - fila resumida con aliases Oracle cierra con decision de recurso', () => {
+    const display = getEstadoDisplayInfo({
+      estadoSource: {
+        'Situacion Juridica': 'Sindicado',
+        'Defensor(a) Publico(a) Asignado para tramitar la solicitud': 'DEFENSOR',
+        'Fecha de analisis juridico del caso': formatDateDaysAgo(8),
+        'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TERMINOS':
+          'Se avanzará con solicitud de revocatoria o sustitución de la medida',
+        'RESUMEN DEL ANALISIS JURIDICO DEL PRESENTE CASO': 'Resumen',
+        'Fecha de entrevista': formatDateDaysAgo(7),
+        'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTIAS PARA SUSTENTAR REVOCATORIA':
+          formatDateDaysAgo(6),
+        'FECHA DE REALIZACION DE AUDIENCIA': formatDateDaysAgo(5),
+        'SENTIDO DE LA DECISION': 'Niega la solicitud',
+        'SE RECURRIO EN CASO DE DECISION NEGATIVA': 'Sí',
+        'Fecha de presentacion del recurso': formatDateDaysAgo(4),
+        'Fecha de la decision del recurso': formatDateDaysAgo(1),
+      },
+    });
+
     expect(display.label).toBe('Caso cerrado');
     expect(display.className).toBe('estado--gris');
   });

@@ -1,6 +1,6 @@
 # Validación post despliegue Aurora
 
-Fecha: 2026-05-13
+Fecha: 2026-05-14
 
 ## Introducción
 
@@ -92,6 +92,7 @@ curl http://localhost:7860/api/health/db
 - [ ] El formulario de atención abre desde un documento.
 - [ ] Los datos base se visualizan.
 - [ ] Las validaciones obligatorias se muestran cuando corresponde.
+- [ ] Al diligenciar la actuación activa, el historial actualiza `Acción a impulsar` sin recargar la aplicación.
 - [ ] Guardar cambios funciona en ambiente autorizado.
 - [ ] Crear actuación funciona en ambiente autorizado.
 - [ ] No ejecutar escrituras en producción si la validación no fue aprobada.
@@ -102,6 +103,7 @@ curl http://localhost:7860/api/health/db
 - [ ] La validación de cédula PAG responde.
 - [ ] El catálogo de defensores carga.
 - [ ] La lista de condenados carga.
+- [ ] La columna `Acción a impulsar` coincide con el estado derivado usado en Usuarios asignados.
 - [ ] La asignación o reasignación funciona en ambiente autorizado.
 - [ ] Se valida que los cambios queden persistidos.
 
@@ -110,7 +112,7 @@ curl http://localhost:7860/api/health/db
 - [ ] La Caja de Herramientas carga formatos.
 - [ ] Se puede solicitar descarga de un formato existente.
 - [ ] Un formato inexistente responde error controlado.
-- [ ] `FORMATOS_BASE_URL` apunta al origen correcto si se personaliza.
+- [ ] Cada formato descargable tiene `downloadUrl` configurado.
 
 ## Logs
 
@@ -126,6 +128,7 @@ curl http://localhost:7860/api/health/db
 - [ ] `docker compose logs aurora` no muestra errores críticos.
 - [ ] El `HEALTHCHECK` de la imagen está saludable.
 - [ ] El puerto publicado coincide con `HOST_PORT`.
+- [ ] El contexto de build no incluye `.env`, `backend/.env`, `frontend/dist`, `backend/public/app` ni `.cleanup-backups/`.
 
 ## Evidencias mínimas
 

@@ -1,6 +1,6 @@
 # Descripción del código fuente Aurora
 
-Fecha: 2026-05-13
+Fecha: 2026-05-14
 
 ## Introducción
 
@@ -44,6 +44,15 @@ Páginas principales:
 | `CajaHerramientas.jsx` | Consulta y descarga de formatos. |
 | `ManualInteractivo.jsx` | Manual o apoyo interno en la interfaz. |
 
+Componentes y reglas relevantes:
+
+| Archivo | Uso observado |
+|---|---|
+| `components/HistorialActuacionesPPL.jsx` | Consulta historial, normaliza actuaciones y recalcula la fila activa con el registro vivo. |
+| `config/estadoActuaciones.rules.ts` | Deriva estado lógico, etiqueta y clase visual de actuaciones. |
+| `utils/evaluateAuroraRules.ts` | Evalúa reglas del flujo de condenados. |
+| `utils/evaluateCelesteRules.ts` | Evalúa reglas del flujo de sindicados. |
+
 Servicios frontend:
 
 | Archivo | Uso |
@@ -61,7 +70,7 @@ Responsabilidades observadas:
 - Configurar Helmet, CORS y JSON body parser.
 - Exponer rutas bajo `/api`.
 - Proteger rutas de negocio con `requireAuth`.
-- Servir `/downloads` como carpeta estática.
+- Redirigir descargas de formatos a enlaces configurados.
 - Servir el build frontend si existe `backend/public/app/index.html`.
 - Cerrar el pool Oracle ante `SIGINT` o `SIGTERM`.
 
@@ -170,6 +179,7 @@ Frontend:
 
 - Mantener sincronizada la documentación de rutas cuando cambie `backend/routes/`.
 - No modificar repositorios Oracle sin validar impacto en `FormularioAtencion` y `AsignacionDefensores`.
+- No duplicar reglas de estado en componentes; usar `getEstadoDisplayInfo` como punto común.
 - Ejecutar `npm run qa:smoke` antes de entregar cambios relevantes.
 - Mantener fuera del repositorio cualquier exportación de datos sensible.
 - Mantener `.env.example` actualizado cada vez que se agregue una variable de entorno.

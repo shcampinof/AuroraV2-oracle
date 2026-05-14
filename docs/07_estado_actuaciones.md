@@ -21,6 +21,12 @@ Fuentes:
    - `sindicado`: `evaluateCelesteRules({ answers: data }).derivedStatus`
 4. Mapea etiqueta/clase de estado para UI.
 
+Consumidores actuales:
+
+- `Usuarios asignados`: calcula la columna de estado/acción con `getEstadoDisplayInfo`.
+- `Historial de actuaciones`: calcula cada fila y, para la actuación activa, mezcla el registro persistido con el registro vivo del formulario.
+- `PAG - Asignación de casos de condenados`: muestra `Acción a impulsar` con el mismo derivador para evitar diferencias con Usuarios asignados.
+
 ---
 
 ## 2. Mapeo principal
@@ -108,3 +114,9 @@ Notas:
 
 - El estado visible en tablas se calcula con `pickActiveCaseData`, priorizando la actuacion mas reciente.
 - En guardado, si hay `actuacionId` se actualiza esa actuacion; si no, el backend actualiza la ultima actuacion del documento.
+
+## 6. Sincronizacion con persistencia
+
+- La etiqueta visible es derivada y puede actualizarse en UI antes de guardar.
+- `Estado del trámite` y `Estado del caso` se escriben al guardar para compatibilidad con filtros y consultas históricas.
+- No se debe agregar una segunda implementación de reglas de estado en componentes de tabla; todos deben llamar `getEstadoDisplayInfo` u `obtenerEstadoActuacion`.

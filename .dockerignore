@@ -21,6 +21,7 @@ logs
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
+.cleanup-backups
 
 desktop.ini
 .DS_Store

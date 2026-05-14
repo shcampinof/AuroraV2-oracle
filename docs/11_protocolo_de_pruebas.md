@@ -112,6 +112,8 @@ npm run encoding:check
 | HIS-02 | Editar actuación activa y guardar | Cambios persisten en actuación correcta | Manual |
 | HIS-03 | Consulta historial por documento | Orden y contenido coherentes | Manual |
 | HIS-04 | Guardado de estado derivado | `Estado del trámite` y `Estado del caso` sincronizados | Manual |
+| HIS-05 | Editar actuación activa sin guardar | La columna `Acción a impulsar` del historial cambia con el registro vivo | Manual |
+| HIS-06 | Asignación de defensores | La columna `Acción a impulsar` usa la misma etiqueta derivada que Usuarios asignados | Manual |
 
 ### 6.5 API crítica
 

@@ -1,6 +1,6 @@
 # Infraestructura Aurora
 
-Fecha: 2026-05-13
+Fecha: 2026-05-14
 
 ## Introducción
 
@@ -34,6 +34,7 @@ No se pudo validar en esta revisión el sistema operativo ni la topología del s
 | `DOCUMENTACION_TECNICA_AURORA/` | Documentación técnica generada en esta revisión. |
 | `Dockerfile` | Build de frontend y backend en una imagen. |
 | `docker-compose.yml` | Servicio Docker Compose `aurora`. |
+| `.dockerignore` | Exclusión de dependencias, secretos, documentación pesada, builds y respaldos locales. |
 
 ## Puertos utilizados
 
@@ -59,6 +60,8 @@ Para despliegue recomendado:
 - Docker Compose.
 - Acceso desde el host Docker hacia Oracle.
 
+La imagen no incluye `node_modules` locales, `.env*`, `frontend/dist`, `backend/public/app`, `docs/`, `BD Documentation/` ni `.cleanup-backups/`.
+
 ## Variables de entorno
 
 Variables detectadas o documentadas:
@@ -69,7 +72,6 @@ Variables detectadas o documentadas:
 | `NODE_ENV` | Modo de ejecución. En producción debe ser `production`. |
 | `ENABLE_STARTUP_WARMUP` | Precarga opcional de datos al iniciar. |
 | `CORS_ORIGIN` | Lista de orígenes permitidos. |
-| `FORMATOS_BASE_URL` | Base externa para descargas de formatos. |
 | `AUTH_JWT_SECRET` | Secreto de firma JWT. Obligatorio en producción. |
 | `AUTH_LOCAL_ADMIN_ENABLED` | Habilita o deshabilita login local. |
 | `AUTH_LOCAL_ADMIN_USERNAME` | Usuario local si se habilita. |
@@ -132,3 +134,4 @@ Oracle es la fuente de datos de negocio mediante `backend/db/oraclePool.js` y `b
 - Validar conectividad Oracle antes de liberar el sistema.
 - Mantener `.env` y `.env.*` fuera de control de versiones.
 - Revisar periódicamente el tamaño del bundle frontend y las dependencias.
+- Mantener respaldos operativos locales fuera de Git y Docker.
