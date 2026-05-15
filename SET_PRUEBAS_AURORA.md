@@ -231,3 +231,36 @@ Resultado:
 
 - Pruebas frontend focalizadas: 2 archivos, 62 pruebas aprobadas.
 - Build frontend: exitoso. Se mantiene advertencia no bloqueante de bundle principal mayor a 500 kB.
+
+## 13. Actualización 2026-05-15 - PWA y cola offline
+
+Cambios validados:
+
+- Manifest PWA con `id`, `scope`, `lang`, `display: standalone` e iconos `any maskable`.
+- Service worker `aurora-shell-v2` con precache de shell y assets hash de Vite inyectados al finalizar `npm run build`.
+- Cola offline en IndexedDB para escrituras controladas: `PUT /api/ppl/:documento`, `POST /api/ppl/:documento/actuaciones`, `POST /api/ppl/asignar-defensor` y `POST /api/defensores`.
+- Reintentos diferidos con Background Sync cuando el navegador lo soporte y respaldo por evento `online`.
+- Limites de carga: 75 solicitudes pendientes y 256 KB maximos por cuerpo; las consultas `GET /api` siguen fuera de cache.
+- Documentacion agregada en `docs/15_pwa_operacion_offline.md` y manual tecnico actualizado.
+
+Comandos ejecutados:
+
+```bash
+npm --prefix frontend run test -- pwaConfig.test.ts
+npm --prefix frontend run lint
+npm --prefix frontend run test
+npm --prefix frontend run build
+npm --prefix backend test
+npm run qa:smoke
+node --check frontend/public/service-worker.js
+node --check frontend/dist/service-worker.js
+```
+
+Resultado:
+
+- Prueba PWA focalizada: 1 archivo, 3 pruebas aprobadas.
+- Suite frontend completa: 5 archivos, 84 pruebas aprobadas.
+- Lint frontend: exitoso.
+- Build frontend: exitoso; `[pwa] Assets precacheados en service-worker.js: 2`.
+- Test backend: `auth-config checks passed`.
+- Smoke general: exitoso. Se mantiene advertencia no bloqueante de Vite por bundle principal mayor a 500 kB.

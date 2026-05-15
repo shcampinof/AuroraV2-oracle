@@ -967,6 +967,11 @@ router.post('/asignar-defensor', async (req, res) => {
       pagNombre: String(pag?.nombre || '').trim(),
       pagCedula: pag.cedula,
       defensorCedula,
+      fechaAsignacion:
+        body?.fechaAsignacion ||
+        body?.fechaAsignacionPag ||
+        body?.['Fecha de asignación del PAG'] ||
+        body?.['Fecha de asignacion del PAG'],
     });
     return res.json({
       ok: true,

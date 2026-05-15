@@ -103,7 +103,16 @@ app.use('/api/defensores', requireAuth, defensoresRoutes);
 
 if (hasFrontendBuild) {
   // Sirve el build del frontend ya compilado.
-  app.use(express.static(frontendDistPath));
+  app.use(
+    express.static(frontendDistPath, {
+      setHeaders: (res, filePath) => {
+        const fileName = path.basename(filePath);
+        if (fileName === 'service-worker.js' || fileName === 'manifest.json') {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    })
+  );
 
   // Fallback SPA para rutas del frontend (excluye API).
   app.get(/^\/(?!api(?:\/|$)).*/, (req, res) => {

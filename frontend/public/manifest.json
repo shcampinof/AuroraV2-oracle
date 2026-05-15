@@ -1,20 +1,25 @@
 {
   "name": "Aurora - Herramienta para la gestion de atencion juridica",
   "short_name": "Aurora",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "lang": "es-CO",
   "background_color": "#f3f5f7",
   "theme_color": "#2f64ad",
   "icons": [
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

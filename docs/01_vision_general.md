@@ -13,6 +13,7 @@ AURORA es una aplicacion web para atencion juridica de personas privadas de la l
 
 - Renderiza las vistas y formularios.
 - Consume endpoints HTTP del backend via `frontend/src/services/api.js`.
+- Expone una PWA instalable con service worker, precache de shell/assets y cola offline acotada para escrituras criticas.
 - Aplica reglas de negocio de formulario en cliente:
   - `frontend/src/utils/evaluateAuroraRules.ts`
   - `frontend/src/utils/evaluateCelesteRules.ts`
@@ -56,6 +57,7 @@ La app usa navegacion por hash (`frontend/src/App.jsx`) y estas vistas:
 - Recalculo en vivo de estado de la actuacion activa sin recargar la aplicacion.
 - Asignacion, reasignacion y creacion de defensores.
 - Listado y descarga de formatos.
+- Instalacion PWA y reintento diferido de escrituras cuando se pierde conectividad.
 
 ## 5. Configuracion y ejecucion local
 
@@ -72,6 +74,7 @@ La app usa navegacion por hash (`frontend/src/App.jsx`) y estas vistas:
 
 - Normalizacion intensiva de claves para tolerar variantes de codificacion.
 - La suite backend automatizada actual cubre configuracion de autenticacion; falta ampliar a rutas e integracion Oracle.
+- La PWA no cachea consultas de negocio; si se requiere lectura offline completa debe definirse una politica de vigencia y reconciliacion de datos.
 
 ## 7. Pendientes de arquitectura
 

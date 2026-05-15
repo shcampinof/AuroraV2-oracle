@@ -7,6 +7,7 @@ import {
   getDefensoresCondenados,
   getDefensoresCatalogo,
   extractDefensoresCatalogo,
+  isQueuedResponse,
   validatePagCedula,
 } from '../services/api.js';
 import Toast from '../components/Toast.jsx';
@@ -48,6 +49,7 @@ function AsignacionDefensores() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
   const [toastOpen, setToastOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState('Aurora - Cambios guardados correctamente');
 
   const [rows, setRows] = useState([]);
   const [seleccionados, setSeleccionados] = useState(new Set());
@@ -460,15 +462,22 @@ function AsignacionDefensores() {
       const defensorCedula = /^\d+$/.test(String(nuevoDefensorId || '').trim())
         ? String(nuevoDefensorId || '').trim()
         : '';
-      await assignDefensorPpl(documentos, defensor, {
+      const data = await assignDefensorPpl(documentos, defensor, {
         pagCedula: pagValidado.cedula,
         ...(defensorCedula ? { defensorCedula } : {}),
       });
 
+      setToastMessage(
+        isQueuedResponse(data)
+          ? 'Asignacion guardada en cola. Se sincronizara cuando vuelva la conexion.'
+          : 'Aurora - Cambios guardados correctamente'
+      );
       setToastOpen(true);
       setSeleccionados(new Set());
-      await cargarPpl(filtrosAplicados, tab);
-      await cargarDefensoresActuales();
+      if (!isQueuedResponse(data)) {
+        await cargarPpl(filtrosAplicados, tab);
+        await cargarDefensoresActuales();
+      }
     } catch (e) {
       reportError(e, 'asignacion-defensores:guardar');
       setError(String(e?.message || 'Error guardando la asignación.'));
@@ -520,9 +529,15 @@ function AsignacionDefensores() {
       }
       setCrearDefensorCedula('');
       setCrearDefensorNombre('');
-      setCrearDefensorSuccess('Defensor creado correctamente');
-      await cargarDefensoresActuales();
-      window.dispatchEvent(new CustomEvent('aurora:defensores-updated'));
+      setCrearDefensorSuccess(
+        isQueuedResponse(data)
+          ? 'Defensor guardado en cola. Se sincronizara cuando vuelva la conexion.'
+          : 'Defensor creado correctamente'
+      );
+      if (!isQueuedResponse(data)) {
+        await cargarDefensoresActuales();
+        window.dispatchEvent(new CustomEvent('aurora:defensores-updated'));
+      }
     } catch (e) {
       reportError(e, 'asignacion-defensores:crear-defensor');
       setCrearDefensorError(String(e?.message || 'Error guardando defensor.'));
@@ -565,7 +580,7 @@ function AsignacionDefensores() {
 
       <Toast
         open={toastOpen}
-        message="Aurora - Cambios guardados correctamente"
+        message={toastMessage}
         onClose={() => setToastOpen(false)}
       />
 

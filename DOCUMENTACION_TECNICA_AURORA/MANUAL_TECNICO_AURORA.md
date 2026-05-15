@@ -14,7 +14,7 @@ Aurora apoya la gestión de atención jurídica de personas privadas de la liber
 
 | Capa | Tecnología |
 |---|---|
-| Frontend | React, Vite, JavaScript/TypeScript |
+| Frontend | React, Vite, JavaScript/TypeScript, PWA |
 | Backend | Node.js, Express |
 | Autenticación | JWT, Azure AD opcional |
 | Base de datos | Oracle mediante `oracledb` |
@@ -73,6 +73,27 @@ En desarrollo, Vite usa proxy para `/api`. En producción con el backend como se
 - `FormularioAtencion.jsx` sincroniza `Estado del trámite` y `Estado del caso` al guardar.
 - `HistorialActuacionesPPL.jsx` recalcula la fila activa con el registro vivo del formulario, por lo que la UI puede mostrar cambios de estado antes de guardar o recargar.
 - `AsignacionDefensores.jsx` usa el mismo derivador para `Acción a impulsar`.
+
+### PWA y operacion offline
+
+Aurora incluye manifest y service worker de produccion. El build de frontend ejecuta `frontend/scripts/inject-pwa-assets.mjs` para precachear los assets hash generados por Vite en `dist/assets`.
+
+El service worker cachea el shell de la aplicacion y excluye las consultas `/api` para evitar datos de negocio obsoletos. Las escrituras criticas se pueden guardar en una cola IndexedDB acotada y reintentar con Background Sync o cuando el navegador emite `online`.
+
+Escrituras cubiertas:
+
+- `PUT /api/ppl/:documento`
+- `POST /api/ppl/:documento/actuaciones`
+- `POST /api/ppl/asignar-defensor`
+- `POST /api/defensores`
+
+Limites de la cola:
+
+- Maximo 75 solicitudes pendientes.
+- Maximo 256 KB por cuerpo.
+- El token de autenticacion se mantiene en memoria del service worker y no se persiste en IndexedDB.
+
+La documentacion detallada esta en `docs/15_pwa_operacion_offline.md`.
 
 ## Configuración de base de datos
 
@@ -176,6 +197,7 @@ También se debe validar:
 | API escritura controlada | `npm --prefix backend run test:api:write` |
 | Frontend lint | `npm --prefix frontend run lint` |
 | Frontend tests | `npm --prefix frontend run test` |
+| PWA | `npm --prefix frontend run test -- pwaConfig.test.ts` |
 | Reglas de estado | `npm --prefix frontend run test -- estadoActuaciones.rules.test.ts evaluateAuroraRules.test.ts` |
 | Frontend build | `npm --prefix frontend run build` |
 

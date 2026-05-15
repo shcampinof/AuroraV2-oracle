@@ -4,6 +4,7 @@ import {
   getDefensoresCatalogo,
   getPplActuacionesByDocumento,
   getPplByDocumento,
+  isQueuedResponse,
   updatePpl,
 } from '../services/api.js';
 import Toast from '../components/Toast.jsx';
@@ -1854,6 +1855,12 @@ export default function FormularioAtencion({ numeroInicial }) {
     try {
       const nextDraft = buildNuevaActuacionDraft(registro);
       const response = await createPplActuacion(doc, { data: nextDraft });
+      if (isQueuedResponse(response)) {
+        setError('');
+        setToastMessage('Nueva actuacion guardada en cola. Se creara automaticamente cuando vuelva la conexion.');
+        setToastOpen(true);
+        return;
+      }
       const createdActuacion =
         response?.actuacion && typeof response.actuacion === 'object' ? response.actuacion : null;
       const createdRegistro =
@@ -2545,9 +2552,13 @@ export default function FormularioAtencion({ numeroInicial }) {
         if (!String(nextRecord['Cierre del caso por imposibilidad de avanzar (si aplica)'] ?? '').trim()) {
           nextRecord['Cierre del caso por imposibilidad de avanzar (si aplica)'] = motivoCierre || 'Caso cerrado';
         }
-        await updatePpl(doc, buildUpdatePayload(nextRecord));
+        const updated = await updatePpl(doc, buildUpdatePayload(nextRecord));
         setRegistro(wrapRegistroForLookup(nextRecord));
-        setToastMessage('Caso cerrado y avances guardados autom\u00E1ticamente');
+        setToastMessage(
+          isQueuedResponse(updated)
+            ? 'Caso cerrado guardado en cola. Se sincronizara cuando vuelva la conexion.'
+            : 'Caso cerrado y avances guardados autom\u00E1ticamente'
+        );
         setToastOpen(true);
         setGuardadoOk(true);
         setHistorialRefreshToken((prev) => prev + 1);
@@ -3181,7 +3192,9 @@ export default function FormularioAtencion({ numeroInicial }) {
         setRegistro(wrapRegistroForLookup({ ...updated.registro, __tipoApi: nextTipo || tipoRegistro }));
       }
 
-      if (allowPartialAuroraSave) {
+      if (isQueuedResponse(updated)) {
+        setToastMessage('Cambios guardados en cola. Se sincronizaran automaticamente cuando vuelva la conexion.');
+      } else if (allowPartialAuroraSave) {
         setError(`${partialSaveMessage} Por favor complete el resto del bloque.`);
         setToastMessage(partialSaveMessage);
       } else if (calificacionesSinDestino.length > 0) {
@@ -3243,12 +3256,16 @@ export default function FormularioAtencion({ numeroInicial }) {
     setToastOpen(false);
 
     try {
-      await updatePpl(doc, buildUpdatePayload(next));
-      setToastMessage('Formulario guardado');
+      const updated = await updatePpl(doc, buildUpdatePayload(next));
+      setToastMessage(
+        isQueuedResponse(updated)
+          ? 'Formulario guardado en cola. Se sincronizara cuando vuelva la conexion.'
+          : 'Formulario guardado'
+      );
       setToastOpen(true);
 
       // Redirigir/navegar a AURORA del mismo usuario y abrir Bloque 2 como siguiente paso.
-      const refreshed = await getPplByDocumento(doc);
+      const refreshed = isQueuedResponse(updated) ? null : await getPplByDocumento(doc);
       const r = refreshed?.registro || next;
       const refreshedTipo = String(refreshed?.tipo ?? 'condenado').trim() || 'condenado';
       setTipoRegistro('condenado');

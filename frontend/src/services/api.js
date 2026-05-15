@@ -1,4 +1,4 @@
-﻿import { getAuthToken } from './authStorage.js';
+﻿import { getAuthToken, syncAuthTokenToServiceWorker } from './authStorage.js';
 
 function normalizeApiBase(base) {
   return String(base || '').trim().replace(/\/+$/, '');
@@ -87,6 +87,7 @@ async function fetchJson(url, options = {}, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS
     controller.abort('timeout');
   }, timeoutMs);
   try {
+    syncAuthTokenToServiceWorker();
     const requestOptions = {
       ...(options || {}),
       headers: {
@@ -132,6 +133,23 @@ async function readJsonOrThrow(res, fallbackMessage) {
   );
 }
 
+export function isQueuedResponse(data) {
+  return Boolean(data?.queued || data?.__queued);
+}
+
+function normalizeQueuedResponse(data, fallback = {}) {
+  if (!isQueuedResponse(data)) return data;
+  return {
+    ...fallback,
+    ...data,
+    __queued: true,
+    queued: true,
+    message:
+      data?.message ||
+      'Operacion guardada localmente. Se sincronizara cuando vuelva la conexion.',
+  };
+}
+
 // =====================
 // PPL (condenados / sindicados)
 // =====================
@@ -162,7 +180,10 @@ export async function updatePpl(documento, payload) {
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error('Error actualizando registro');
-  return readJsonOrThrow(res, 'Error actualizando registro'); // { tipo, registro }
+  const data = await readJsonOrThrow(res, 'Error actualizando registro');
+  return normalizeQueuedResponse(data, {
+    registro: payload?.data && typeof payload.data === 'object' ? payload.data : null,
+  }); // { tipo, registro }
 }
 
 // CREATE ACTUACION
@@ -174,7 +195,8 @@ export async function createPplActuacion(documento, payload) {
     body: JSON.stringify(payload || {}),
   });
   if (!res.ok) throw new Error('Error creando actuacion');
-  return readJsonOrThrow(res, 'Error creando actuacion'); // { documento, actuacion, registro }
+  const data = await readJsonOrThrow(res, 'Error creando actuacion');
+  return normalizeQueuedResponse(data, { documento }); // { documento, actuacion, registro }
 }
 
 // HISTORIAL DE ACTUACIONES
@@ -306,7 +328,9 @@ export async function createDefensor(payloadOrNombre) {
     const message = String(data?.error || 'Error guardando defensor.');
     throw new Error(message);
   }
-  return data; // { defensor }
+  return normalizeQueuedResponse(data, {
+    defensor: String(payload?.nombre || '').trim(),
+  }); // { defensor }
 }
 
 function normalizeDefensorOption(option) {
@@ -378,5 +402,6 @@ export async function assignDefensorPpl(documento, defensor, options = {}) {
   });
 
   if (!res.ok) throw new Error('Error guardando la asignacion de defensor');
-  return readJsonOrThrow(res, 'Error guardando la asignacion de defensor');
+  const data = await readJsonOrThrow(res, 'Error guardando la asignacion de defensor');
+  return normalizeQueuedResponse(data, { documentos, defensor: defensorNombre });
 }
