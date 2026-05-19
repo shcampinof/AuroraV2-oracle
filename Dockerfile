@@ -16,12 +16,22 @@ FROM node:20.19-bookworm-slim AS production
 ENV NODE_ENV=production
 ENV PORT=7860
 
+WORKDIR /app
+
+COPY CargueBD/requirements.txt ./CargueBD/requirements.txt
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 python3-pip \
+  && pip3 install --break-system-packages --no-cache-dir -r ./CargueBD/requirements.txt \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app/backend
 
 COPY backend/package*.json ./
 RUN npm ci --omit=dev --no-audit && npm cache clean --force
 
 COPY backend/ ./
+COPY CargueBD/ ../CargueBD/
 COPY --from=frontend-builder /app/frontend/dist ./public/app
 
 RUN chown -R node:node /app

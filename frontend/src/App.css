@@ -1382,6 +1382,15 @@ input[list]{
   color: #8a1f1f;
 }
 
+.load-error-text{
+  max-width: 360px;
+  margin-top: 0.35rem;
+  color: #8a1f1f;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
 .admin-loads-actions{
   display: flex;
   gap: 0.45rem;

@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 function configuredSchema() {
   return String(process.env.ORACLE_SCHEMA || process.env.ORACLE_USER || 'DNDP').trim().toUpperCase() || 'DNDP';
@@ -163,12 +163,68 @@ function getLoaderScriptPath() {
   return path.resolve(process.env.CARGUEBD_SCRIPT_PATH || path.join(__dirname, '..', '..', 'CargueBD', 'loader_service.py'));
 }
 
+function getPythonDependencyCheckArgs() {
+  return [
+    '-c',
+    'import pandas, openpyxl, oracledb; print("Dependencias Python OK")',
+  ];
+}
+
+function checkPythonRuntime(python, script) {
+  if (!fs.existsSync(script)) {
+    return `No existe el servicio Python de carga: ${script}`;
+  }
+
+  const result = spawnSync(python, getPythonDependencyCheckArgs(), {
+    cwd: path.dirname(script),
+    env: {
+      ...process.env,
+      PYTHONUNBUFFERED: '1',
+    },
+    encoding: 'utf8',
+    timeout: 30000,
+  });
+
+  if (result.error) {
+    return `No fue posible ejecutar ${python}: ${result.error.message}`;
+  }
+
+  if (result.status !== 0) {
+    const detail = `${result.stderr || result.stdout || ''}`.trim();
+    if (detail.includes("No module named 'pandas'")) {
+      return 'Falta instalar dependencia Python: pandas. Ejecute pip install -r CargueBD/requirements.txt o configure CARGUEBD_PYTHON con un entorno que la tenga.';
+    }
+    if (detail.includes("No module named 'openpyxl'")) {
+      return 'Falta instalar dependencia Python: openpyxl. Ejecute pip install -r CargueBD/requirements.txt o configure CARGUEBD_PYTHON con un entorno que la tenga.';
+    }
+    if (detail.includes("No module named 'oracledb'")) {
+      return 'Falta instalar dependencia Python: oracledb. Ejecute pip install -r CargueBD/requirements.txt o configure CARGUEBD_PYTHON con un entorno que la tenga.';
+    }
+    return `El entorno Python de cargas no esta listo: ${detail || `codigo ${result.status}`}`;
+  }
+
+  return '';
+}
+
 function startCargaJob(record) {
   if (RUNNING_JOBS.has(record.id)) return;
 
   const log = createLogWriter(record.logPath);
   const python = getPythonExecutable();
   const script = getLoaderScriptPath();
+  const runtimeError = checkPythonRuntime(python, script);
+  if (runtimeError) {
+    log(`[${nowIso()}] ERROR de entorno: ${runtimeError}\n`);
+    updateRecord(record.id, {
+      status: 'fallido',
+      startedAt: nowIso(),
+      finishedAt: nowIso(),
+      exitCode: null,
+      error: runtimeError,
+    });
+    return;
+  }
+
   const args = ['-u', script, '--fuente', record.sourceId, '--archivo', record.filePath];
   if (boolEnv('CARGUEBD_SKIP_ETL', false)) args.push('--no-etl');
 

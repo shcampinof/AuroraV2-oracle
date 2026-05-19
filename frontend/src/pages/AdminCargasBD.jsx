@@ -217,6 +217,9 @@ function AdminCargasBD() {
                     <span className={`load-status load-status--${carga.status}`}>
                       {statusLabel(carga.status)}
                     </span>
+                    {carga.status === 'fallido' && carga.error ? (
+                      <div className="load-error-text">{carga.error}</div>
+                    ) : null}
                   </td>
                   <td>{formatSize(carga.size)}</td>
                   <td>{carga.uploadedBy?.name || carga.uploadedBy?.username || '-'}</td>
