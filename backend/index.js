@@ -9,6 +9,7 @@ const authRoutes = require('./routes/auth');
 const formatosRoutes = require('./routes/formatos');
 const pplRoutes = require('./routes/ppl');
 const defensoresRoutes = require('./routes/defensores');
+const adminCargasRoutes = require('./routes/adminCargas');
 const healthRoutes = require('./routes/health');
 const { requireAuth } = require('./middleware/auth');
 const consolidado = require('./db/oracleConsolidado.repo');
@@ -100,6 +101,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/formatos', requireAuth, formatosRoutes);
 app.use('/api/ppl', requireAuth, pplRoutes);
 app.use('/api/defensores', requireAuth, defensoresRoutes);
+app.use('/api/admin/cargas', requireAuth, adminCargasRoutes);
 
 if (hasFrontendBuild) {
   // Sirve el build del frontend ya compilado.

@@ -1,6 +1,6 @@
 # Manual de usuario Aurora
 
-Fecha: 2026-05-13
+Fecha: 2026-05-19
 
 ## Introducción
 
@@ -37,6 +37,7 @@ Si el ingreso no avanza, se debe validar que la cuenta esté activa y autorizada
 | PAG - Asignación de casos de condenados | Asignación o reasignación de defensores. |
 | Caja de Herramientas | Consulta y descarga de formatos. |
 | Manual Interactivo | Material de apoyo dentro de la aplicación. |
+| Cargas mensuales | Módulo administrativo para subir Excel de PONAL, SISIPEC y Aurora 1.0. |
 
 ## Consulta de información
 
@@ -100,6 +101,19 @@ Formatos detectados en código:
 
 La descarga final depende del enlace configurado para cada formato.
 
+## Cargas mensuales
+
+El módulo `Cargas mensuales` solo está disponible para usuarios con rol autorizado. Permite:
+
+- Seleccionar la fuente de datos: PONAL, SISIPEC o Aurora 1.0.
+- Subir un archivo `.xlsx`.
+- Iniciar la carga hacia la base de datos.
+- Consultar el historial de cargas.
+- Revisar logs técnicos.
+- Reintentar una carga fallida.
+
+El usuario debe confirmar que el archivo corresponde a la fuente seleccionada antes de subirlo. Si Aurora 1.0 deja de usarse, esa fuente puede deshabilitarse por configuración y no aparecerá como opción operativa.
+
 ## Mensajes de error comunes
 
 | Mensaje o situación | Posible causa |
@@ -109,6 +123,8 @@ La descarga final depende del enlace configurado para cada formato.
 | `Error consultando PPL` | Falla de backend o base de datos. |
 | `Error guardando registro` | Falla de validación, red o base de datos. |
 | `No fue posible validar la cédula del PAG` | Cédula no encontrada o error de consulta. |
+| `No tiene permisos para administrar cargas de base de datos` | El usuario no cuenta con rol autorizado para cargas mensuales. |
+| `Solo se permiten archivos .xlsx` | Se intentó subir un formato diferente a Excel `.xlsx`. |
 
 ## Buenas prácticas de uso
 

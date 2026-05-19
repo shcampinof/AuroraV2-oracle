@@ -8,11 +8,17 @@ import Home from './pages/Home.jsx';
 import RegistrosAsignados from './pages/RegistrosAsignados.jsx';
 import FormularioAtencion from './pages/FormularioAtencion.jsx';
 import AsignacionDefensores from './pages/AsignacionDefensores.jsx';
+import AdminCargasBD from './pages/AdminCargasBD.jsx';
 import CajaHerramientas from './pages/CajaHerramientas.jsx';
 import ManualInteractivo from './pages/ManualInteractivo.jsx';
 import { logout, refreshSession } from './services/auth.js';
 
-const VISTAS = new Set(['inicio', 'formulario', 'registros', 'asignacion', 'herramientas', 'manual']);
+const VISTAS = new Set(['inicio', 'formulario', 'registros', 'asignacion', 'herramientas', 'manual', 'admin-cargas']);
+
+function tieneAccesoCargas(user) {
+  const roles = Array.isArray(user?.roles) ? user.roles.map((role) => String(role).toLowerCase()) : [];
+  return roles.some((role) => ['admin', 'carguebd', 'cargas_bd'].includes(role));
+}
 
 function vistaDesdeHash(hashValue) {
   const raw = String(hashValue || '')
@@ -64,8 +70,16 @@ function App() {
     };
   }, [session]);
 
+  useEffect(() => {
+    if (!session) return;
+    if (vistaActual === 'admin-cargas' && !tieneAccesoCargas(session.user)) {
+      window.location.hash = '/inicio';
+    }
+  }, [session, vistaActual]);
+
   function cambiarVista(vista) {
     if (!VISTAS.has(vista)) return;
+    if (vista === 'admin-cargas' && !tieneAccesoCargas(session?.user)) return;
     const nextHash = `/${vista}`;
     if (window.location.hash !== `#${nextHash}`) {
       window.location.hash = nextHash;
@@ -109,6 +123,8 @@ function App() {
     return <LoginPage onAuthenticated={setSession} />;
   }
 
+  const puedeAdministrarCargas = tieneAccesoCargas(session.user);
+
   let contenido = null;
 
   if (vistaActual === 'inicio') {
@@ -133,11 +149,19 @@ function App() {
     contenido = <ManualInteractivo />;
   }
 
+  if (vistaActual === 'admin-cargas' && puedeAdministrarCargas) {
+    contenido = <AdminCargasBD />;
+  }
+
   return (
     <div className="app-container">
       <Header user={session.user} onLogout={manejarSalida} />
       <div className="app-main">
-        <Sidebar vistaActual={vistaActual} onChangeView={cambiarVista} />
+        <Sidebar
+          vistaActual={vistaActual}
+          onChangeView={cambiarVista}
+          showAdminCargas={puedeAdministrarCargas}
+        />
         <main className="content-area">{contenido}</main>
       </div>
     </div>

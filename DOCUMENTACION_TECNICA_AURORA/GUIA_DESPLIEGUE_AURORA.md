@@ -1,6 +1,6 @@
 # Guía de despliegue Aurora
 
-Fecha: 2026-05-14
+Fecha: 2026-05-19
 
 ## Introducción
 
@@ -21,6 +21,7 @@ El repositorio debe tratarse como privado. Se mantiene público de manera tempor
 - Acceso al repositorio.
 - Acceso de red desde el servidor hacia Oracle.
 - Variables de entorno autorizadas por el administrador técnico o DBA.
+- Python 3 y dependencias de `CargueBD/requirements.txt` si se usará el módulo de cargas mensuales.
 
 ## Clonar el repositorio
 
@@ -52,6 +53,10 @@ Variables críticas:
 - `ORACLE_PORT`
 - `ORACLE_SERVICE_NAME`
 - `ORACLE_SCHEMA`
+- `AURORA_CARGAS_DIR`
+- `CARGUEBD_PYTHON`
+- `CARGUEBD_ADMIN_ROLES`
+- `CARGUEBD_AURORA10_ENABLED`
 
 ## Despliegue principal con Docker
 
@@ -113,9 +118,12 @@ Antes de construir la imagen, ejecutar:
 npm --prefix frontend run test -- estadoActuaciones.rules.test.ts evaluateAuroraRules.test.ts
 npm --prefix frontend run build
 npm --prefix backend test
+python -m py_compile CargueBD/*.py
 ```
 
 Para cambios en formularios o actuaciones, validar manualmente que el historial actualiza la `Acción a impulsar` de la actuación activa sin recargar y que la vista de asignación usa la misma etiqueta derivada.
+
+Para cambios en cargas mensuales, validar que `/api/admin/cargas/fuentes` responde con un usuario autorizado, que el rol no autorizado recibe `403` y que el ambiente tiene instaladas las dependencias Python.
 
 ## Despliegue alternativo tradicional con Node.js
 
@@ -127,6 +135,7 @@ Instalar dependencias:
 npm install
 npm --prefix backend install
 npm --prefix frontend install
+pip install -r CargueBD/requirements.txt
 ```
 
 Compilar frontend:
@@ -169,6 +178,7 @@ npm --prefix backend run smoke:oracle
 | QA general | `npm run qa:smoke` |
 | Smoke Oracle | `npm --prefix backend run smoke:oracle` |
 | Regresión API | `npm --prefix backend run test:api` |
+| Compilación Python cargas | `python -m py_compile CargueBD/*.py` |
 
 ## Problemas comunes
 
@@ -179,6 +189,8 @@ npm --prefix backend run smoke:oracle
 | Login falla en producción | Revisar `AUTH_JWT_SECRET`, Azure AD o estado de login local. |
 | Frontend no llama al backend | Revisar que el build use `/api` y que el contenedor esté sirviendo el mismo origen. |
 | Estado visible no coincide con campos diligenciados | Confirmar que la pantalla esté usando `getEstadoDisplayInfo` y que la actuación activa tenga `actuacionId`. |
+| Carga mensual no inicia | Revisar `CARGUEBD_PYTHON`, dependencias Python, permisos de `AURORA_CARGAS_DIR` y roles de usuario. |
+| Carga mensual falla al conectar Oracle | Revisar `ORACLE_*`, conectividad desde el host/contenedor y service name. |
 
 ## Recomendaciones finales
 

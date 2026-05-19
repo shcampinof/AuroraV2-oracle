@@ -95,7 +95,38 @@ Errores observables:
 - La API responde JSON para rutas `/api/*`.
 - El endpoint de descarga redirige al `downloadUrl` configurado para cada formato.
 
-## 8. Pendientes de contrato API
+## 8. Administración de cargas staging/ETL
+
+Base: `/api/admin/cargas`.
+
+Todas las rutas requieren token y rol autorizado (`admin`, `carguebd` o `cargas_bd`, configurable con `CARGUEBD_ADMIN_ROLES`).
+
+| Metodo | Path | Uso |
+|---|---|---|
+| GET | `/admin/cargas/fuentes` | Lista fuentes habilitadas: PONAL, SISIPEC y Aurora 1.0 |
+| GET | `/admin/cargas` | Lista registros de carga y estado |
+| GET | `/admin/cargas/:id` | Consulta una carga puntual |
+| GET | `/admin/cargas/:id/log` | Descarga/consulta el log plano de la carga |
+| POST | `/admin/cargas` | Recibe `multipart/form-data` con `fuente` y `archivo` `.xlsx` |
+| POST | `/admin/cargas/:id/retry` | Reintenta una carga fallida o interrumpida |
+
+Estados devueltos:
+
+- `recibido`
+- `en_ejecucion`
+- `exitoso`
+- `fallido`
+
+Errores observables:
+
+- `400` si falta archivo, la fuente no es válida o el archivo no es `.xlsx`.
+- `403` si el usuario no tiene rol autorizado.
+- `404` si la carga no existe.
+- `409` si una fuente está deshabilitada por configuración.
+
+Más detalle: [Cargas mensuales de staging y ETL a Oracle](./16_cargas_staging_etl_bd.md).
+
+## 9. Pendientes de contrato API
 
 - Definir contrato formal OpenAPI con esquemas de request/response.
 - Documentar codigos de error por endpoint con ejemplos reales.

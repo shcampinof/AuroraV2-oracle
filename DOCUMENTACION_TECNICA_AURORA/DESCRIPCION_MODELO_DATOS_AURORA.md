@@ -1,6 +1,6 @@
 # Descripción del modelo de datos Aurora
 
-Fecha: 2026-05-13
+Fecha: 2026-05-19
 
 ## Introducción
 
@@ -38,10 +38,10 @@ Objetos detectados en consultas y scripts:
 | `PAG` | Catálogo o validación de PAG. |
 | `CALIFICACION_CONDUCTA` | Calificaciones de conducta asociadas a persona. |
 | `REGIONALES` | Tabla incluida en script de base de prueba. |
-| `PONAL` | Tabla incluida en script de base de prueba. |
-| `SISIPEC` | Tabla incluida en script de base de prueba. |
-| `AURORA_10` | Tabla incluida en script de base de prueba. |
-| `LOG_CARGA` | Tabla incluida en script de base de prueba. |
+| `PONAL` | Tabla staging de carga cruda desde Excel PONAL/CDT. |
+| `SISIPEC` | Tabla staging de carga cruda desde Excel SISIPEC. |
+| `AURORA_10` | Tabla staging de migración/carga desde Aurora 1.0. |
+| `LOG_CARGA` | Bitácora Oracle de procedimientos ETL. |
 
 No se deben inferir relaciones no confirmadas por el MER o diccionario oficial.
 
@@ -55,6 +55,7 @@ Desde las consultas se observa que:
 - `ASIGNACION` puede relacionarse con `DEFENSORES`.
 - `CALIFICACION_CONDUCTA` complementa información del formulario.
 - `PAG` se usa para validar asignaciones.
+- `PONAL`, `SISIPEC` y `AURORA_10` alimentan procesos ETL que actualizan el modelo normalizado.
 
 Esta relación es una lectura técnica del código. Debe contrastarse con el MER oficial.
 
@@ -94,6 +95,18 @@ Los nombres exactos de columnas deben validarse contra el diccionario de datos.
 | `oracleConsolidado.repo.js` | Fachada usada por rutas PPL. |
 | `oraclePool.js` | Ejecución SQL y reemplazo de esquema. |
 
+## Staging y ETL
+
+Las tablas `PONAL`, `SISIPEC` y `AURORA_10` se consideran tablas staging: reciben datos crudos desde archivos Excel y sirven como entrada para procedimientos ETL Oracle.
+
+| Staging | Archivo fuente | Procedimiento |
+|---|---|---|
+| `PONAL` | `CONSOLIDADO_PPL_REGIONES.xlsx` | `PRC_CARGA_PONAL` |
+| `SISIPEC` | `Consolidado_SISIPEC.xlsx` | `PRC_CARGA_SISIPEC_V3` |
+| `AURORA_10` | `Aurora_1_0.xlsx` | `PRC_CARGA_AURORA10` |
+
+La ejecución operativa está documentada en `docs/16_cargas_staging_etl_bd.md`.
+
 ## Observaciones sobre Oracle
 
 - El código contiene referencias `DNDP.` que se reemplazan por `ORACLE_SCHEMA`.
@@ -113,7 +126,7 @@ Los nombres exactos de columnas deben validarse contra el diccionario de datos.
 
 - No se pudo validar en esta revisión el MER completo en una base Oracle real.
 - No se pudo validar en esta revisión la existencia de todos los objetos en producción.
-- No se pudo validar en esta revisión si `AURORA_10`, `PONAL`, `SISIPEC` y `LOG_CARGA` son usados directamente por la aplicación o solo por documentación/procesos de carga.
+- `AURORA_10`, `PONAL` y `SISIPEC` se usan como tablas staging para procesos de carga/ETL; no son consultadas directamente por las vistas de negocio ordinarias del frontend.
 
 ## Recomendaciones finales
 

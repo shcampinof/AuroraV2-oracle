@@ -151,6 +151,12 @@ Durante la revision del 2026-05-12 se incorporo la carpeta `BD Documentation/` c
 
 El diccionario describe 12 tablas principales: `REGIONALES`, `PAG`, `DEFENSORES`, `ASIGNACION`, `PERSONA`, `SITUACION_CARCELARIA`, `CALIFICACION_CONDUCTA`, `GESTION_JURIDICA`, `PONAL`, `SISIPEC`, `AURORA_10` y `LOG_CARGA`. El manual indica despliegue sobre el esquema `DNDP` y menciona objetos adicionales como `VW_DETALLE_CON_DEFENSOR` y procedimientos ETL (`PRC_CARGA_PONAL`, `PRC_CARGA_SISIPEC_V3`, `PRC_CARGA_AURORA10`). En la carpeta recibida no se encontro un archivo ejecutable `BD.sql`; por eso el setup de pruebas creado en el repositorio arma desde codigo las 12 tablas documentadas y carga una semilla pequena para que las pruebas del backend tengan registros reales de trabajo.
 
+## 9.1) Cargas staging y ETL
+
+El repositorio incluye el modulo `CargueBD/` para cargar archivos Excel mensuales en tablas staging (`PONAL`, `SISIPEC`, `AURORA_10`) y ejecutar los procedimientos ETL documentados. Desde el 2026-05-19, esa capacidad tambien esta expuesta desde Aurora mediante la vista administrativa `Cargas mensuales` y rutas `/api/admin/cargas`.
+
+La documentacion operativa del flujo, variables, rutas y validaciones esta en `docs/16_cargas_staging_etl_bd.md`.
+
 ## 10) Esquema Oracle de pruebas
 
 El backend permite redirigir las consultas que hoy referencian `DNDP.` hacia otro esquema mediante `ORACLE_SCHEMA`. Si no se define, se usa `ORACLE_USER`. Esto permite levantar una base temporal con las mismas tablas base sin cambiar cada SQL de la aplicacion.

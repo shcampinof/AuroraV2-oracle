@@ -27,6 +27,7 @@ AURORA es una aplicacion web para atencion juridica de personas privadas de la l
   - `backend/routes/ppl.js`
   - `backend/routes/defensores.js`
   - `backend/routes/formatos.js`
+  - `backend/routes/adminCargas.js`
 - Protege rutas funcionales con JWT propio emitido por login local temporal o SSO Azure AD.
 - Usa repositorios de acceso a datos:
   - `backend/db/oracleConsolidado.repo.js`
@@ -37,6 +38,7 @@ AURORA es una aplicacion web para atencion juridica de personas privadas de la l
 - Fuente principal: Oracle, mediante repositorios bajo `backend/repositories/oracle/`.
 - Oracle es la fuente operativa de datos de negocio.
 - Catalogo de formatos: `backend/data/formatos.mock.js`.
+- Cargas mensuales: archivos Excel hacia staging Oracle (`PONAL`, `SISIPEC`, `AURORA_10`) mediante `CargueBD/loader_service.py`.
 
 ## 3. Navegacion principal (frontend)
 
@@ -48,6 +50,7 @@ La app usa navegacion por hash (`frontend/src/App.jsx`) y estas vistas:
 - `asignacion`
 - `herramientas`
 - `manual`
+- `admin-cargas`, visible solo para roles autorizados.
 
 ## 4. Casos de uso funcionales implementados
 
@@ -58,6 +61,7 @@ La app usa navegacion por hash (`frontend/src/App.jsx`) y estas vistas:
 - Asignacion, reasignacion y creacion de defensores.
 - Listado y descarga de formatos.
 - Instalacion PWA y reintento diferido de escrituras cuando se pierde conectividad.
+- Carga administrativa de archivos Excel mensuales hacia staging Oracle y ejecucion ETL.
 
 ## 5. Configuracion y ejecucion local
 
@@ -73,7 +77,7 @@ La app usa navegacion por hash (`frontend/src/App.jsx`) y estas vistas:
 ## 6. Riesgos tecnicos observables en codigo
 
 - Normalizacion intensiva de claves para tolerar variantes de codificacion.
-- La suite backend automatizada actual cubre configuracion de autenticacion; falta ampliar a rutas e integracion Oracle.
+- La suite backend automatizada actual cubre configuracion de autenticacion y metadatos del servicio de cargas staging/ETL; falta ampliar a rutas e integracion Oracle.
 - La PWA no cachea consultas de negocio; si se requiere lectura offline completa debe definirse una politica de vigencia y reconciliacion de datos.
 
 ## 7. Pendientes de arquitectura
@@ -81,3 +85,4 @@ La app usa navegacion por hash (`frontend/src/App.jsx`) y estas vistas:
 - Agregar diagrama de componentes (frontend/backend/repositorios Oracle).
 - Definir convencion oficial de codificacion de texto para claves de BD y labels de formulario.
 - Ampliar observabilidad de despliegue (logs estructurados, metricas y trazabilidad de errores).
+- Mantener actualizada la documentacion de cargas mensuales en `docs/16_cargas_staging_etl_bd.md`.

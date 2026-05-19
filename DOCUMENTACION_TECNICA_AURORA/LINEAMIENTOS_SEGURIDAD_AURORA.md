@@ -1,6 +1,6 @@
 # Lineamientos de seguridad Aurora
 
-Fecha: 2026-05-13
+Fecha: 2026-05-19
 
 ## Introducción
 
@@ -17,6 +17,7 @@ Por el código y los documentos revisados, Aurora puede manejar:
 - Asignación de defensores.
 - Datos de PAG y defensores.
 - Documentos o formatos de trámite.
+- Archivos Excel mensuales de PONAL, SISIPEC y Aurora 1.0 cargados por administradores.
 
 Esta información debe tratarse como sensible. No se debe compartir por fuera de los canales autorizados.
 
@@ -28,6 +29,7 @@ Esta información debe tratarse como sensible. No se debe compartir por fuera de
 | Acceso no autorizado | Uso de credenciales locales débiles o mala configuración de SSO. |
 | Exposición de datos personales | Versionar exportaciones, respaldos o archivos con datos sensibles. |
 | Escrituras sobre producción | Ejecutar pruebas de escritura contra el esquema operativo. |
+| Cargas ETL no autorizadas | Subir archivos incorrectos o ejecutar cargas mensuales sin aprobación funcional. |
 | CORS amplio | Permitir orígenes no controlados en producción. |
 | Falta de trazabilidad | No registrar despliegues, errores o acciones críticas. |
 
@@ -72,6 +74,8 @@ Se recomienda:
 - No publicar muestras con documentos reales en documentación.
 - Mantener datos de prueba anonimizados y controlados.
 - Tratar exportaciones operativas como información sensible.
+- Guardar `AURORA_CARGAS_DIR` en una ruta persistente, fuera de Git y con permisos restringidos.
+- No compartir logs de carga si contienen rutas, conteos o datos operativos sensibles.
 
 ## Usuarios y roles
 
@@ -91,6 +95,8 @@ El sistema usa JWT y puede integrarse con Azure AD. Se recomienda:
 - `CORS_ORIGIN` limitado a los orígenes necesarios.
 - `ORACLE_SCHEMA` explícito.
 - Acceso Oracle limitado por mínimos privilegios.
+- `CARGUEBD_ADMIN_ROLES` limitado a perfiles autorizados.
+- `CARGUEBD_SKIP_ETL=false` para operación normal.
 - Logs centralizados y revisables.
 - Backups administrados por el equipo de base de datos.
 
@@ -111,6 +117,7 @@ El backend registra errores en consola para operaciones principales. Se recomien
 - Centralizar logs en el ambiente de despliegue.
 - Evitar imprimir credenciales o tokens.
 - Registrar fecha, versión desplegada y resultado de validaciones.
+- Conservar logs de cargas mensuales según política institucional de auditoría.
 - Agregar trazabilidad funcional para escrituras críticas si la política institucional lo exige.
 
 ## Checklist antes de compartir código
@@ -122,6 +129,7 @@ El backend registra errores en consola para operaciones principales. Se recomien
 - [ ] Confirmar que `.env.example` no tiene valores reales.
 - [ ] Ejecutar pruebas disponibles.
 - [ ] Revisar que no haya tokens en documentación o logs.
+- [ ] Confirmar que no se incluyen archivos de `backend/storage/` ni Excel mensuales.
 - [ ] Compartir solo mediante repositorio privado.
 
 ## Recomendaciones finales

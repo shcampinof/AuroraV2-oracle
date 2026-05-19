@@ -1,6 +1,6 @@
 # Descripción del código fuente Aurora
 
-Fecha: 2026-05-14
+Fecha: 2026-05-19
 
 ## Introducción
 
@@ -14,6 +14,7 @@ Este documento describe la estructura del repositorio Aurora y los archivos prin
 | `package.json` | Scripts generales de QA y codificación. |
 | `frontend/` | Aplicación de usuario en React. |
 | `backend/` | API, autenticación, repositorios Oracle y catálogo de formatos. |
+| `CargueBD/` | Servicios Python para carga de Excel a staging Oracle y ejecución ETL. |
 | `docs/` | Documentación técnica existente. |
 | `BD Documentation/` | Material recibido sobre el modelo de datos. |
 | `Dockerfile` | Imagen de despliegue de un solo servicio. |
@@ -31,6 +32,7 @@ El frontend está en `frontend/` y usa React con Vite. La navegación principal 
 - `asignacion`
 - `herramientas`
 - `manual`
+- `admin-cargas`
 
 Páginas principales:
 
@@ -43,6 +45,7 @@ Páginas principales:
 | `AsignacionDefensores.jsx` | Validación PAG y asignación o reasignación de defensores. |
 | `CajaHerramientas.jsx` | Consulta y descarga de formatos. |
 | `ManualInteractivo.jsx` | Manual o apoyo interno en la interfaz. |
+| `AdminCargasBD.jsx` | Carga administrativa de Excel mensuales, historial, logs y reintentos. |
 
 Componentes y reglas relevantes:
 
@@ -83,6 +86,7 @@ Rutas:
 | `routes/ppl.js` | Consulta PPL, condenados, actuaciones, asignación y actualización. |
 | `routes/defensores.js` | Consulta y creación de defensores. |
 | `routes/formatos.js` | Listado y descarga de formatos. |
+| `routes/adminCargas.js` | Administración de cargas staging/ETL: fuentes, upload, historial, logs y reintentos. |
 
 ## Acceso a datos
 
@@ -98,6 +102,23 @@ Rutas:
 | `backend/repositories/oracle/pagRepository.js` | Validación de PAG. |
 | `backend/repositories/oracle/situacionRepository.js` | Actualización de situación carcelaria. |
 | `backend/repositories/oracle/calificacionConductaRepository.js` | Calificaciones de conducta. |
+| `backend/services/cargaBdService.js` | Orquesta almacenamiento local de cargas, logs y ejecución del proceso Python. |
+
+## Cargas staging/ETL
+
+El directorio `CargueBD/` contiene el motor de carga de archivos Excel mensuales hacia Oracle:
+
+| Archivo | Uso |
+|---|---|
+| `loader_service.py` | Servicio común para `ponal`, `sisipec` y `aurora_10`. Lee Excel, valida columnas, carga staging y ejecuta ETL. |
+| `carga_ponal_oracle.py` | Wrapper compatible para cargar PONAL por consola. |
+| `cargar_sisipec.py` | Wrapper compatible para cargar SISIPEC por consola. |
+| `cargar_aurora_10.py` | Wrapper compatible para cargar Aurora 1.0 por consola. |
+| `requirements.txt` | Dependencias Python: `pandas`, `openpyxl`, `oracledb`. |
+
+El backend ejecuta `loader_service.py` en segundo plano desde `backend/services/cargaBdService.js`. Los archivos y logs quedan en `AURORA_CARGAS_DIR` o, si no se define, en `backend/storage/cargas_bd/`.
+
+La documentación completa está en `docs/16_cargas_staging_etl_bd.md`.
 
 ## Scripts disponibles
 
@@ -122,6 +143,8 @@ Backend:
 | `test:api:write` | Regresión preparada para escrituras controladas. |
 | `test-db:setup` | Crea esquema de prueba, si no apunta a `DNDP`. |
 
+El script backend `test` tambien valida metadatos del servicio de cargas mediante `backend/scripts/carga-bd-service.test.js`.
+
 Frontend:
 
 | Script | Uso |
@@ -142,6 +165,7 @@ Backend:
 - `jsonwebtoken`
 - `jwks-rsa`
 - `express-rate-limit`
+- `multer`
 - `oracledb`
 - `dotenv`
 
@@ -162,6 +186,7 @@ Frontend:
 - Repositorios Oracle separados por entidad funcional.
 - Variables de entorno mediante `.env` y `dotenv`.
 - Protección JWT para rutas de negocio.
+- Cargas administrativas restringidas por roles `admin`, `carguebd` o `cargas_bd`.
 - Documentación técnica previa en `docs/`.
 
 ## Archivos que no deben versionarse
@@ -174,6 +199,7 @@ Frontend:
 - `frontend/.env.*`
 - `node_modules/`
 - Builds locales como `frontend/dist` y `backend/public/app`.
+- Archivos de carga y logs bajo `backend/storage/`.
 
 ## Recomendaciones para mantenimiento
 

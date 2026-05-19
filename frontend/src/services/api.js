@@ -405,3 +405,52 @@ export async function assignDefensorPpl(documento, defensor, options = {}) {
   const data = await readJsonOrThrow(res, 'Error guardando la asignacion de defensor');
   return normalizeQueuedResponse(data, { documentos, defensor: defensorNombre });
 }
+
+// =====================
+// Administracion de cargas mensuales
+// =====================
+export async function getCargaBdSources() {
+  const res = await fetchJson(`${API_BASE}/admin/cargas/fuentes`, { cache: 'no-store' });
+  if (!res.ok) throw new Error('Error consultando fuentes de carga');
+  return readJsonOrThrow(res, 'Error consultando fuentes de carga');
+}
+
+export async function getCargasBd() {
+  const res = await fetchJson(`${API_BASE}/admin/cargas`, { cache: 'no-store' });
+  if (!res.ok) throw new Error('Error consultando cargas');
+  return readJsonOrThrow(res, 'Error consultando cargas');
+}
+
+export async function uploadCargaBd({ fuente, archivo }) {
+  const formData = new FormData();
+  formData.set('fuente', fuente);
+  formData.set('archivo', archivo);
+
+  const res = await fetchJson(
+    `${API_BASE}/admin/cargas`,
+    {
+      method: 'POST',
+      body: formData,
+    },
+    10 * 60 * 1000
+  );
+
+  const data = await readJsonOrThrow(res, 'Error cargando archivo');
+  if (!res.ok) throw new Error(String(data?.message || 'Error cargando archivo'));
+  return data;
+}
+
+export async function retryCargaBd(id) {
+  const res = await fetchJson(`${API_BASE}/admin/cargas/${encodeURIComponent(id)}/retry`, {
+    method: 'POST',
+  });
+  const data = await readJsonOrThrow(res, 'Error reintentando carga');
+  if (!res.ok) throw new Error(String(data?.message || 'Error reintentando carga'));
+  return data;
+}
+
+export async function getCargaBdLog(id) {
+  const res = await fetchJson(`${API_BASE}/admin/cargas/${encodeURIComponent(id)}/log`, { cache: 'no-store' });
+  if (!res.ok) throw new Error('Error consultando log de carga');
+  return res.text();
+}

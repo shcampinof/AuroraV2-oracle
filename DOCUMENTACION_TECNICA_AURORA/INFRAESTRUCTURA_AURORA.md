@@ -1,6 +1,6 @@
 # Infraestructura Aurora
 
-Fecha: 2026-05-14
+Fecha: 2026-05-19
 
 ## Introducción
 
@@ -29,6 +29,8 @@ No se pudo validar en esta revisión el sistema operativo ni la topología del s
 | `backend/repositories/oracle/` | Consultas y escrituras Oracle. |
 | `backend/db/` | Pool Oracle y repositorios de datos. |
 | `backend/data/` | Catálogo local de formatos. |
+| `backend/storage/` | Almacenamiento local ignorado por Git para cargas, logs y registro operativo. |
+| `CargueBD/` | Servicios Python de carga Excel a staging Oracle y ETL. |
 | `docs/` | Documentación técnica previa del proyecto. |
 | `BD Documentation/` | Documentación recibida del modelo de base de datos. |
 | `DOCUMENTACION_TECNICA_AURORA/` | Documentación técnica generada en esta revisión. |
@@ -51,6 +53,7 @@ Para ejecución tradicional:
 
 - Node.js 20.
 - npm.
+- Python 3 con dependencias de `CargueBD/requirements.txt` para cargas staging/ETL.
 - Acceso de red a Oracle si se usan datos reales.
 - Variables de entorno completas para backend.
 
@@ -96,6 +99,15 @@ Variables detectadas o documentadas:
 | `ORACLE_POOL_MAX` | Máximo del pool. |
 | `ORACLE_POOL_INCREMENT` | Incremento del pool. |
 | `ORACLE_POOL_TIMEOUT` | Timeout del pool. |
+| `AURORA_CARGAS_DIR` | Ruta persistente para archivos, logs y registro de cargas staging/ETL. |
+| `AURORA_CARGAS_TMP_DIR` | Ruta temporal opcional para uploads. |
+| `CARGUEBD_ADMIN_ROLES` | Roles autorizados para el módulo de cargas. |
+| `CARGUEBD_PYTHON` | Ejecutable Python usado por el backend. |
+| `CARGUEBD_SCRIPT_PATH` | Ruta opcional al servicio Python de carga. |
+| `CARGUEBD_MAX_FILE_MB` | Tamaño máximo del Excel subido. |
+| `CARGUEBD_BATCH_SIZE` | Tamaño de lote para inserción Oracle desde Python. |
+| `CARGUEBD_AURORA10_ENABLED` | Habilita o deshabilita la fuente Aurora 1.0. |
+| `CARGUEBD_SKIP_ETL` | Omite procedimientos ETL; solo para diagnóstico controlado. |
 | `VITE_API_BASE_URL` | Base de API para build frontend. |
 | `VITE_DEV_API_TARGET` | Backend usado por proxy Vite. |
 | `VITE_DEV_PORT` | Puerto de Vite en desarrollo. |
@@ -128,6 +140,8 @@ En producción se recomienda desplegar con Docker Compose. La ejecución tradici
 
 Oracle es la fuente de datos de negocio mediante `backend/db/oraclePool.js` y `backend/repositories/oracle/`. El repositorio no debe depender de archivos locales para información de PPL, PAG o defensores.
 
+El módulo de cargas mensuales guarda temporalmente archivos Excel operativos y logs en `AURORA_CARGAS_DIR`. Esa ruta no reemplaza Oracle: solo conserva evidencia operativa del upload y de la ejecución Python. Debe ser persistente, estar fuera de Git y tener permisos restringidos.
+
 ## Recomendaciones finales
 
 - Documentar por ambiente los valores requeridos de Oracle sin incluir contraseñas en el repositorio.
@@ -135,3 +149,4 @@ Oracle es la fuente de datos de negocio mediante `backend/db/oraclePool.js` y `b
 - Mantener `.env` y `.env.*` fuera de control de versiones.
 - Revisar periódicamente el tamaño del bundle frontend y las dependencias.
 - Mantener respaldos operativos locales fuera de Git y Docker.
+- Instalar dependencias Python de `CargueBD/requirements.txt` en el ambiente que ejecute cargas.

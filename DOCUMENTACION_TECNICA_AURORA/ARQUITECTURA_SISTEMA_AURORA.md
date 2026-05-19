@@ -1,6 +1,6 @@
 # Arquitectura del sistema Aurora
 
-Fecha: 2026-05-14
+Fecha: 2026-05-19
 
 ## Introducción
 
@@ -18,6 +18,7 @@ El proyecto cuenta con una arquitectura web separada en frontend y backend:
 - Backend: API Node.js con Express.
 - Base de datos: conexión Oracle mediante el paquete `oracledb`.
 - Datos complementarios: catálogo de formatos dentro de `backend/data/`.
+- Cargas staging/ETL: módulo administrativo para cargar Excel mensuales hacia Oracle.
 - Autenticación: JWT local y soporte para Azure AD si se configura.
 
 En producción, el backend puede servir el frontend compilado desde `backend/public/app`. El `Dockerfile` existente usa ese patrón: compila el frontend y copia el resultado al backend.
@@ -29,6 +30,7 @@ En producción, el backend puede servir el frontend compilado desde `backend/pub
 | Frontend | `frontend/` | SPA React con navegación por hash y páginas funcionales. |
 | Backend | `backend/` | API Express, autenticación, rutas de negocio y repositorios. |
 | Oracle | `backend/db/oraclePool.js`, `backend/repositories/oracle/` | Fuente principal para consultas y escrituras de negocio. |
+| Cargas staging/ETL | `CargueBD/`, `backend/routes/adminCargas.js`, `backend/services/cargaBdService.js` | Carga Excel mensual a `PONAL`, `SISIPEC`, `AURORA_10` y ejecuta procedimientos ETL. |
 | Formatos | `backend/data/formatos.mock.js` | Catálogo de documentos descargables desde la Caja de Herramientas. |
 | Docker | `Dockerfile`, `docker-compose.yml` | Empaquetado de la aplicación en un servicio único. |
 | Estados de actuaciones | `frontend/src/config/estadoActuaciones.rules.ts` | Derivación centralizada de etiquetas y semáforo para listados, historial y asignación. |
@@ -53,6 +55,12 @@ Usuario
   -> Backend Express bajo /api
   -> Repositorios Oracle y catálogo de formatos
   -> Oracle
+
+Usuario admin
+  -> Frontend /admin-cargas
+  -> Backend /api/admin/cargas
+  -> CargueBD/loader_service.py
+  -> Tablas staging y procedimientos ETL Oracle
 ```
 
 Diagrama simple:
@@ -84,12 +92,19 @@ Usuario -> Frontend -> Backend/API -> Oracle
 | POST | `/api/defensores` | Crear defensor | Requiere token |
 | GET | `/api/formatos` | Listado de formatos | Requiere token |
 | GET | `/api/formatos/:id/download` | Redirección de descarga | Requiere token |
+| GET | `/api/admin/cargas/fuentes` | Fuentes de carga staging/ETL | Requiere token y rol admin |
+| GET | `/api/admin/cargas` | Historial de cargas | Requiere token y rol admin |
+| POST | `/api/admin/cargas` | Upload `.xlsx` e inicio de carga | Requiere token y rol admin |
+| GET | `/api/admin/cargas/:id/log` | Log de carga | Requiere token y rol admin |
+| POST | `/api/admin/cargas/:id/retry` | Reintento de carga | Requiere token y rol admin |
 
 ## Consideraciones de integración
 
 - El frontend usa `VITE_API_BASE_URL`; para despliegue en el mismo origen se recomienda `/api`.
 - En desarrollo, Vite proxifica `/api` hacia el backend.
 - El backend usa `ORACLE_SCHEMA` para calificar objetos Oracle; si no se define, usa `ORACLE_USER`.
+- El módulo de cargas usa `AURORA_CARGAS_DIR` para archivos y logs, y ejecuta Python con `CARGUEBD_PYTHON`.
+- `CARGUEBD_AURORA10_ENABLED=false` deshabilita la fuente Aurora 1.0 cuando deje de operar.
 - Azure AD solo queda habilitado si existen `AZURE_AD_TENANT_ID` y `AZURE_AD_CLIENT_ID`.
 - Las rutas de negocio están protegidas por JWT mediante `requireAuth`.
 - La etiqueta visible de estado se deriva en frontend con `getEstadoDisplayInfo`; los campos persistidos `Estado del trámite` y `Estado del caso` se mantienen por compatibilidad.

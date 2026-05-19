@@ -60,6 +60,20 @@ El estado visible (`Analizar el caso`, `Entrevistar al usuario`, `Presentar soli
 
 El único archivo local de datos que permanece en `backend/data/` es `formatos.mock.js`. Este archivo contiene el catálogo de formatos descargables y no reemplaza la base de datos de negocio.
 
+## 5.1 Cargas mensuales staging/ETL
+
+Aurora incluye un flujo administrativo para cargar archivos Excel mensuales hacia tablas staging de Oracle y ejecutar los procedimientos ETL asociados.
+
+Fuentes cubiertas:
+
+- `PONAL` desde `CONSOLIDADO_PPL_REGIONES.xlsx`.
+- `SISIPEC` desde `Consolidado_SISIPEC.xlsx`.
+- `AURORA_10` desde `Aurora_1_0.xlsx`, mientras Aurora 1.0 siga en operación.
+
+El flujo se opera desde la vista `Cargas mensuales`, protegida por roles administrativos. El backend guarda el archivo, registra la carga, ejecuta `CargueBD/loader_service.py` en segundo plano y conserva logs locales. Si la carga staging termina sin errores, el servicio Python llama el procedimiento Oracle correspondiente.
+
+La documentación operativa completa está en [Cargas mensuales de staging y ETL a Oracle](./16_cargas_staging_etl_bd.md).
+
 ## 6. Política de codificación UTF-8
 
 Para evitar mojibake en UI, reglas y documentación, el repositorio aplica UTF-8 de forma obligatoria.

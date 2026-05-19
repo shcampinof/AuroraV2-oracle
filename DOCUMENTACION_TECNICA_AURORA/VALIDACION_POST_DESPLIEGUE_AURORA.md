@@ -1,6 +1,6 @@
 # Validación post despliegue Aurora
 
-Fecha: 2026-05-14
+Fecha: 2026-05-19
 
 ## Introducción
 
@@ -26,6 +26,10 @@ Esta lista de chequeo permite validar que Aurora quedó funcionando después de 
 - [ ] Variables `AZURE_AD_*` configuradas si se usa SSO.
 - [ ] Variables `ORACLE_*` configuradas.
 - [ ] `ORACLE_SCHEMA` apunta al esquema correcto.
+- [ ] `AURORA_CARGAS_DIR` definido si se usarán cargas mensuales.
+- [ ] `CARGUEBD_PYTHON` definido o confirmado como `python3`.
+- [ ] `CARGUEBD_ADMIN_ROLES` revisado.
+- [ ] `CARGUEBD_AURORA10_ENABLED` definido según operación vigente de Aurora 1.0.
 
 ## Backend
 
@@ -114,6 +118,18 @@ curl http://localhost:7860/api/health/db
 - [ ] Un formato inexistente responde error controlado.
 - [ ] Cada formato descargable tiene `downloadUrl` configurado.
 
+## Cargas mensuales staging/ETL
+
+- [ ] El módulo `Cargas mensuales` aparece solo para usuarios con rol autorizado.
+- [ ] Un usuario sin rol autorizado recibe `403` al consultar `/api/admin/cargas`.
+- [ ] `/api/admin/cargas/fuentes` lista PONAL, SISIPEC y Aurora 1.0 según configuración.
+- [ ] `AURORA_CARGAS_DIR` existe y tiene permisos de escritura para el backend.
+- [ ] El ambiente tiene instaladas las dependencias de `CargueBD/requirements.txt`.
+- [ ] Se validó `python -m py_compile CargueBD/*.py`.
+- [ ] Para una carga real autorizada, el estado final queda `exitoso` o el error queda documentado.
+- [ ] El log de la carga no imprime credenciales.
+- [ ] Se contrastó el resultado con `LOG_CARGA` o consulta Oracle definida por DBA/funcional.
+
 ## Logs
 
 - [ ] Revisar logs del backend.
@@ -121,6 +137,7 @@ curl http://localhost:7860/api/health/db
 - [ ] Confirmar que no se imprimen credenciales.
 - [ ] Confirmar que no hay errores repetitivos de Oracle.
 - [ ] Confirmar que no hay errores repetitivos de autenticación.
+- [ ] Confirmar que no hay errores repetitivos del proceso Python de cargas.
 
 ## Docker, si aplica
 
@@ -138,6 +155,7 @@ curl http://localhost:7860/api/health/db
 - [ ] Captura de tabla principal cargada.
 - [ ] Registro de prueba de consulta por documento.
 - [ ] Registro de prueba de descarga de formato, si aplica.
+- [ ] Registro de prueba o validación del módulo de cargas mensuales, si aplica.
 - [ ] Registro de errores encontrados y acciones tomadas.
 
 ## Cierre

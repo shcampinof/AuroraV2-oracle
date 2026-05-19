@@ -5,12 +5,15 @@
   { id: 'asignacion', label: 'PAG - Asignación de casos de condenados' },
   { id: 'herramientas', label: 'Caja de Herramientas' },
   { id: 'manual', label: 'Manual Interactivo' },
+  { id: 'admin-cargas', label: 'Cargas mensuales', adminOnly: true },
 ];
 
-function Sidebar({ vistaActual, onChangeView }) {
+function Sidebar({ vistaActual, onChangeView, showAdminCargas = false }) {
+  const visibleItems = items.filter((item) => !item.adminOnly || showAdminCargas);
+
   return (
     <aside className="sidebar">
-      {items.map((it) => (
+      {visibleItems.map((it) => (
         <button
           key={it.id}
           className={`sidebar-button ${vistaActual === it.id ? 'active' : ''}`}

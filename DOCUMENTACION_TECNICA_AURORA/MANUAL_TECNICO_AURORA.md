@@ -1,6 +1,6 @@
 # Manual técnico Aurora
 
-Fecha: 2026-05-14
+Fecha: 2026-05-19
 
 ## Introducción
 
@@ -19,6 +19,7 @@ Aurora apoya la gestión de atención jurídica de personas privadas de la liber
 | Autenticación | JWT, Azure AD opcional |
 | Base de datos | Oracle mediante `oracledb` |
 | Datos complementarios | Catálogo local de formatos |
+| Cargas ETL | Python (`pandas`, `openpyxl`, `oracledb`) orquestado desde backend |
 | Pruebas | Vitest, scripts Node |
 | Despliegue | Docker Compose como camino principal |
 
@@ -36,6 +37,7 @@ En producción, el backend puede servir el frontend compilado. El despliegue Doc
 |---|---|
 | `frontend/` | Interfaz de usuario. |
 | `backend/` | API y acceso a datos. |
+| `CargueBD/` | Servicios de carga Excel hacia staging Oracle y ejecución ETL. |
 | `docs/` | Documentos técnicos previos. |
 | `BD Documentation/` | Documentos del modelo de datos. |
 | `DOCUMENTACION_TECNICA_AURORA/` | Documentación técnica generada. |
@@ -52,6 +54,7 @@ Funciones principales:
 - Límite JSON de `256kb`.
 - Rutas públicas de salud y autenticación.
 - Rutas protegidas de negocio.
+- Rutas administrativas para carga mensual de archivos Excel a staging/ETL.
 - Servicio estático de frontend compilado.
 - Cierre ordenado del pool Oracle.
 
@@ -110,6 +113,28 @@ Variables requeridas:
 
 El backend reemplaza referencias `DNDP.` por el esquema configurado en `ORACLE_SCHEMA`. Si no se define, usa `ORACLE_USER`.
 
+### Cargas mensuales staging/ETL
+
+Aurora incorpora una vista administrativa `Cargas mensuales` para subir archivos Excel de `PONAL`, `SISIPEC` y `Aurora 1.0`, cargarlos a tablas staging y ejecutar los procedimientos ETL de Oracle.
+
+Componentes:
+
+- `frontend/src/pages/AdminCargasBD.jsx`: UI de carga, historial, log y reintento.
+- `backend/routes/adminCargas.js`: endpoints `/api/admin/cargas`.
+- `backend/services/cargaBdService.js`: almacenamiento, registro y ejecución en segundo plano.
+- `CargueBD/loader_service.py`: lectura de Excel, validación, carga Oracle y llamada a procedimiento ETL.
+
+Variables relevantes:
+
+- `AURORA_CARGAS_DIR`
+- `CARGUEBD_ADMIN_ROLES`
+- `CARGUEBD_PYTHON`
+- `CARGUEBD_AURORA10_ENABLED`
+- `CARGUEBD_SKIP_ETL`
+- `CARGUEBD_MAX_FILE_MB`
+
+La guía detallada está en `docs/16_cargas_staging_etl_bd.md`.
+
 ## Variables de entorno
 
 Mantener las variables reales fuera del repositorio. Usar `.env.example` o `backend/.env.example` como plantilla.
@@ -129,6 +154,7 @@ Instalar dependencias:
 npm install
 npm --prefix backend install
 npm --prefix frontend install
+pip install -r CargueBD/requirements.txt
 ```
 
 Backend:
@@ -200,6 +226,7 @@ También se debe validar:
 | PWA | `npm --prefix frontend run test -- pwaConfig.test.ts` |
 | Reglas de estado | `npm --prefix frontend run test -- estadoActuaciones.rules.test.ts evaluateAuroraRules.test.ts` |
 | Frontend build | `npm --prefix frontend run build` |
+| Python cargas | `python -m py_compile CargueBD/*.py` |
 
 Las pruebas de escritura deben ejecutarse únicamente contra un esquema temporal distinto a `DNDP`.
 
@@ -209,6 +236,7 @@ Las pruebas de escritura deben ejecutarse únicamente contra un esquema temporal
 |---|---|
 | Backend no inicia | Revisar `PORT`, variables obligatorias y logs. |
 | Oracle no responde | Revisar red, service name y credenciales. |
+| Carga mensual falla | Revisar log en `Cargas mensuales`, variables `ORACLE_*`, dependencias Python y formato del Excel. |
 | Login local falla | Revisar estado de `AUTH_LOCAL_ADMIN_ENABLED`. |
 | Azure AD falla | Revisar tenant, client ID, grupos y roles. |
 | Frontend muestra errores de API | Revisar `VITE_API_BASE_URL`, CORS y backend. |

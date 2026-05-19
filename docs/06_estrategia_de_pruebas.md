@@ -27,7 +27,7 @@ Cobertura actual de tests observada:
 
 ## 1.2 Backend
 
-- Script `test`: valida configuracion de autenticacion (`backend/scripts/auth-config.test.js`).
+- Script `test`: valida configuracion de autenticacion (`backend/scripts/auth-config.test.js`) y metadatos del servicio de cargas staging/ETL (`backend/scripts/carga-bd-service.test.js`).
 - Script `smoke:oracle`: valida conexion Oracle con `SELECT 1 AS DB_OK FROM dual`.
 - Script `test:api`: valida endpoints principales de lectura con autenticacion.
 - Script `test-db:setup`: crea tablas y datos semilla en un esquema Oracle de pruebas.
@@ -64,6 +64,10 @@ El detalle de casos, criterios de salida y política de severidad está formaliz
     - normalizacion de headers
     - `updateByDocumento`
     - `createActuacionByDocumento`
+  - pruebas del servicio de cargas staging/ETL:
+    - fuentes soportadas;
+    - limpieza de nombres de archivo;
+    - deshabilitacion de Aurora 1.0 por variable de entorno.
 
 ## 4.2 Nivel integracion
 
@@ -73,6 +77,7 @@ El detalle de casos, criterios de salida y política de severidad está formaliz
   - `GET /api/ppl/condenados` (sin `tipo`) valida que solo retorne `condenado` y excluya `sindicado` (regresion critica para PAG).
   - `GET /api/ppl/condenados?tipo=all` valida que incluya tanto `condenado` como `sindicado` (regresion critica para Usuarios asignados).
   - `GET /api/defensores`, `GET /api/defensores?source=condenados` y `POST /api/defensores`
+  - rutas `/api/admin/cargas` con rol autorizado, archivo `.xlsx` y errores controlados.
 
 ## 4.3 Nivel UI (flujo critico)
 
@@ -93,3 +98,4 @@ Control local recomendado antes de PR:
 3. `npm run encoding:check`
 4. `npm --prefix frontend run lint`
 5. `npm --prefix frontend test`
+6. `python -m py_compile CargueBD/*.py`
