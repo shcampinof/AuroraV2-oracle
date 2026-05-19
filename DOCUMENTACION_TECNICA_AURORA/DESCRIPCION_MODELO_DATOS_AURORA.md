@@ -102,7 +102,7 @@ Las tablas `PONAL`, `SISIPEC` y `AURORA_10` se consideran tablas staging: recibe
 | Staging | Archivo fuente | Procedimiento |
 |---|---|---|
 | `PONAL` | `CONSOLIDADO_PPL_REGIONES.xlsx` | `PRC_CARGA_PONAL` |
-| `SISIPEC` | `Consolidado_SISIPEC.xlsx` | `PRC_CARGA_SISIPEC_V3` |
+| `SISIPEC` | `Consolidado_SISIPEC.xlsx` | `PRC_CARGA_SISIPEC` |
 | `AURORA_10` | `Aurora_1_0.xlsx` | `PRC_CARGA_AURORA10` |
 
 La ejecución operativa está documentada en `docs/16_cargas_staging_etl_bd.md`.

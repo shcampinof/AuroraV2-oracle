@@ -15,7 +15,7 @@ Nota de ambiente: al 2026-05-19 las pruebas operativas de este modulo apuntan al
 | Fuente | Archivo esperado | Tabla staging | Procedimiento ETL |
 |---|---|---|---|
 | PONAL | `CONSOLIDADO_PPL_REGIONES.xlsx` | `PONAL` | `PRC_CARGA_PONAL` |
-| SISIPEC | `Consolidado_SISIPEC.xlsx` | `SISIPEC` | `PRC_CARGA_SISIPEC_V3` |
+| SISIPEC | `Consolidado_SISIPEC.xlsx` | `SISIPEC` | `PRC_CARGA_SISIPEC` |
 | Aurora 1.0 | `Aurora_1_0.xlsx` | `AURORA_10` | `PRC_CARGA_AURORA10` |
 
 `Aurora 1.0` se mantiene habilitada mientras el sistema anterior siga en uso. Cuando deje de operar, se debe configurar `CARGUEBD_AURORA10_ENABLED=false` para ocultarla del modulo de administracion.
@@ -81,6 +81,7 @@ AURORA_CARGAS_DIR=/var/aurora/cargas_bd
 | `CARGUEBD_MAX_FILE_MB` | Tamano maximo del `.xlsx`. Default: `120`. |
 | `CARGUEBD_BATCH_SIZE` | Tamano de lote para inserciones Oracle. Default: `500`. |
 | `CARGUEBD_AURORA10_ENABLED` | Permite ocultar/deshabilitar Aurora 1.0. Default: `true`. |
+| `CARGUEBD_SISIPEC_PROCEDURE` | Procedimiento ETL para SISIPEC. Default: `<ORACLE_SCHEMA>.PRC_CARGA_SISIPEC`. |
 | `CARGUEBD_SKIP_ETL` | Si es `true`, carga staging sin ejecutar procedimiento ETL. Solo para diagnostico controlado. |
 | `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_HOST`, `ORACLE_PORT`, `ORACLE_SERVICE_NAME`, `ORACLE_SCHEMA` | Conexion Oracle usada por el proceso Python. |
 
@@ -197,14 +198,14 @@ Validacion realizada el 2026-05-19 sobre el ambiente de desarrollo configurado e
 |---|---:|---|
 | PONAL | `DNDP.PONAL` con 18.092 filas | `PRC_CARGA_PONAL` visible, `VALID`, ejecutado OK en `LOG_CARGA` |
 | Aurora 1.0 | `DNDP.AURORA_10` con 17.036 filas | `PRC_CARGA_AURORA10` visible, `VALID`, ejecutado OK en `LOG_CARGA` |
-| SISIPEC | `DNDP.SISIPEC` con 140.873 filas | Falla al ejecutar `DNDP.PRC_CARGA_SISIPEC_V3`: Oracle responde `PLS-00201`, por lo que el procedimiento no existe, no es visible para el usuario configurado o falta permiso `EXECUTE` |
+| SISIPEC | `DNDP.SISIPEC` con 140.873 filas | La documentacion original referencia `DNDP.PRC_CARGA_SISIPEC_V3`, pero en desarrollo solo se encontro `DNDP.PRC_CARGA_SISIPEC` en estado `INVALID`. El modulo queda ajustado para llamar `PRC_CARGA_SISIPEC`. |
 
 Conclusiones:
 
 - PONAL y Aurora 1.0 quedaron cargados en staging y ejecutaron ETL correctamente en desarrollo.
-- SISIPEC no falla por formato del Excel ni por insercion staging; el bloqueo esta en la disponibilidad/permisos del procedimiento Oracle `PRC_CARGA_SISIPEC_V3`.
+- SISIPEC no falla por formato del Excel ni por insercion staging; el bloqueo esta en que el procedimiento Oracle `PRC_CARGA_SISIPEC` existe en desarrollo pero esta `INVALID`.
 - Desde esta validacion, el servicio Python revisa la existencia y estado del procedimiento ETL antes de modificar staging, para evitar recargas largas cuando falta un objeto Oracle.
-- Antes de declarar SISIPEC operativo en produccion, el DBA debe confirmar la existencia del procedimiento en el esquema destino, su estado `VALID` y los permisos de ejecucion para el usuario configurado.
+- Antes de declarar SISIPEC operativo en produccion, el DBA debe confirmar la existencia del procedimiento `PRC_CARGA_SISIPEC` en el esquema destino, su estado `VALID` y los permisos de ejecucion para el usuario configurado. Si el servidor productivo conserva el nombre documentado originalmente (`PRC_CARGA_SISIPEC_V3`), configurar `CARGUEBD_SISIPEC_PROCEDURE=<schema>.PRC_CARGA_SISIPEC_V3`.
 
 ## 13. Relacion con `LOG_CARGA`
 

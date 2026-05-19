@@ -107,6 +107,7 @@ Variables detectadas o documentadas:
 | `CARGUEBD_MAX_FILE_MB` | Tamaño máximo del Excel subido. |
 | `CARGUEBD_BATCH_SIZE` | Tamaño de lote para inserción Oracle desde Python. |
 | `CARGUEBD_AURORA10_ENABLED` | Habilita o deshabilita la fuente Aurora 1.0. |
+| `CARGUEBD_SISIPEC_PROCEDURE` | Sobrescribe el procedimiento ETL de SISIPEC si el ambiente usa un nombre distinto. |
 | `CARGUEBD_SKIP_ETL` | Omite procedimientos ETL; solo para diagnóstico controlado. |
 | `VITE_API_BASE_URL` | Base de API para build frontend. |
 | `VITE_DEV_API_TARGET` | Backend usado por proxy Vite. |

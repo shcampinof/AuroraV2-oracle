@@ -221,6 +221,13 @@ function summarizePythonFailure(logPath, fallback) {
       return `El procedimiento Oracle ${missingProcedureMatch[1]} no existe, no es visible o falta permiso EXECUTE para el usuario configurado.`;
     }
 
+    const invalidProcedureMatch = logText.match(
+      /El procedimiento Oracle ([A-Z0-9_.]+) existe pero esta en estado ([A-Z]+)/i
+    );
+    if (invalidProcedureMatch) {
+      return `El procedimiento Oracle ${invalidProcedureMatch[1]} existe pero esta en estado ${invalidProcedureMatch[2].toUpperCase()}. Solicite recompilacion al DBA.`;
+    }
+
     const missingModuleMatch = logText.match(/ModuleNotFoundError:\s+No module named '([^']+)'/i);
     if (missingModuleMatch) {
       return `Falta instalar dependencia Python: ${missingModuleMatch[1]}. Ejecute pip install -r CargueBD/requirements.txt o configure CARGUEBD_PYTHON.`;

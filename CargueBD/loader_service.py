@@ -355,7 +355,7 @@ SOURCES = {
         label="SISIPEC",
         table="SISIPEC",
         default_file="Consolidado_SISIPEC.xlsx",
-        procedure=f"{DEFAULT_SCHEMA}.PRC_CARGA_SISIPEC_V3",
+        procedure=env_first("CARGUEBD_SISIPEC_PROCEDURE", default=qualified_name("PRC_CARGA_SISIPEC")),
         columns=SISIPEC_COLUMNS,
         date_columns=SISIPEC_DATE_COLUMNS,
         number_columns=SISIPEC_NUMBER_COLUMNS,
