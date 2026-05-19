@@ -125,6 +125,8 @@ Para cambios en formularios o actuaciones, validar manualmente que el historial 
 
 Para cambios en cargas mensuales, validar que `/api/admin/cargas/fuentes` responde con un usuario autorizado, que el rol no autorizado recibe `403` y que el ambiente tiene instaladas las dependencias Python.
 
+Si el despliegue corresponde al paso de desarrollo a producción, reemplazar explícitamente las variables `ORACLE_*` y `ORACLE_SCHEMA` para apuntar al nuevo servidor de base de datos productivo. No habilitar cargas mensuales reales mientras el contenedor o servicio siga conectado a `DNDPDEV` o a otro ambiente de desarrollo.
+
 ## Despliegue alternativo tradicional con Node.js
 
 Este camino se conserva solo para desarrollo, diagnóstico o ambientes donde Docker no esté disponible.
@@ -191,6 +193,7 @@ npm --prefix backend run smoke:oracle
 | Estado visible no coincide con campos diligenciados | Confirmar que la pantalla esté usando `getEstadoDisplayInfo` y que la actuación activa tenga `actuacionId`. |
 | Carga mensual no inicia | Revisar `CARGUEBD_PYTHON`, dependencias Python, permisos de `AURORA_CARGAS_DIR` y roles de usuario. |
 | Carga mensual falla al conectar Oracle | Revisar `ORACLE_*`, conectividad desde el host/contenedor y service name. |
+| Carga SISIPEC falla con `PLS-00201` | Confirmar que `PRC_CARGA_SISIPEC_V3` existe en el esquema destino, está `VALID` y el usuario configurado tiene permiso `EXECUTE` o sinónimo válido. |
 
 ## Recomendaciones finales
 

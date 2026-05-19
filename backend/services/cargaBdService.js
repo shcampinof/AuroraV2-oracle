@@ -206,6 +206,34 @@ function checkPythonRuntime(python, script) {
   return '';
 }
 
+function summarizePythonFailure(logPath, fallback) {
+  try {
+    const logText = fs.readFileSync(logPath, 'utf8').slice(-12000);
+    const identifierMatch = logText.match(/PLS-00201:\s*identifier\s+'([^']+)'\s+must\s+be\s+declared/i);
+    if (identifierMatch) {
+      return `El objeto Oracle ${identifierMatch[1]} no existe, no es visible o falta permiso EXECUTE. Revise el procedimiento ETL en la base de datos.`;
+    }
+
+    const missingModuleMatch = logText.match(/ModuleNotFoundError:\s+No module named '([^']+)'/i);
+    if (missingModuleMatch) {
+      return `Falta instalar dependencia Python: ${missingModuleMatch[1]}. Ejecute pip install -r CargueBD/requirements.txt o configure CARGUEBD_PYTHON.`;
+    }
+
+    const oracleLines = logText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => /^(ORA|PLS)-\d+:/i.test(line))
+      .slice(0, 3);
+    if (oracleLines.length) {
+      return oracleLines.join(' ');
+    }
+  } catch {
+    // Si el log no esta disponible, conservamos el mensaje generico.
+  }
+
+  return fallback;
+}
+
 function startCargaJob(record) {
   if (RUNNING_JOBS.has(record.id)) return;
 
@@ -264,12 +292,13 @@ function startCargaJob(record) {
   child.on('close', (code) => {
     RUNNING_JOBS.delete(record.id);
     const success = code === 0;
+    const fallbackError = `El proceso Python termino con codigo ${code}. Revise el log.`;
     log(`\n[${nowIso()}] Proceso finalizado con codigo ${code}\n`);
     updateRecord(record.id, {
       status: success ? 'exitoso' : 'fallido',
       finishedAt: nowIso(),
       exitCode: code,
-      error: success ? '' : `El proceso Python termino con codigo ${code}. Revise el log.`,
+      error: success ? '' : summarizePythonFailure(record.logPath, fallbackError),
     });
   });
 }
@@ -334,7 +363,10 @@ function publicRecord(record) {
     startedAt: record.startedAt,
     finishedAt: record.finishedAt,
     exitCode: record.exitCode,
-    error: record.error,
+    error:
+      record.status === 'fallido'
+        ? summarizePythonFailure(record.logPath, record.error || 'La carga fallo. Revise el log.')
+        : record.error,
     running: RUNNING_JOBS.has(record.id),
   };
 }

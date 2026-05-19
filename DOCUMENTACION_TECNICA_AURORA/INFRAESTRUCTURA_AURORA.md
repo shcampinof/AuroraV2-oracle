@@ -114,6 +114,8 @@ Variables detectadas o documentadas:
 | `API_BASE_URL` | Base usada por scripts de regresión API. |
 | `API_AUTH_TOKEN` | Token opcional para scripts API. |
 
+El ambiente actual de desarrollo usa las variables `ORACLE_*` para conectarse a `DNDPDEV`. En producción, esas variables deben cambiarse al nuevo servidor de base de datos y al esquema productivo antes de habilitar el módulo de cargas mensuales. El código no requiere cambios para ese acople: la conexión se define por configuración.
+
 ## Consideraciones de red
 
 - El backend debe poder resolver y alcanzar `ORACLE_HOST:ORACLE_PORT`.

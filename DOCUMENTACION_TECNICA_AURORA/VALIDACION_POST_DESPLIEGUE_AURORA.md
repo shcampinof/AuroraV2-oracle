@@ -125,6 +125,8 @@ curl http://localhost:7860/api/health/db
 - [ ] `/api/admin/cargas/fuentes` lista PONAL, SISIPEC y Aurora 1.0 según configuración.
 - [ ] `AURORA_CARGAS_DIR` existe y tiene permisos de escritura para el backend.
 - [ ] El ambiente tiene instaladas las dependencias de `CargueBD/requirements.txt`.
+- [ ] En producción, `ORACLE_*` y `ORACLE_SCHEMA` apuntan al nuevo servidor/esquema productivo, no al servidor de desarrollo.
+- [ ] Los procedimientos `PRC_CARGA_PONAL`, `PRC_CARGA_AURORA10` y `PRC_CARGA_SISIPEC_V3` existen en el esquema destino, están `VALID` y son ejecutables por el usuario configurado.
 - [ ] Se validó `python -m py_compile CargueBD/*.py`.
 - [ ] Para una carga real autorizada, el estado final queda `exitoso` o el error queda documentado.
 - [ ] El log de la carga no imprime credenciales.

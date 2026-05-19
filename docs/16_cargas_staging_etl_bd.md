@@ -8,6 +8,8 @@ Este documento describe el flujo implementado para cargar archivos Excel mensual
 
 En este contexto, `staging` significa tabla temporal o intermedia de carga cruda. Los archivos fuente se cargan primero en tablas como `PONAL`, `SISIPEC` y `AURORA_10`; luego Oracle ejecuta procedimientos ETL que limpian, estandarizan y propagan la informacion hacia tablas de negocio como `PERSONA`, `SITUACION_CARCELARIA`, `GESTION_JURIDICA` y `ASIGNACION`.
 
+Nota de ambiente: al 2026-05-19 las pruebas operativas de este modulo apuntan al servidor/base de datos de desarrollo (`DNDPDEV`). Cuando Aurora pase a produccion, el despliegue debe configurar `ORACLE_HOST`, `ORACLE_PORT`, `ORACLE_SERVICE_NAME`, `ORACLE_USER`, `ORACLE_PASSWORD` y `ORACLE_SCHEMA` hacia el nuevo servidor de base de datos productivo antes de habilitar cargas mensuales reales.
+
 ## 2. Fuentes soportadas
 
 | Fuente | Archivo esperado | Tabla staging | Procedimiento ETL |
@@ -82,6 +84,8 @@ AURORA_CARGAS_DIR=/var/aurora/cargas_bd
 | `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_HOST`, `ORACLE_PORT`, `ORACLE_SERVICE_NAME`, `ORACLE_SCHEMA` | Conexion Oracle usada por el proceso Python. |
 
 El proceso Python tambien acepta alias historicos `DB_USER`, `DB_PASS`, `DB_HOST`, `DB_PORT`, `DB_SERVICE`, pero en Aurora se recomienda usar las variables `ORACLE_*`.
+
+Para produccion, estas variables no deben heredarse desde el ambiente de desarrollo. El cambio al nuevo servidor de base de datos se controla solo por configuracion de despliegue; no requiere modificar los scripts Python ni el frontend.
 
 ## 7. API administrativa
 
@@ -184,7 +188,23 @@ Antes de cada carga mensual:
 5. Revisar el log y el estado final.
 6. Confirmar con consultas funcionales que los datos normalizados quedaron disponibles.
 
-## 12. Relacion con `LOG_CARGA`
+## 12. Diagnostico validado en desarrollo
+
+Validacion realizada el 2026-05-19 sobre el ambiente de desarrollo configurado en `backend/.env`:
+
+| Fuente | Resultado staging | Resultado ETL |
+|---|---:|---|
+| PONAL | `DNDP.PONAL` con 18.092 filas | `PRC_CARGA_PONAL` visible, `VALID`, ejecutado OK en `LOG_CARGA` |
+| Aurora 1.0 | `DNDP.AURORA_10` con 17.036 filas | `PRC_CARGA_AURORA10` visible, `VALID`, ejecutado OK en `LOG_CARGA` |
+| SISIPEC | `DNDP.SISIPEC` con 140.873 filas | Falla al ejecutar `DNDP.PRC_CARGA_SISIPEC_V3`: Oracle responde `PLS-00201`, por lo que el procedimiento no existe, no es visible para el usuario configurado o falta permiso `EXECUTE` |
+
+Conclusiones:
+
+- PONAL y Aurora 1.0 quedaron cargados en staging y ejecutaron ETL correctamente en desarrollo.
+- SISIPEC no falla por formato del Excel ni por insercion staging; el bloqueo esta en la disponibilidad/permisos del procedimiento Oracle `PRC_CARGA_SISIPEC_V3`.
+- Antes de declarar SISIPEC operativo en produccion, el DBA debe confirmar la existencia del procedimiento en el esquema destino, su estado `VALID` y los permisos de ejecucion para el usuario configurado.
+
+## 13. Relacion con `LOG_CARGA`
 
 El diccionario de base de datos referencia `LOG_CARGA` como bitacora de los procedimientos ETL en Oracle. La implementacion del modulo admin mantiene una bitacora operativa adicional en archivos (`cargas.json` y `.log`) para trazabilidad del upload y ejecucion del proceso Python.
 
