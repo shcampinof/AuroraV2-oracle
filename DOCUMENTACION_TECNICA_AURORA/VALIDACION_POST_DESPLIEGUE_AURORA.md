@@ -132,6 +132,7 @@ curl http://localhost:7860/api/health/db
 - [ ] Para una carga real autorizada, el estado final queda `exitoso` o el error queda documentado.
 - [ ] El log de la carga no imprime credenciales.
 - [ ] Se contrastó el resultado con `LOG_CARGA` o consulta Oracle definida por DBA/funcional.
+- [ ] Si se usan vistas Oracle para reportes o consultas directas, `VW_DETALLE_CON_DEFENSOR` y `VW_PPL_CON_DECISION` compilan contra el modelo vigente (`ASIGNACION` contiene defensor/PAG).
 
 ## Logs
 

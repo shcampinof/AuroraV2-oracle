@@ -198,14 +198,39 @@ Validacion realizada el 2026-05-19 sobre el ambiente de desarrollo configurado e
 |---|---:|---|
 | PONAL | `DNDP.PONAL` con 18.092 filas | `PRC_CARGA_PONAL` visible, `VALID`, ejecutado OK en `LOG_CARGA` |
 | Aurora 1.0 | `DNDP.AURORA_10` con 17.036 filas | `PRC_CARGA_AURORA10` visible, `VALID`, ejecutado OK en `LOG_CARGA` |
-| SISIPEC | `DNDP.SISIPEC` con 140.873 filas | La documentacion original referencia `DNDP.PRC_CARGA_SISIPEC_V3`, pero en desarrollo solo se encontro `DNDP.PRC_CARGA_SISIPEC` en estado `INVALID`. El modulo queda ajustado para llamar `PRC_CARGA_SISIPEC`. |
+| SISIPEC | `DNDP.SISIPEC` con 140.873 filas | `PRC_CARGA_SISIPEC` visible, recompilado a `VALID` y ejecutado OK. `LOG_CARGA` registra la ejecucion interna como `PRC_CARGA_SISIPEC_V3`. |
 
 Conclusiones:
 
-- PONAL y Aurora 1.0 quedaron cargados en staging y ejecutaron ETL correctamente en desarrollo.
-- SISIPEC no falla por formato del Excel ni por insercion staging; el bloqueo esta en que el procedimiento Oracle `PRC_CARGA_SISIPEC` existe en desarrollo pero esta `INVALID`.
+- PONAL, Aurora 1.0 y SISIPEC quedaron cargados en staging y ejecutaron ETL correctamente en desarrollo.
+- El procedimiento Oracle `DNDP.PRC_CARGA_SISIPEC` fue recompilado el 2026-05-19 y quedo `VALID`; `ALL_ERRORS` no reporto errores de compilacion.
 - Desde esta validacion, el servicio Python revisa la existencia y estado del procedimiento ETL antes de modificar staging, para evitar recargas largas cuando falta un objeto Oracle.
 - Antes de declarar SISIPEC operativo en produccion, el DBA debe confirmar la existencia del procedimiento `PRC_CARGA_SISIPEC` en el esquema destino, su estado `VALID` y los permisos de ejecucion para el usuario configurado. Si el servidor productivo conserva el nombre documentado originalmente (`PRC_CARGA_SISIPEC_V3`), configurar `CARGUEBD_SISIPEC_PROCEDURE=<schema>.PRC_CARGA_SISIPEC_V3`.
+
+Validacion de consistencia posterior a las cargas:
+
+| Revision | Resultado |
+|---|---:|
+| `DNDP.PERSONA` | 172.075 filas |
+| `DNDP.SITUACION_CARCELARIA` | 202.349 filas |
+| `DNDP.GESTION_JURIDICA` | 2.052 filas |
+| `DNDP.ASIGNACION` | 2.593 filas |
+| Situaciones activas SISIPEC | 140.867 |
+| Situaciones activas PONAL | 2.978 |
+| `SITUACION_CARCELARIA` sin `PERSONA` | 0 |
+| `GESTION_JURIDICA` sin `SITUACION_CARCELARIA` | 0 |
+| `CALIFICACION_CONDUCTA` sin `SITUACION_CARCELARIA` | 0 |
+| `ASIGNACION` sin `PERSONA` | 0 |
+| Asignaciones activas duplicadas por persona | 0 |
+| Situaciones activas duplicadas por persona | 0 |
+
+Hallazgos pendientes:
+
+- `VW_DETALLE_CON_DEFENSOR` y `VW_PPL_CON_DECISION` estan `INVALID` porque referencian columnas antiguas de `GESTION_JURIDICA` (`DEFENSOR`, `CEDULA_PAG`). En el modelo actual esos datos viven en `ASIGNACION`.
+- `SISIPEC` contiene 2 filas sin `NUMERO`.
+- `PERSONA` contiene 1 documento duplicado (`6900076859`) y 1 fila con `NUMERO` nulo.
+- Hay 24.885 personas sin situacion asociada, concentradas en cargas historicas anteriores; no rompen integridad referencial, pero pueden requerir depuracion funcional si aparecen en consultas basadas solo en `PERSONA`.
+- `DEFENSORES.FK_DEFENSORES_PAG` esta habilitada pero `NOT VALIDATED`.
 
 ## 13. Relacion con `LOG_CARGA`
 

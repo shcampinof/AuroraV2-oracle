@@ -10,7 +10,8 @@ Documento generado desde el codigo actual. La notacion usada es `TABLA>COLUMNA`.
 - Tabla 1 a 1 de conducta: `DNDP.CALIFICACION_CONDUCTA`.
 - Asignacion vigente e historica de defensor: `DNDP.ASIGNACION`.
 - Catalogos operativos: `DNDP.REGIONALES`, `DNDP.PAG` y `DNDP.DEFENSORES`.
-- Fuente consolidada recomendada para lectura: `DNDP.VW_DETALLE_CON_DEFENSOR`, o joins equivalentes entre `PERSONA`, situacion activa, `ASIGNACION` vigente, ultima `GESTION_JURIDICA` y `CALIFICACION_CONDUCTA`.
+- Fuente consolidada recomendada para lectura: joins equivalentes entre `PERSONA`, situacion activa, `ASIGNACION` vigente, ultima `GESTION_JURIDICA` y `CALIFICACION_CONDUCTA`.
+- Nota 2026-05-19: `DNDP.VW_DETALLE_CON_DEFENSOR` existe en desarrollo pero esta `INVALID` porque referencia columnas antiguas de `GESTION_JURIDICA`; el backend actual no depende de esa vista.
 - Segun `docs/DICCIONARIO_MODELO_DNDP.html`, `GESTION_JURIDICA` ya no contiene campos de defensor/PAG; esa informacion se centraliza en `ASIGNACION`.
 - Los tres flujos documentados aqui son:
   - Aurora - condenados, tramite normal.
