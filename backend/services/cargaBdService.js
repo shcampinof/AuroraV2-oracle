@@ -169,7 +169,7 @@ function startCargaJob(record) {
   const log = createLogWriter(record.logPath);
   const python = getPythonExecutable();
   const script = getLoaderScriptPath();
-  const args = [script, '--fuente', record.sourceId, '--archivo', record.filePath];
+  const args = ['-u', script, '--fuente', record.sourceId, '--archivo', record.filePath];
   if (boolEnv('CARGUEBD_SKIP_ETL', false)) args.push('--no-etl');
 
   log(`[${nowIso()}] Iniciando carga ${record.id}\n`);
@@ -182,7 +182,10 @@ function startCargaJob(record) {
 
   const child = spawn(python, args, {
     cwd: path.dirname(script),
-    env: process.env,
+    env: {
+      ...process.env,
+      PYTHONUNBUFFERED: '1',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
@@ -339,6 +342,28 @@ function retryCarga(id) {
   return getCarga(id);
 }
 
+function shutdownCargaJobs(reason = 'shutdown') {
+  const closedAt = nowIso();
+  for (const [id, child] of RUNNING_JOBS.entries()) {
+    const record = getRawCarga(id);
+    if (record) {
+      fs.appendFileSync(record.logPath, `\n[${closedAt}] Carga interrumpida por ${reason}\n`);
+      updateRecord(id, {
+        status: 'fallido',
+        finishedAt: closedAt,
+        exitCode: null,
+        error: `La ejecucion fue interrumpida por ${reason}. Reintente la carga.`,
+      });
+    }
+    try {
+      child.kill('SIGTERM');
+    } catch {
+      // El proceso puede haber terminado entre la lectura del mapa y el kill.
+    }
+    RUNNING_JOBS.delete(id);
+  }
+}
+
 module.exports = {
   SOURCE_DEFINITIONS,
   createCarga,
@@ -348,4 +373,5 @@ module.exports = {
   readLog,
   retryCarga,
   safeFileName,
+  shutdownCargaJobs,
 };

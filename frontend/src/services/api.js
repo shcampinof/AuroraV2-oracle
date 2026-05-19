@@ -411,14 +411,16 @@ export async function assignDefensorPpl(documento, defensor, options = {}) {
 // =====================
 export async function getCargaBdSources() {
   const res = await fetchJson(`${API_BASE}/admin/cargas/fuentes`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Error consultando fuentes de carga');
-  return readJsonOrThrow(res, 'Error consultando fuentes de carga');
+  const data = await readJsonOrThrow(res, 'Error consultando fuentes de carga');
+  if (!res.ok) throw new Error(String(data?.message || 'Error consultando fuentes de carga'));
+  return data;
 }
 
 export async function getCargasBd() {
   const res = await fetchJson(`${API_BASE}/admin/cargas`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Error consultando cargas');
-  return readJsonOrThrow(res, 'Error consultando cargas');
+  const data = await readJsonOrThrow(res, 'Error consultando cargas');
+  if (!res.ok) throw new Error(String(data?.message || 'Error consultando cargas'));
+  return data;
 }
 
 export async function uploadCargaBd({ fuente, archivo }) {

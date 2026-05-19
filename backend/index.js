@@ -14,6 +14,7 @@ const healthRoutes = require('./routes/health');
 const { requireAuth } = require('./middleware/auth');
 const consolidado = require('./db/oracleConsolidado.repo');
 const { closePool } = require('./db/oraclePool');
+const { shutdownCargaJobs } = require('./services/cargaBdService');
 
 const app = express();
 const PORT = process.env.PORT || 7860;
@@ -159,6 +160,7 @@ app.listen(PORT, '0.0.0.0', () => {
 async function shutdown(signal) {
   console.log(`[shutdown] Señal ${signal}. Cerrando pool Oracle...`);
   try {
+    shutdownCargaJobs(signal);
     await closePool();
   } catch (err) {
     console.error('[shutdown] Error cerrando pool Oracle:', err?.message || err);

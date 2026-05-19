@@ -97,6 +97,7 @@ function AdminCargasBD() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    const form = event.currentTarget;
     setMessage('');
     setError('');
     if (!fuente) {
@@ -113,7 +114,7 @@ function AdminCargasBD() {
       await uploadCargaBd({ fuente, archivo });
       setMessage('Archivo recibido. La carga quedo en ejecucion.');
       setArchivo(null);
-      event.currentTarget.reset();
+      form?.reset();
       await refresh();
     } catch (err) {
       setError(String(err?.message || 'No fue posible iniciar la carga.'));
