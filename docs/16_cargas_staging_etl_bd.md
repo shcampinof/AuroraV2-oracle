@@ -40,9 +40,10 @@ Nota de ambiente: al 2026-05-19 las pruebas operativas de este modulo apuntan al
 5. El backend crea un registro de carga en `cargas.json`.
 6. El backend inicia `CargueBD/loader_service.py` en segundo plano.
 7. El proceso Python valida el Excel y prepara la tabla staging.
-8. El proceso inserta filas por lotes.
-9. Si no hay errores, llama el procedimiento ETL de Oracle.
-10. La vista permite revisar estado, log y reintentar cargas fallidas.
+8. Si se ejecutara ETL, valida que el procedimiento Oracle exista, sea visible y este `VALID`.
+9. El proceso inserta filas por lotes.
+10. Si no hay errores, llama el procedimiento ETL de Oracle.
+11. La vista permite revisar estado, log y reintentar cargas fallidas.
 
 ## 5. Almacenamiento de archivos y logs
 
@@ -202,6 +203,7 @@ Conclusiones:
 
 - PONAL y Aurora 1.0 quedaron cargados en staging y ejecutaron ETL correctamente en desarrollo.
 - SISIPEC no falla por formato del Excel ni por insercion staging; el bloqueo esta en la disponibilidad/permisos del procedimiento Oracle `PRC_CARGA_SISIPEC_V3`.
+- Desde esta validacion, el servicio Python revisa la existencia y estado del procedimiento ETL antes de modificar staging, para evitar recargas largas cuando falta un objeto Oracle.
 - Antes de declarar SISIPEC operativo en produccion, el DBA debe confirmar la existencia del procedimiento en el esquema destino, su estado `VALID` y los permisos de ejecucion para el usuario configurado.
 
 ## 13. Relacion con `LOG_CARGA`

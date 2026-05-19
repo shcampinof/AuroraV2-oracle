@@ -486,6 +486,35 @@ def table_exists(cursor, table, schema=DEFAULT_SCHEMA):
     return cursor.fetchone()[0] > 0
 
 
+def parse_qualified_object(name):
+    parts = [part.strip().upper() for part in str(name or "").split(".") if part.strip()]
+    if len(parts) == 1:
+        return str(DEFAULT_SCHEMA).strip().upper(), parts[0]
+    return parts[-2], parts[-1]
+
+
+def validate_etl_procedure(cursor, config):
+    owner, procedure_name = parse_qualified_object(config.procedure)
+    cursor.execute(
+        """
+        SELECT STATUS
+          FROM ALL_OBJECTS
+         WHERE OWNER = :1
+           AND OBJECT_NAME = :2
+           AND OBJECT_TYPE = 'PROCEDURE'
+        """,
+        [owner, procedure_name],
+    )
+    row = cursor.fetchone()
+    if row is None:
+        raise RuntimeError(
+            f"El procedimiento Oracle {config.procedure} no existe, no es visible "
+            "o falta permiso EXECUTE para el usuario configurado."
+        )
+    if str(row[0]).upper() != "VALID":
+        raise RuntimeError(f"El procedimiento Oracle {config.procedure} existe pero esta en estado {row[0]}.")
+
+
 def connect_oracle():
     config = oracle_config()
     require_oracle_password(config)
@@ -593,6 +622,8 @@ def run_load(source, file_path, execute_etl=True):
     inserted = 0
     errors = []
     try:
+        if execute_etl:
+            validate_etl_procedure(cursor, config)
         prepare_table(cursor, connection, config)
         inserted, errors = insert_rows(connection, cursor, df, config)
         if errors:
