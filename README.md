@@ -1,63 +1,122 @@
-﻿---
-title: AURORA
-emoji: ⚖️
-colorFrom: blue
-colorTo: green
-sdk: docker
-app_port: 7860
-pinned: false
----
+# Aurora
 
-AURORA es una aplicación web para la gestión de atención jurídica de personas privadas de la libertad.
-Incluye un frontend en React y un backend en Node.js/Express, desplegados en un único contenedor Docker.
+Aurora es una aplicación web institucional para apoyar la consulta, registro y seguimiento de atención jurídica de personas privadas de la libertad en la Dirección Nacional de Defensoría Pública.
 
-## Estado Actual del Proyecto (2026-05-15)
+La solución se compone de un frontend React/Vite y un backend Node.js/Express. Para despliegue institucional se recomienda ejecutar ambos componentes en un único contenedor mediante Docker Compose.
 
-- Estado general: funcional.
-- Despliegue recomendado: contenedor único Docker/Compose, backend Express sirviendo API y frontend compilado.
-- PWA: instalable, con precache de shell/assets y cola offline acotada para escrituras criticas.
-- Validación frontend reciente: pruebas de reglas de estado y build en verde.
-- Validación backend:
-  - Se ejecutó una suite funcional de integración en entorno temporal aislado (backend clonado en puerto `8899`).
-  - Resultado: 17/17 checks exitosos.
-  - Cobertura validada:
-    - validación de cédula PAG;
-    - asignación de defensor por PAG;
-    - filtros de PAG y Usuarios asignados (documento, departamento, defensor y estado);
-    - guardado de formulario (`PUT /api/ppl/:documento`);
-    - creación de nueva actuación (`POST /api/ppl/:documento/actuaciones`);
-    - persistencia y consulta de historial (`GET /api/ppl/:documento/actuaciones`).
+## Alcance del Repositorio
 
-## Cambios Técnicos Relevantes en esta actualización
+Este repositorio contiene el código fuente requerido para compilación, despliegue y operación técnica de Aurora:
 
-- Los estados de actuación se derivan con reglas centralizadas en `frontend/src/config/estadoActuaciones.rules.ts`.
-- El historial de actuaciones recalcula la fila activa con el registro vivo del formulario; así la "Acción a impulsar" se actualiza sin depender de recargar toda la aplicación.
-- La vista de asignación de defensores usa el mismo derivador para mostrar "Acción a impulsar", en lugar de depender solo del valor crudo persistido.
-- Se actualizó la exclusión de respaldos locales (`.cleanup-backups/`) para que no entren a Git ni a la imagen Docker.
-- Ajuste de configuración de Vite para usar `VITE_DEV_API_TARGET` vía entorno de Node sin romper `vitest`/`vite build`.
-- Limpieza de dependencias innecesarias en `useMemo` de `FormularioAtencion` (sin impacto funcional esperado).
-- PWA endurecida para produccion: manifest con scope/id, service worker con assets hash de Vite, cola IndexedDB limitada, Background Sync cuando esta disponible y reintento por evento `online`.
-- Se mantienen cambios funcionales previos del repositorio en backend/frontend para flujo de PAG, defensores e historial.
+- `frontend/`: aplicación web React/Vite.
+- `backend/`: API Express, autenticación, rutas funcionales y acceso a Oracle.
+- `scripts/cargas_bd/`: scripts Python para cargas mensuales hacia staging/ETL.
+- `Dockerfile`: construcción del contenedor único.
+- `docker-compose.yml`: definición de despliegue.
+- `.env.example`: plantilla de variables de entorno.
 
-## Evidencia de Validación Ejecutada
+La documentación formal de entrega no se versiona en este repositorio. Debe gestionarse por el canal institucional definido para la entrega documental.
 
-- Frontend:
-  - `npm --prefix frontend run test -- pwaConfig.test.ts`
-  - `npm --prefix frontend run test -- estadoActuaciones.rules.test.ts evaluateAuroraRules.test.ts`
-  - `npm --prefix frontend run build`
-- Backend (funcional, integración):
-  - pruebas API end-to-end sobre copia temporal del backend, sin modificar datos de trabajo del repositorio.
+## Despliegue Recomendado
 
-## Documentación
+Requisitos mínimos:
 
-- `documentacion/documentacion_tecnica/`: documentación técnica formal.
-- `documentacion/documentacion_tecnica/base_datos/`: documentación técnica del modelo de base de datos.
-- `documentacion/soporte/`: reglas de negocio, pruebas, operación e integraciones.
-- `scripts/cargas_bd/`: servicio Python para cargas mensuales a staging/ETL.
+- Docker instalado en el servidor de aplicaciones.
+- Docker Compose disponible como `docker compose`.
+- Conectividad desde el servidor hacia Oracle.
+- Archivo `.env` creado a partir de `.env.example`.
+- Puerto publicado disponible, por defecto `7860`.
 
-## Riesgos/Pendientes
+Ejemplo de despliegue:
 
-- Backend ya cuenta con una prueba automatizada mínima de configuración segura de autenticación en `npm test`; falta ampliar cobertura a rutas e integración Oracle.
-- La PWA no cachea consultas de negocio (`GET /api/...`) para evitar datos desactualizados; la cola offline cubre solo escrituras controladas y acotadas.
-- `npm audit --audit-level=moderate` queda en 0 vulnerabilidades para frontend y backend al 2026-05-06.
-- El build frontend conserva una advertencia no bloqueante de bundle principal mayor a 500 kB; conviene dividir rutas con `import()` antes de un despliegue con tráfico alto.
+```bash
+cp .env.example .env
+# editar .env con valores reales de ambiente
+docker compose up --build -d
+docker compose ps
+docker compose logs -f aurora
+```
+
+El servicio publica frontend y backend en el mismo origen. La API queda disponible bajo `/api`.
+
+## Validación de Servicio
+
+Desde el servidor:
+
+```bash
+curl http://127.0.0.1:7860/api/health
+curl http://127.0.0.1:7860/api/health/db
+```
+
+Desde red autorizada o VPN, usar la IP o URL asignada por infraestructura:
+
+```text
+http://<IP_O_HOST_INSTITUCIONAL>:7860
+http://<IP_O_HOST_INSTITUCIONAL>:7860/api/health
+```
+
+`localhost` y `127.0.0.1` solo aplican dentro del servidor o mediante túnel SSH local.
+
+## Configuración Principal
+
+Las variables se definen en `.env`. No se deben versionar credenciales, secretos ni archivos `.env` reales.
+
+Variables principales:
+
+- `HOST_PORT`: puerto publicado por Docker, por defecto `7860`.
+- `PORT`: puerto interno del servicio, por defecto `7860`.
+- `AUTH_JWT_SECRET`: secreto para tokens de sesión Aurora.
+- `AZURE_AD_TENANT_ID`: tenant institucional de Microsoft Entra ID.
+- `AZURE_AD_CLIENT_ID`: identificador de la aplicación registrada.
+- `AZURE_AD_REQUIRED_GROUP_IDS`: grupos permitidos, si aplica.
+- `AZURE_AD_REQUIRED_APP_ROLES`: roles permitidos, por ejemplo `admin,user`.
+- `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_HOST`, `ORACLE_PORT`, `ORACLE_SERVICE_NAME`: conexión Oracle.
+- `CARGUEBD_ADMIN_ROLES`: roles autorizados para operar cargas mensuales.
+
+## Roles
+
+Aurora contempla dos perfiles funcionales principales:
+
+- `user`: usuario funcional con acceso a módulos ordinarios de consulta, formularios, asignaciones, reportes y descargas.
+- `admin`: usuario administrador con acceso adicional a administración y módulo de cargas mensuales.
+
+La asignación institucional de roles debe realizarse en Microsoft Entra ID mediante grupos o app roles. Azure DevOps se usa para control de código fuente; no reemplaza el control de acceso funcional de la aplicación.
+
+## Cargas Mensuales
+
+El módulo de cargas permite procesar archivos `.xlsx` para staging y ejecución ETL según la configuración del ambiente.
+
+Los archivos de carga, evidencias, logs operativos y datos personales no deben subirse al repositorio. El contenedor usa un volumen persistente para almacenamiento operativo:
+
+```text
+aurora_cargas_bd:/app/backend/storage/cargas_bd
+```
+
+## Pruebas Técnicas
+
+Comandos útiles:
+
+```bash
+npm --prefix backend test
+npm --prefix frontend run test
+npm --prefix frontend run build
+```
+
+Pruebas específicas disponibles:
+
+```bash
+npm --prefix frontend run test -- estadoActuaciones.rules.test.ts evaluateAuroraRules.test.ts
+npm --prefix frontend run test -- pwaConfig.test.ts
+```
+
+## Entrega de Código
+
+Para una entrega limpia del repositorio:
+
+- No incluir `node_modules/`.
+- No incluir `dist/` ni salidas de compilación.
+- No incluir `.env` ni secretos.
+- No incluir documentación formal de entrega.
+- No incluir archivos Excel, evidencias funcionales ni respaldos operativos.
+
+El archivo `.gitignore` mantiene estas exclusiones para que el repositorio contenga únicamente el código y la configuración base necesaria para despliegue.
