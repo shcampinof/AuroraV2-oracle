@@ -6,6 +6,9 @@ node_modules
 **/node_modules
 dist
 dist-ssr
+frontend/dist/
+backend/public/app/
+backend/storage/
 
 logs
 *.log
@@ -15,6 +18,15 @@ yarn-error.log*
 pnpm-debug.log*
 
 .cleanup-backups/
+
+# Archivos de entrega, pruebas funcionales y cargues operativos.
+*.zip
+*.tar
+*.tar.gz
+scripts/cargas_bd/*.xlsx
+scripts/cargas_bd/*.xls
+scripts/cargas_bd/*.csv
+scripts/cargas_bd/*.log
 
 .DS_Store
 desktop.ini
