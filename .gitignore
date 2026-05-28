@@ -19,6 +19,9 @@ pnpm-debug.log*
 
 .cleanup-backups/
 
+# Documentacion formal entregada por canal institucional separado.
+documentacion/
+
 # Archivos de entrega, pruebas funcionales y cargues operativos.
 *.zip
 *.tar
