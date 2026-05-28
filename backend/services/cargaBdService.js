@@ -160,7 +160,7 @@ function getPythonExecutable() {
 }
 
 function getLoaderScriptPath() {
-  return path.resolve(process.env.CARGUEBD_SCRIPT_PATH || path.join(__dirname, '..', '..', 'CargueBD', 'loader_service.py'));
+  return path.resolve(process.env.CARGUEBD_SCRIPT_PATH || path.join(__dirname, '..', '..', 'scripts/cargas_bd', 'loader_service.py'));
 }
 
 function getPythonDependencyCheckArgs() {
@@ -192,13 +192,13 @@ function checkPythonRuntime(python, script) {
   if (result.status !== 0) {
     const detail = `${result.stderr || result.stdout || ''}`.trim();
     if (detail.includes("No module named 'pandas'")) {
-      return 'Falta instalar dependencia Python: pandas. Ejecute pip install -r CargueBD/requirements.txt o configure CARGUEBD_PYTHON con un entorno que la tenga.';
+      return 'Falta instalar dependencia Python: pandas. Ejecute pip install -r scripts/cargas_bd/requirements.txt o configure CARGUEBD_PYTHON con un entorno que la tenga.';
     }
     if (detail.includes("No module named 'openpyxl'")) {
-      return 'Falta instalar dependencia Python: openpyxl. Ejecute pip install -r CargueBD/requirements.txt o configure CARGUEBD_PYTHON con un entorno que la tenga.';
+      return 'Falta instalar dependencia Python: openpyxl. Ejecute pip install -r scripts/cargas_bd/requirements.txt o configure CARGUEBD_PYTHON con un entorno que la tenga.';
     }
     if (detail.includes("No module named 'oracledb'")) {
-      return 'Falta instalar dependencia Python: oracledb. Ejecute pip install -r CargueBD/requirements.txt o configure CARGUEBD_PYTHON con un entorno que la tenga.';
+      return 'Falta instalar dependencia Python: oracledb. Ejecute pip install -r scripts/cargas_bd/requirements.txt o configure CARGUEBD_PYTHON con un entorno que la tenga.';
     }
     return `El entorno Python de cargas no esta listo: ${detail || `codigo ${result.status}`}`;
   }
@@ -230,7 +230,7 @@ function summarizePythonFailure(logPath, fallback) {
 
     const missingModuleMatch = logText.match(/ModuleNotFoundError:\s+No module named '([^']+)'/i);
     if (missingModuleMatch) {
-      return `Falta instalar dependencia Python: ${missingModuleMatch[1]}. Ejecute pip install -r CargueBD/requirements.txt o configure CARGUEBD_PYTHON.`;
+      return `Falta instalar dependencia Python: ${missingModuleMatch[1]}. Ejecute pip install -r scripts/cargas_bd/requirements.txt o configure CARGUEBD_PYTHON.`;
     }
 
     const oracleLines = logText

@@ -11,7 +11,6 @@ backend/public/app
 !.env.example
 backend/.env
 backend/.env.*
-!backend/.env.example
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
@@ -28,7 +27,14 @@ desktop.ini
 .vscode
 .idea
 
-BD Documentation
+documentacion
 docs
 README*.md
 SET_PRUEBAS_AURORA.md
+
+scripts/cargas_bd/*.xlsx
+scripts/cargas_bd/*.xls
+scripts/cargas_bd/*.csv
+scripts/cargas_bd/*.log
+scripts/cargas_bd/__pycache__
+scripts/cargas_bd/*.pyc

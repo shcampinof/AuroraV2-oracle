@@ -18,10 +18,10 @@ ENV PORT=7860
 
 WORKDIR /app
 
-COPY CargueBD/requirements.txt ./CargueBD/requirements.txt
+COPY scripts/cargas_bd/requirements.txt ./scripts/cargas_bd/requirements.txt
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 python3-pip \
-  && pip3 install --break-system-packages --no-cache-dir -r ./CargueBD/requirements.txt \
+  && pip3 install --break-system-packages --no-cache-dir -r ./scripts/cargas_bd/requirements.txt \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
@@ -31,7 +31,7 @@ COPY backend/package*.json ./
 RUN npm ci --omit=dev --no-audit && npm cache clean --force
 
 COPY backend/ ./
-COPY CargueBD/ ../CargueBD/
+COPY scripts/cargas_bd/ ../scripts/cargas_bd/
 COPY --from=frontend-builder /app/frontend/dist ./public/app
 
 RUN chown -R node:node /app
