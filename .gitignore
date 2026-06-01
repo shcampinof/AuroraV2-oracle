@@ -9,6 +9,7 @@ dist-ssr
 frontend/dist/
 backend/public/app/
 backend/storage/
+backend/certs/
 
 logs
 *.log
@@ -19,8 +20,7 @@ pnpm-debug.log*
 
 .cleanup-backups/
 
-# Documentacion formal entregada por canal institucional separado.
-documentacion/
+# La documentacion formal se versiona para que el ZIP de GitHub incluya la entrega actualizada.
 
 # Archivos de entrega, pruebas funcionales y cargues operativos.
 *.zip

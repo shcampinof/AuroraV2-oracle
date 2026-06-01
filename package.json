@@ -3,9 +3,19 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
+    "build": "npm --prefix frontend run build && rm -rf backend/public/app && mkdir -p backend/public/app && cp -R frontend/dist/. backend/public/app/",
     "encoding:normalize": "node scripts/normalize-encoding.mjs",
     "encoding:check": "node scripts/check-encoding.mjs",
+    "service:start": "npm run build && pm2 start ecosystem.config.cjs --update-env",
+    "service:stop": "pm2 stop aurora",
+    "service:restart": "npm run build && pm2 restart aurora --update-env",
+    "service:delete": "pm2 delete aurora",
+    "service:logs": "pm2 logs aurora",
+    "service:status": "pm2 status aurora",
     "qa:smoke": "npm --prefix frontend run lint && npm --prefix frontend run test && npm --prefix frontend run build && npm --prefix backend test",
     "qa:encoding": "npm run encoding:check"
+  },
+  "dependencies": {
+    "pm2": "^7.0.1"
   }
 }
