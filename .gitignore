@@ -20,7 +20,8 @@ pnpm-debug.log*
 
 .cleanup-backups/
 
-# La documentacion formal se versiona para que el ZIP de GitHub incluya la entrega actualizada.
+# Documentacion formal entregada por canal institucional separado.
+documentacion/
 
 # Archivos de entrega, pruebas funcionales y cargues operativos.
 *.zip

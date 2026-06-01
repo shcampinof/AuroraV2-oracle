@@ -14,9 +14,8 @@ Este repositorio contiene el código fuente requerido para compilación, desplie
 - `Dockerfile`: construcción del contenedor único.
 - `docker-compose.yml`: definición de despliegue.
 - `.env.example`: plantilla de variables de entorno.
-- `documentacion/`: documentación técnica y documentos Word de entrega.
 
-La documentación formal de entrega se versiona en este repositorio para que el ZIP descargado desde GitHub incluya la versión más reciente. La guía única de despliegue está en `documentacion/documentacion_tecnica/GUIA_DESPLIEGUE_AURORA.md`; su versión Word está en `documentacion/documentacion_word/GUIA_DESPLIEGUE_AURORA.docx`.
+La documentación formal de entrega no se versiona en este repositorio. Debe gestionarse por el canal institucional definido para la entrega documental.
 
 ## Despliegue Recomendado
 
@@ -57,8 +56,6 @@ npm run service:start
 npm run service:status
 npm run service:stop
 ```
-
-Ver el paso a paso completo en `documentacion/documentacion_tecnica/GUIA_DESPLIEGUE_AURORA.md`.
 
 ## Validación de Servicio
 
@@ -137,6 +134,7 @@ Para una entrega limpia del repositorio:
 - No incluir `node_modules/`.
 - No incluir `dist/` ni salidas de compilación.
 - No incluir `.env` ni secretos.
+- No incluir documentación formal de entrega.
 - No incluir archivos Excel, evidencias funcionales ni respaldos operativos.
 
-El archivo `.gitignore` mantiene estas exclusiones para que el repositorio contenga el código, la configuración base necesaria para despliegue y la documentación formal vigente, sin credenciales ni datos operativos sensibles.
+El archivo `.gitignore` mantiene estas exclusiones para que el repositorio contenga únicamente el código y la configuración base necesaria para despliegue.
