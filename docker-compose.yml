@@ -13,6 +13,8 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: ${PORT:-7860}
       ENABLE_STARTUP_WARMUP: ${ENABLE_STARTUP_WARMUP:-false}
+      HTTPS_KEY_PATH: ${HTTPS_KEY_PATH:-}
+      HTTPS_CERT_PATH: ${HTTPS_CERT_PATH:-}
       CORS_ORIGIN: ${CORS_ORIGIN:-}
       FORMATOS_BASE_URL: ${FORMATOS_BASE_URL:-}
       AUTH_LOCAL_ADMIN_ENABLED: ${AUTH_LOCAL_ADMIN_ENABLED:-false}
@@ -28,6 +30,7 @@ services:
       AZURE_AD_ALLOWED_EMAIL_DOMAINS: ${AZURE_AD_ALLOWED_EMAIL_DOMAINS:-}
       AZURE_AD_REQUIRED_GROUP_IDS: ${AZURE_AD_REQUIRED_GROUP_IDS:-}
       AZURE_AD_REQUIRED_APP_ROLES: ${AZURE_AD_REQUIRED_APP_ROLES:-}
+      AZURE_AD_ADMIN_GROUP_IDS: ${AZURE_AD_ADMIN_GROUP_IDS:-}
       ORACLE_USER: ${ORACLE_USER:-}
       ORACLE_PASSWORD: ${ORACLE_PASSWORD:-}
       ORACLE_HOST: ${ORACLE_HOST:-}
@@ -47,6 +50,7 @@ services:
       CARGUEBD_SKIP_ETL: ${CARGUEBD_SKIP_ETL:-false}
       CARGUEBD_MAX_FILE_MB: ${CARGUEBD_MAX_FILE_MB:-120}
     volumes:
+      - ./backend/certs:/app/backend/certs:ro
       - aurora_cargas_bd:/app/backend/storage/cargas_bd
 
 volumes:

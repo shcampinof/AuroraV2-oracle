@@ -88,6 +88,7 @@ Variables principales:
 - `AZURE_AD_CLIENT_ID`: identificador de la aplicación registrada.
 - `AZURE_AD_REQUIRED_GROUP_IDS`: grupos permitidos, si aplica.
 - `AZURE_AD_REQUIRED_APP_ROLES`: roles permitidos, por ejemplo `admin,user`.
+- `AZURE_AD_ADMIN_GROUP_IDS`: grupos de Entra ID que reciben rol interno `admin`, si aplica.
 - `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_HOST`, `ORACLE_PORT`, `ORACLE_SERVICE_NAME`: conexión Oracle.
 - `CARGUEBD_ADMIN_ROLES`: roles autorizados para operar cargas mensuales.
 

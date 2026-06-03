@@ -81,4 +81,25 @@ withEnv(
   }
 );
 
+withEnv({}, ({ normalizeRoles }) => {
+  assert.deepEqual(
+    normalizeRoles(['Aurora.Admin', 'Aurora.User'], []),
+    ['aurora.admin', 'admin', 'aurora.user', 'user'],
+    'Azure app role values must be usable as Aurora internal roles'
+  );
+});
+
+withEnv(
+  {
+    AZURE_AD_ADMIN_GROUP_IDS: 'admin-group-id',
+  },
+  ({ getAzureAdConfig, resolveAzureAdRoles }) => {
+    assert.deepEqual(
+      resolveAzureAdRoles({ groups: ['admin-group-id'] }, getAzureAdConfig()),
+      ['user', 'admin'],
+      'Azure group membership can grant Aurora internal admin role'
+    );
+  }
+);
+
 console.log('auth-config checks passed');

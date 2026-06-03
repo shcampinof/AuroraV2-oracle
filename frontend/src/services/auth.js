@@ -6,6 +6,25 @@ import { clearStoredSession, getStoredSession, storeSession } from './authStorag
 let msalApp = null;
 let msalInitPromise = null;
 
+function isPopupWindow() {
+  return Boolean(window.opener && !window.opener.closed);
+}
+
+function mapAzureAdLoginError(err) {
+  const rawMessage = String(err?.message || err?.errorMessage || err?.errorCode || '');
+  if (
+    rawMessage.includes('AADSTS9002326') ||
+    rawMessage.toLowerCase().includes('cross-origin token redemption')
+  ) {
+    const mapped = new Error(
+      `La aplicación de Microsoft Entra ID debe registrar ${window.location.origin} como Redirect URI de tipo Single-page application (SPA), no como Web.`
+    );
+    mapped.code = 'AZURE_AD_SPA_REDIRECT_URI_REQUIRED';
+    return mapped;
+  }
+  return err;
+}
+
 async function readAuthResponse(res, fallbackMessage) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -88,14 +107,22 @@ export async function loginWithAzureAd(authConfig, options = {}) {
   if (!azureAd.enabled || !azureAd.tenantId || !azureAd.clientId) {
     throw new Error('El servicio de autenticación institucional aún no está configurado.');
   }
+  if (isPopupWindow()) {
+    throw new Error('El inicio de sesión institucional ya se está procesando en esta ventana.');
+  }
 
   const app = getMsalApp(azureAd);
   await ensureMsalReady(app);
-  const result = await app.loginPopup({
-    scopes: ['openid', 'profile', 'email'],
-    loginHint: String(options?.username || '').trim() || undefined,
-    prompt: 'select_account',
-  });
+  let result;
+  try {
+    result = await app.loginPopup({
+      scopes: ['openid', 'profile', 'email'],
+      loginHint: String(options?.username || '').trim() || undefined,
+      prompt: 'select_account',
+    });
+  } catch (err) {
+    throw mapAzureAdLoginError(err);
+  }
 
   const res = await fetch(`${API_BASE}/auth/azure-ad`, {
     method: 'POST',

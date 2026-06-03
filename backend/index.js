@@ -1,6 +1,8 @@
 const path = require('path');
 require('dotenv').config({ path: process.env.DOTENV_CONFIG_PATH || path.join(__dirname, '.env') });
 const fs = require('fs');
+const http = require('http');
+const https = require('https');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -45,6 +47,28 @@ function requestOrigin(req) {
   const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
   const host = String(req.headers['x-forwarded-host'] || req.get('host') || '').split(',')[0].trim();
   return host ? `${proto}://${host}` : '';
+}
+
+function getHttpsOptions() {
+  const keyPath = String(process.env.HTTPS_KEY_PATH || process.env.TLS_KEY_PATH || process.env.SSL_KEY_PATH || '').trim();
+  const certPath = String(process.env.HTTPS_CERT_PATH || process.env.TLS_CERT_PATH || process.env.SSL_CERT_PATH || '').trim();
+  if (!keyPath && !certPath) return null;
+  if (!keyPath || !certPath) {
+    throw new Error('Para habilitar HTTPS configure HTTPS_KEY_PATH y HTTPS_CERT_PATH.');
+  }
+  const resolveFromBackend = (filePath) => (path.isAbsolute(filePath) ? filePath : path.join(__dirname, filePath));
+  const resolvedKeyPath = resolveFromBackend(keyPath);
+  const resolvedCertPath = resolveFromBackend(certPath);
+  if (!fs.existsSync(resolvedKeyPath)) {
+    throw new Error(`No existe el archivo configurado en HTTPS_KEY_PATH: ${resolvedKeyPath}`);
+  }
+  if (!fs.existsSync(resolvedCertPath)) {
+    throw new Error(`No existe el archivo configurado en HTTPS_CERT_PATH: ${resolvedCertPath}`);
+  }
+  return {
+    key: fs.readFileSync(resolvedKeyPath),
+    cert: fs.readFileSync(resolvedCertPath),
+  };
 }
 
 function corsOptionsDelegate(req, callback) {
@@ -127,8 +151,12 @@ app.use('/api', (req, res) => {
   res.status(404).json({ message: 'Endpoint API no encontrado' });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Servidor AURORA escuchando en http://0.0.0.0:${PORT}`);
+const httpsOptions = getHttpsOptions();
+const server = httpsOptions ? https.createServer(httpsOptions, app) : http.createServer(app);
+
+server.listen(PORT, '0.0.0.0', () => {
+  const protocol = httpsOptions ? 'https' : 'http';
+  console.log(`Servidor AURORA escuchando en ${protocol}://0.0.0.0:${PORT}`);
   setImmediate(async () => {
     if (!enableStartupWarmup) {
       console.log('[warmup] Deshabilitado. Define ENABLE_STARTUP_WARMUP=true para activarlo.');

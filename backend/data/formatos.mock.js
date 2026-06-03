@@ -104,7 +104,7 @@ const formatos = [
   },
   {
     id: 'f21',
-    titulo: 'Utilidad Pública - Solicitud Ley 2292 de 2023 VF',
+    titulo: 'Utilidad Pública - Solicitud Ley 2292 de 2023',
     downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQAnckhNsqvdQIG2u_LskPWiAWo_gRObBR8AYOlTThyUUYU?e=WtuHec&download=1',
   },
 ];

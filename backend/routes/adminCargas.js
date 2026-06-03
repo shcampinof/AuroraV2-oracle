@@ -3,6 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const multer = require('multer');
+const { normalizeRoles } = require('../services/authService');
 
 const {
   createCarga,
@@ -25,7 +26,7 @@ function parseList(value, fallback) {
 
 function hasAdminAccess(user) {
   const allowedRoles = parseList(process.env.CARGUEBD_ADMIN_ROLES, ['admin', 'carguebd', 'cargas_bd']);
-  const roles = Array.isArray(user?.roles) ? user.roles.map((role) => String(role).toLowerCase()) : [];
+  const roles = normalizeRoles(user?.roles, []);
   if (roles.some((role) => allowedRoles.includes(role))) return true;
   return user?.provider === 'local' && roles.includes('admin');
 }

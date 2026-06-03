@@ -5,6 +5,7 @@
 **/node_modules
 frontend/dist
 backend/public/app
+backend/certs
 
 .env
 .env.*

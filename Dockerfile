@@ -40,6 +40,6 @@ USER node
 EXPOSE 7860
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 7860) + '/api/health').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
+  CMD node -e "process.env.NODE_TLS_REJECT_UNAUTHORIZED='0'; const protocol = process.env.HTTPS_KEY_PATH && process.env.HTTPS_CERT_PATH ? 'https' : 'http'; fetch(protocol + '://127.0.0.1:' + (process.env.PORT || 7860) + '/api/health').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 CMD ["npm", "run", "start:prod"]

@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const jwksRsa = require('jwks-rsa');
+const { syncAzureUser } = require('./userDirectoryService');
 
 const APP_TOKEN_ISSUER = process.env.AUTH_TOKEN_ISSUER || 'aurora';
 const APP_TOKEN_AUDIENCE = process.env.AUTH_TOKEN_AUDIENCE || 'aurora-api';
@@ -13,12 +14,55 @@ const PLACEHOLDER_JWT_SECRET = 'replace-with-a-long-random-secret';
 const EXAMPLE_LOCAL_ADMIN_PASSWORD = 'change-this-temporary-password';
 
 const jwksClients = new Map();
+const ROLE_ALIASES = new Map([
+  ['aurora.admin', 'admin'],
+  ['aurora.user', 'user'],
+  ['administrator', 'admin'],
+  ['administrador', 'admin'],
+  ['usuario', 'user'],
+]);
 
 function parseList(value) {
   return String(value || '')
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function normalizeRoles(roles, fallback = ['user']) {
+  const input = Array.isArray(roles) ? roles : parseList(roles);
+  const normalized = Array.from(
+    input.reduce((set, role) => {
+      const raw = String(role || '').trim().toLowerCase();
+      if (!raw) return set;
+
+      set.add(raw);
+      const alias = ROLE_ALIASES.get(raw);
+      if (alias) set.add(alias);
+
+      const dotIndex = raw.lastIndexOf('.');
+      if (dotIndex >= 0 && dotIndex < raw.length - 1) {
+        set.add(raw.slice(dotIndex + 1));
+      }
+
+      return set;
+    }, new Set())
+  );
+  return normalized.length ? normalized : fallback;
+}
+
+function resolveAzureAdRoles(claims, config) {
+  const roles = new Set(normalizeRoles(claims?.roles));
+  const tokenGroups = Array.isArray(claims?.groups) ? claims.groups.map((groupId) => String(groupId || '').toLowerCase()) : [];
+  const adminGroups = Array.isArray(config?.adminGroups)
+    ? config.adminGroups.map((groupId) => String(groupId || '').toLowerCase())
+    : [];
+
+  if (adminGroups.length && adminGroups.some((groupId) => tokenGroups.includes(groupId))) {
+    roles.add('admin');
+  }
+
+  return Array.from(roles);
 }
 
 function isProduction() {
@@ -132,6 +176,7 @@ function getAzureAdConfig() {
     allowedDomains: parseList(process.env.AZURE_AD_ALLOWED_EMAIL_DOMAINS || process.env.AZURE_ALLOWED_EMAIL_DOMAINS),
     requiredGroups: parseList(process.env.AZURE_AD_REQUIRED_GROUP_IDS || process.env.AZURE_REQUIRED_GROUP_IDS),
     requiredRoles: parseList(process.env.AZURE_AD_REQUIRED_APP_ROLES || process.env.AZURE_REQUIRED_APP_ROLES),
+    adminGroups: parseList(process.env.AZURE_AD_ADMIN_GROUP_IDS || process.env.AZURE_ADMIN_GROUP_IDS),
   };
 }
 
@@ -193,24 +238,26 @@ function assertAzureAdClaims(claims, config) {
     }
   }
 
-  if (config.requiredGroups.length) {
+  const requiresGroups = config.requiredGroups.length > 0;
+  const requiresRoles = config.requiredRoles.length > 0;
+  let belongsToGroup = false;
+  let hasRole = false;
+
+  if (requiresGroups) {
     const tokenGroups = Array.isArray(claims.groups) ? claims.groups : [];
-    const belongsToGroup = config.requiredGroups.some((groupId) => tokenGroups.includes(groupId));
-    if (!belongsToGroup) {
-      const err = new Error('La cuenta no pertenece al grupo autorizado para AURORA.');
-      err.status = 403;
-      throw err;
-    }
+    belongsToGroup = config.requiredGroups.some((groupId) => tokenGroups.includes(groupId));
   }
 
-  if (config.requiredRoles.length) {
-    const tokenRoles = Array.isArray(claims.roles) ? claims.roles : [];
-    const hasRole = config.requiredRoles.some((role) => tokenRoles.includes(role));
-    if (!hasRole) {
-      const err = new Error('La cuenta no tiene el rol de aplicación requerido.');
-      err.status = 403;
-      throw err;
-    }
+  if (requiresRoles) {
+    const tokenRoles = normalizeRoles(claims.roles, []);
+    const requiredRoles = normalizeRoles(config.requiredRoles, []);
+    hasRole = requiredRoles.some((role) => tokenRoles.includes(role));
+  }
+
+  if ((requiresGroups || requiresRoles) && !belongsToGroup && !hasRole) {
+    const err = new Error('La cuenta no pertenece a un grupo o rol autorizado para AURORA.');
+    err.status = 403;
+    throw err;
   }
 }
 
@@ -232,15 +279,32 @@ async function authenticateAzureAdToken(idToken) {
   assertAzureAdClaims(claims, config);
 
   const email = String(claims.preferred_username || claims.email || claims.upn || '').trim();
-  return {
+  const roles = resolveAzureAdRoles(claims, config);
+  const user = {
     id: String(claims.oid || claims.sub || email),
+    azureObjectId: String(claims.oid || ''),
     username: email,
     email,
     name: String(claims.name || email || 'Usuario institucional'),
     provider: 'azure-ad',
-    roles: Array.isArray(claims.roles) ? claims.roles : ['user'],
+    roles,
     tenantId: claims.tid,
   };
+
+  try {
+    const storedUser = syncAzureUser(user);
+    return {
+      ...user,
+      roles: normalizeRoles(storedUser.roles || user.roles),
+    };
+  } catch (err) {
+    if (String(process.env.AUTH_USER_SYNC_REQUIRED || '').trim().toLowerCase() === 'true') {
+      err.status = Number(err?.status) || 500;
+      throw err;
+    }
+    console.error('[auth] No fue posible sincronizar el usuario institucional:', err?.message || err);
+    return user;
+  }
 }
 
 module.exports = {
@@ -249,6 +313,8 @@ module.exports = {
   getAzureAdConfig,
   isAzureAdConfigured,
   isLocalAdminEnabled,
+  normalizeRoles,
+  resolveAzureAdRoles,
   signAppToken,
   verifyAppToken,
 };

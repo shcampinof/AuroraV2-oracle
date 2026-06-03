@@ -15,8 +15,28 @@ import { logout, refreshSession } from './services/auth.js';
 
 const VISTAS = new Set(['inicio', 'formulario', 'registros', 'asignacion', 'herramientas', 'manual', 'admin-cargas']);
 
+function normalizarRoles(roles) {
+  const input = Array.isArray(roles) ? roles : [];
+  return Array.from(
+    input.reduce((set, role) => {
+      const raw = String(role || '').trim().toLowerCase();
+      if (!raw) return set;
+
+      set.add(raw);
+      const dotIndex = raw.lastIndexOf('.');
+      if (dotIndex >= 0 && dotIndex < raw.length - 1) {
+        set.add(raw.slice(dotIndex + 1));
+      }
+
+      if (raw === 'aurora.admin' || raw === 'administrator' || raw === 'administrador') set.add('admin');
+      if (raw === 'aurora.user' || raw === 'usuario') set.add('user');
+      return set;
+    }, new Set())
+  );
+}
+
 function tieneAccesoCargas(user) {
-  const roles = Array.isArray(user?.roles) ? user.roles.map((role) => String(role).toLowerCase()) : [];
+  const roles = normalizarRoles(user?.roles);
   return roles.some((role) => ['admin', 'carguebd', 'cargas_bd'].includes(role));
 }
 
@@ -28,11 +48,23 @@ function vistaDesdeHash(hashValue) {
   return VISTAS.has(raw) ? raw : 'inicio';
 }
 
+function esRespuestaMsal() {
+  const hashParams = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
+  const searchParams = new URLSearchParams(window.location.search);
+  return (
+    hashParams.has('code') ||
+    hashParams.has('error') ||
+    searchParams.has('code') ||
+    searchParams.has('error')
+  );
+}
+
 function App() {
   const [vistaActual, setVistaActual] = useState(() => vistaDesdeHash(window.location.hash));
   const [numeroSeleccionado, setNumeroSeleccionado] = useState(null);
   const [session, setSession] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
+  const isMsalResponse = esRespuestaMsal();
 
   useEffect(() => {
     let alive = true;
@@ -109,6 +141,14 @@ function App() {
   function manejarSalida() {
     logout();
     setSession(null);
+  }
+
+  if (isMsalResponse) {
+    return (
+      <div className="auth-loading-screen">
+        <div className="auth-loading-card">Procesando inicio de sesión institucional...</div>
+      </div>
+    );
   }
 
   if (authChecking) {
