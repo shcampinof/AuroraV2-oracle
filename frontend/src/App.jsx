@@ -11,7 +11,7 @@ import AsignacionDefensores from './pages/AsignacionDefensores.jsx';
 import AdminCargasBD from './pages/AdminCargasBD.jsx';
 import CajaHerramientas from './pages/CajaHerramientas.jsx';
 import ManualInteractivo from './pages/ManualInteractivo.jsx';
-import { logout, refreshSession } from './services/auth.js';
+import { completeAzureAdRedirect, getAuthConfig, logout, refreshSession } from './services/auth.js';
 
 const VISTAS = new Set(['inicio', 'formulario', 'registros', 'asignacion', 'herramientas', 'manual', 'admin-cargas']);
 
@@ -68,7 +68,14 @@ function App() {
 
   useEffect(() => {
     let alive = true;
-    refreshSession()
+    const finishAuth = async () => {
+      const authConfig = await getAuthConfig();
+      const redirectedSession = await completeAzureAdRedirect(authConfig);
+      if (redirectedSession) return redirectedSession;
+      return refreshSession();
+    };
+
+    finishAuth()
       .then((activeSession) => {
         if (!alive) return;
         setSession(activeSession);
@@ -143,18 +150,12 @@ function App() {
     setSession(null);
   }
 
-  if (isMsalResponse) {
-    return (
-      <div className="auth-loading-screen">
-        <div className="auth-loading-card">Procesando inicio de sesión institucional...</div>
-      </div>
-    );
-  }
-
   if (authChecking) {
     return (
       <div className="auth-loading-screen">
-        <div className="auth-loading-card">Validando sesión institucional...</div>
+        <div className="auth-loading-card">
+          {isMsalResponse ? 'Procesando inicio de sesión institucional...' : 'Validando sesión institucional...'}
+        </div>
       </div>
     );
   }

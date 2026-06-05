@@ -6,12 +6,16 @@ import { clearStoredSession, getStoredSession, storeSession } from './authStorag
 let msalApp = null;
 let msalInitPromise = null;
 
-function isPopupWindow() {
-  return Boolean(window.opener && !window.opener.closed);
-}
-
 function mapAzureAdLoginError(err) {
   const rawMessage = String(err?.message || err?.errorMessage || err?.errorCode || '');
+  if (rawMessage.toLowerCase().includes('interaction_in_progress')) {
+    clearStaleMsalInteractionState();
+    const mapped = new Error(
+      'Había un inicio de sesión institucional pendiente. Se limpió el estado local; intente ingresar nuevamente.'
+    );
+    mapped.code = 'AZURE_AD_INTERACTION_IN_PROGRESS';
+    return mapped;
+  }
   if (
     rawMessage.includes('AADSTS9002326') ||
     rawMessage.toLowerCase().includes('cross-origin token redemption')
@@ -23,6 +27,41 @@ function mapAzureAdLoginError(err) {
     return mapped;
   }
   return err;
+}
+
+function safeStorageEntries(storage) {
+  try {
+    return Array.from({ length: storage.length }, (_item, index) => storage.key(index)).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function removeStorageKeys(storage, predicate) {
+  for (const key of safeStorageEntries(storage)) {
+    try {
+      if (predicate(key, storage.getItem(key))) storage.removeItem(key);
+    } catch {
+      // Ignore storage access errors; the login attempt should continue.
+    }
+  }
+}
+
+function clearStaleMsalInteractionState() {
+  if (typeof window === 'undefined') return;
+
+  const isInteractionKey = (key, value) => {
+    const normalizedKey = String(key || '').toLowerCase();
+    const normalizedValue = String(value || '').toLowerCase();
+    return (
+      normalizedValue.includes('interaction_in_progress') ||
+      (normalizedKey.includes('msal') && normalizedKey.includes('interaction')) ||
+      normalizedKey.endsWith('.interaction.status')
+    );
+  };
+
+  removeStorageKeys(window.sessionStorage, isInteractionKey);
+  removeStorageKeys(window.localStorage, isInteractionKey);
 }
 
 async function readAuthResponse(res, fallbackMessage) {
@@ -107,22 +146,46 @@ export async function loginWithAzureAd(authConfig, options = {}) {
   if (!azureAd.enabled || !azureAd.tenantId || !azureAd.clientId) {
     throw new Error('El servicio de autenticación institucional aún no está configurado.');
   }
-  if (isPopupWindow()) {
-    throw new Error('El inicio de sesión institucional ya se está procesando en esta ventana.');
-  }
 
   const app = getMsalApp(azureAd);
   await ensureMsalReady(app);
+  const request = {
+    scopes: ['openid', 'profile', 'email'],
+    loginHint: String(options?.username || '').trim() || undefined,
+    prompt: 'select_account',
+  };
+
+  try {
+    clearStaleMsalInteractionState();
+    await app.loginRedirect(request);
+  } catch (err) {
+    const rawMessage = String(err?.message || err?.errorMessage || err?.errorCode || '');
+    if (rawMessage.toLowerCase().includes('interaction_in_progress')) {
+      clearStaleMsalInteractionState();
+      await app.loginRedirect(request);
+      return null;
+    }
+    throw mapAzureAdLoginError(err);
+  }
+
+  return null;
+}
+
+export async function completeAzureAdRedirect(authConfig) {
+  const azureAd = authConfig?.azureAd || {};
+  if (!azureAd.enabled || !azureAd.tenantId || !azureAd.clientId) return null;
+
+  const app = getMsalApp(azureAd);
+  await ensureMsalReady(app);
+
   let result;
   try {
-    result = await app.loginPopup({
-      scopes: ['openid', 'profile', 'email'],
-      loginHint: String(options?.username || '').trim() || undefined,
-      prompt: 'select_account',
-    });
+    result = await app.handleRedirectPromise();
   } catch (err) {
     throw mapAzureAdLoginError(err);
   }
+
+  if (!result?.idToken) return null;
 
   const res = await fetch(`${API_BASE}/auth/azure-ad`, {
     method: 'POST',

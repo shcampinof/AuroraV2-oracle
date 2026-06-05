@@ -119,16 +119,12 @@ function LoginPage({ onAuthenticated }) {
       }
 
       const session = await loginWithAzureAd(authConfig, { username });
-      onAuthenticated(session);
+      if (session) onAuthenticated(session);
     } catch (err) {
       setError(err?.message || 'No fue posible iniciar sesión.');
     } finally {
       setStatus('idle');
     }
-  }
-
-  function handleAccountAction() {
-    handleLogin({ preventDefault() {} });
   }
 
   return (
@@ -139,9 +135,6 @@ function LoginPage({ onAuthenticated }) {
         <div className="login-topbar-actions">
           <button type="button" onClick={() => setLegalDialog('ayuda')} aria-label="Ayuda de acceso">
             ?
-          </button>
-          <button type="button" onClick={handleAccountAction} aria-label="Cuenta institucional">
-            ◎
           </button>
         </div>
       </header>
