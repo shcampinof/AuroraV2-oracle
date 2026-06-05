@@ -406,8 +406,10 @@ export default function HistorialActuacionesPPL({
     const rows = actuacionesRaw.map((item, idx) => {
       const itemId = String(item?.id ?? `actuacion-${idx + 1}`);
       const itemRowIndex = Number(item?.rowIndex);
+      const itemGestionId = Number(item?.registro?.__oracleIdGestion || 0);
       const matchesActiveId = activeId && itemId === activeId;
-      const matchesActiveGestion = !activeId && activeGestionId > 0 && Number(itemRowIndex) === activeGestionId;
+      const matchesActiveGestion =
+        activeGestionId > 0 && (Number(itemRowIndex) === activeGestionId || Number(itemGestionId) === activeGestionId);
       const shouldUseLiveRegistro = Boolean(registroActual && (matchesActiveId || matchesActiveGestion));
       if (shouldUseLiveRegistro) activeRowFound = true;
       return normalizeActuacion(item, idx, shouldUseLiveRegistro ? registroActual : null);

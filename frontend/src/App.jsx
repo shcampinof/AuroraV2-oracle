@@ -12,8 +12,17 @@ import AdminCargasBD from './pages/AdminCargasBD.jsx';
 import CajaHerramientas from './pages/CajaHerramientas.jsx';
 import ManualInteractivo from './pages/ManualInteractivo.jsx';
 import { completeAzureAdRedirect, getAuthConfig, logout, refreshSession } from './services/auth.js';
+import { FEATURE_FLAGS } from './config/featureFlags.js';
 
-const VISTAS = new Set(['inicio', 'formulario', 'registros', 'asignacion', 'herramientas', 'manual', 'admin-cargas']);
+const VISTAS = new Set([
+  'inicio',
+  'formulario',
+  'registros',
+  'asignacion',
+  'herramientas',
+  ...(FEATURE_FLAGS.manualInteractivo ? ['manual'] : []),
+  'admin-cargas',
+]);
 
 function normalizarRoles(roles) {
   const input = Array.isArray(roles) ? roles : [];
@@ -186,7 +195,7 @@ function App() {
     contenido = <CajaHerramientas />;
   }
 
-  if (vistaActual === 'manual') {
+  if (FEATURE_FLAGS.manualInteractivo && vistaActual === 'manual') {
     contenido = <ManualInteractivo />;
   }
 

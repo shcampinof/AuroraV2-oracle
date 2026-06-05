@@ -881,6 +881,7 @@ router.get('/condenados', async (req, res) => {
       tipo,
       filters,
       limit: effectiveLimit,
+      includeExactCounts: !hasFilters,
     });
     const rows = (Array.isArray(summary?.rows) ? summary.rows : []).map((row) => mapCondenadoRow(row));
     const payload = {
@@ -891,9 +892,13 @@ router.get('/condenados', async (req, res) => {
         filtered: hasFilters,
         totalAvailable: Number(summary?.totalAvailable || 0),
         totalMatched: Number(summary?.totalMatched || 0),
+        totalMatchedExact: summary?.totalMatchedExact !== false,
         returned: rows.length,
         limitApplied: effectiveLimit,
-        truncated: Number(summary?.totalMatched || 0) > effectiveLimit,
+        truncated:
+          typeof summary?.truncated === 'boolean'
+            ? summary.truncated
+            : Number(summary?.totalMatched || 0) > effectiveLimit,
       },
     };
     boundedCacheSet(condenadosListCache, cacheKey, payload);

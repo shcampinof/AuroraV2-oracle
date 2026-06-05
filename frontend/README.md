@@ -21,3 +21,13 @@ Para cambiarlo localmente, crear `frontend/.env.local` con:
 VITE_DEV_PORT=5174
 VITE_DEV_API_TARGET=http://localhost:7860
 ```
+
+## Feature Flags
+
+Las banderas funcionales simples del frontend se centralizan en:
+
+```text
+frontend/src/config/featureFlags.js
+```
+
+Para esta versión `manualInteractivo` está en `false`, por lo que la pestaña **Manual Interactivo** no aparece en el menú y la ruta `#/manual` redirige a Inicio. Cuando exista el video institucional, cambiar la bandera a `true` para reactivar la pestaña sin reconstruir el componente.

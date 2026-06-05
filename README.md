@@ -17,6 +17,16 @@ Este repositorio contiene el código fuente requerido para compilación, desplie
 
 La documentación formal de entrega no se versiona en este repositorio. Debe gestionarse por el canal institucional definido para la entrega documental.
 
+## Cambios Incluidos en Esta Versión
+
+Esta versión consolida los ajustes funcionales y de rendimiento aplicados después del último despliegue publicado:
+
+- Historial de actuaciones: se corrige la aparición temporal de una actuación duplicada o "fantasma" al guardar una actuación inicial, conservando la lógica de consulta y actualización existente.
+- Consolidado PDF: al generar el consolidado del caso, Aurora mantiene la apertura de la vista de impresión y además descarga automáticamente un archivo PDF del consolidado.
+- PAG - Asignación de casos de condenados: se optimiza la interacción de la tabla y del selector de defensor para reducir congelamientos al seleccionar casos o escribir nombres de defensores.
+- Filtros de condenados: las consultas filtradas usan una ruta rápida que evita conteos exactos costosos durante la interacción. Cuando hay más resultados que el límite mostrado, la interfaz lo informa y solicita precisar los filtros.
+- Manual Interactivo: la pestaña queda oculta para esta entrega porque aún no hay video disponible. El componente se conserva y puede reactivarse cambiando `manualInteractivo` a `true` en `frontend/src/config/featureFlags.js`.
+
 ## Despliegue Recomendado
 
 Requisitos mínimos:
@@ -126,6 +136,15 @@ Pruebas específicas disponibles:
 ```bash
 npm --prefix frontend run test -- estadoActuaciones.rules.test.ts evaluateAuroraRules.test.ts
 npm --prefix frontend run test -- pwaConfig.test.ts
+```
+
+Validación recomendada antes de entregar código fuente o construir imagen Docker:
+
+```bash
+npm --prefix backend test
+npm --prefix frontend run lint
+npm --prefix frontend run build
+docker compose config
 ```
 
 ## Entrega de Código

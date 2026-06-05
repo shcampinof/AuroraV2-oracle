@@ -873,8 +873,10 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       {!cargando && metaConsulta?.filtered && (
         <p className="hint-text">
           {metaConsulta?.truncated
-            ? `Se encontraron ${metaConsulta?.totalMatched || 0} registros y se muestran los primeros ${metaConsulta?.returned || 0}.`
-            : `Se encontraron ${metaConsulta?.totalMatched || 0} registros.`}
+            ? metaConsulta?.totalMatchedExact === false
+              ? `Se muestran los primeros ${metaConsulta?.returned || 0} registros. Hay más resultados; ajuste los filtros para precisar la búsqueda.`
+              : `Se encontraron ${metaConsulta?.totalMatched || 0} registros y se muestran los primeros ${metaConsulta?.returned || 0}.`
+            : `Se encontraron ${metaConsulta?.returned || metaConsulta?.totalMatched || 0} registros.`}
         </p>
       )}
 

@@ -1001,6 +1001,83 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function sanitizeFileNamePart(value) {
+  const cleaned = String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return cleaned || 'caso';
+}
+
+function buildConsolidadoPdfFileName(documento) {
+  const date = new Date();
+  const yyyy = String(date.getFullYear());
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `consolidado_${sanitizeFileNamePart(documento)}_${yyyy}${mm}${dd}.pdf`;
+}
+
+async function downloadConsolidadoPdf({ metadata, sections, fileName }) {
+  const { jsPDF } = await import('jspdf');
+  const pdf = new jsPDF({ unit: 'pt', format: 'letter' });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 42;
+  const contentWidth = pageWidth - margin * 2;
+  let y = margin;
+
+  const ensureSpace = (height = 18) => {
+    if (y + height <= pageHeight - margin) return;
+    pdf.addPage();
+    y = margin;
+  };
+
+  const writeText = (text, options = {}) => {
+    const size = Number(options.size || 10);
+    const style = options.style || 'normal';
+    const x = Number(options.x || margin);
+    const width = Number(options.width || contentWidth - (x - margin));
+    const lineHeight = Number(options.lineHeight || size + 4);
+    const paragraphs = String(text ?? '').split(/\r?\n/);
+
+    pdf.setFont('helvetica', style);
+    pdf.setFontSize(size);
+
+    paragraphs.forEach((paragraph, paragraphIndex) => {
+      const lines = pdf.splitTextToSize(paragraph || ' ', width);
+      lines.forEach((line) => {
+        ensureSpace(lineHeight);
+        pdf.text(line, x, y);
+        y += lineHeight;
+      });
+      if (paragraphIndex < paragraphs.length - 1) y += 2;
+    });
+  };
+
+  pdf.setProperties({ title: 'Reporte del caso actual' });
+  writeText('Reporte del caso actual (Bloques 1 a 5)', { size: 16, style: 'bold', lineHeight: 20 });
+  y += 8;
+
+  metadata.forEach((row) => {
+    writeText(`${row.label}: ${row.value}`, { size: 10, lineHeight: 14 });
+  });
+
+  sections.forEach((section) => {
+    y += 12;
+    writeText(section.title, { size: 13, style: 'bold', lineHeight: 17 });
+    y += 4;
+    section.fields.forEach((field) => {
+      writeText(field.label, { size: 10, style: 'bold', lineHeight: 14 });
+      writeText(field.value, { size: 10, x: margin + 12, width: contentWidth - 12, lineHeight: 14 });
+      y += 4;
+    });
+  });
+
+  pdf.save(fileName);
+}
+
 function toIsoDateString(rawValue) {
   return toDateInputValue(rawValue);
 }
@@ -3072,6 +3149,16 @@ export default function FormularioAtencion({ numeroInicial }) {
     popup.document.open();
     popup.document.write(html);
     popup.document.close();
+
+    downloadConsolidadoPdf({
+      metadata,
+      sections,
+      fileName: buildConsolidadoPdfFileName(getDocumentoActual(registro)),
+    }).catch((err) => {
+      reportError(err, 'formulario-entrevista:descargar-consolidado-pdf');
+      setToastMessage('El consolidado se abrió para impresión, pero no fue posible descargar el PDF automáticamente.');
+      setToastOpen(true);
+    });
   }
 
   async function handleGuardar() {

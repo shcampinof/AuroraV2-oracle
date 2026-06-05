@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { memo, useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import {
   assignDefensorPpl,
   createDefensor,
@@ -43,6 +43,35 @@ function getAccionImpulsarDisplay(row) {
 
 const DEFAULT_INITIAL_LIMIT = 100;
 const DEFAULT_FILTERED_LIMIT = 200;
+const MAX_DEFENSOR_SUGGESTIONS = 80;
+
+const AsignacionRow = memo(function AsignacionRow({ row, selected, onToggle }) {
+  const doc = String(row.numeroIdentificacion);
+
+  return (
+    <tr className="clickable-row" onClick={() => onToggle(doc)}>
+      <td>
+        <input
+          type="checkbox"
+          checked={selected}
+          onClick={(e) => e.stopPropagation()}
+          onChange={() => onToggle(doc)}
+          aria-label={`Seleccionar ${doc}`}
+        />
+      </td>
+      <td>{displayOrDash(row.situacionJuridica)}</td>
+      <td>{displayOrDash(row.numeroIdentificacion)}</td>
+      <td>{displayOrDash(row.nombreUsuario)}</td>
+      <td>{displayOrDash(row.departamentoLugarReclusion)}</td>
+      <td>{displayOrDash(row.municipioLugarReclusion)}</td>
+      <td>{displayOrDash(row.accionImpulsarDisplay)}</td>
+      <td>{displayOrDash(row.defensorAsignado)}</td>
+      <td>{displayOrDash(row.lugarReclusion)}</td>
+      <td>{displayOrDash(row.autoridadCargo)}</td>
+      <td>{displayOrDash(row.numeroProceso)}</td>
+    </tr>
+  );
+});
 
 function AsignacionDefensores() {
   const [tab, setTab] = useState('asignacion'); // 'asignacion' | 'reasignacion' | 'crearDefensor'
@@ -91,6 +120,7 @@ function AsignacionDefensores() {
     defensorActual: '',
   });
   const [metaConsulta, setMetaConsulta] = useState(null);
+  const deferredNuevoDefensorInput = useDeferredValue(nuevoDefensorInput);
 
   const buildBackendFilters = useCallback((currentTab, filtros) => {
     const safe = filtros && typeof filtros === 'object' ? filtros : {};
@@ -238,6 +268,27 @@ function AsignacionDefensores() {
     return [...defensores].sort((a, b) => a.nombre.localeCompare(b.nombre));
   }, [defensores]);
 
+  const defensoresSugeridos = useMemo(() => {
+    const needle = normalizeDefensorNombre(deferredNuevoDefensorInput);
+    if (!needle) return defensoresOrdenados.slice(0, MAX_DEFENSOR_SUGGESTIONS);
+
+    const startsWith = [];
+    const includes = [];
+    for (const defensor of defensoresOrdenados) {
+      const nombre = String(defensor?.nombre || '');
+      const normalized = normalizeDefensorNombre(nombre);
+      if (!normalized) continue;
+      if (normalized.startsWith(needle)) {
+        startsWith.push(defensor);
+      } else if (normalized.includes(needle)) {
+        includes.push(defensor);
+      }
+      if (startsWith.length + includes.length >= MAX_DEFENSOR_SUGGESTIONS) break;
+    }
+
+    return [...startsWith, ...includes].slice(0, MAX_DEFENSOR_SUGGESTIONS);
+  }, [defensoresOrdenados, deferredNuevoDefensorInput]);
+
   const defensoresPorId = useMemo(() => {
     const map = new Map();
     defensores.forEach((item) => {
@@ -270,6 +321,15 @@ function AsignacionDefensores() {
       set.add(nombre);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  const rowsPorDocumento = useMemo(() => {
+    const map = new Map();
+    rows.forEach((row) => {
+      const doc = String(row?.numeroIdentificacion || '').trim();
+      if (doc && !map.has(doc)) map.set(doc, row);
+    });
+    return map;
   }, [rows]);
 
   const departamentos = useMemo(() => {
@@ -314,7 +374,13 @@ function AsignacionDefensores() {
     return [];
   }, [rows, tab]);
 
-  const rowsFiltradas = useMemo(() => rowsTab, [rowsTab]);
+  const rowsFiltradas = useMemo(() => {
+    return rowsTab.map((row, idx) => ({
+      ...row,
+      rowKey: `${String(row?.numeroIdentificacion || '')}-${idx}`,
+      accionImpulsarDisplay: getAccionImpulsarDisplay(row),
+    }));
+  }, [rowsTab]);
 
   const sugerenciaReasignacion = useMemo(() => {
     if (tab !== 'asignacion') return '';
@@ -332,23 +398,24 @@ function AsignacionDefensores() {
 
   const defensorActualSeleccionados = useMemo(() => {
     if (tab !== 'reasignacion') return '-';
-    const current = rows
-      .filter((r) => seleccionados.has(String(r.numeroIdentificacion)))
-      .map((r) => String(r.defensorAsignado || '-'))
+    const current = Array.from(seleccionados)
+      .map((doc) => rowsPorDocumento.get(String(doc)))
+      .filter(Boolean)
+      .map((r) => String(r?.defensorAsignado || '-'))
       .filter(Boolean);
 
     if (!current.length) return '-';
     return Array.from(new Set(current)).join(', ');
-  }, [rows, seleccionados, tab]);
+  }, [rowsPorDocumento, seleccionados, tab]);
 
-  function toggleSeleccion(doc) {
+  const toggleSeleccion = useCallback((doc) => {
     setSeleccionados((prev) => {
       const next = new Set(prev);
       if (next.has(doc)) next.delete(doc);
       else next.add(doc);
       return next;
     });
-  }
+  }, []);
 
   async function aplicarFiltros() {
     const nextFiltros = {
@@ -587,8 +654,10 @@ function AsignacionDefensores() {
       {tab !== 'crearDefensor' && metaConsulta?.filtered && (
         <p className="hint-text">
           {metaConsulta?.truncated
-            ? `Se encontraron ${metaConsulta?.totalMatched || 0} registros y se muestran los primeros ${metaConsulta?.returned || 0}.`
-            : `Se encontraron ${metaConsulta?.totalMatched || 0} registros.`}
+            ? metaConsulta?.totalMatchedExact === false
+              ? `Se muestran los primeros ${metaConsulta?.returned || 0} registros. Hay más resultados; ajuste los filtros para precisar la búsqueda.`
+              : `Se encontraron ${metaConsulta?.totalMatched || 0} registros y se muestran los primeros ${metaConsulta?.returned || 0}.`
+            : `Se encontraron ${metaConsulta?.returned || metaConsulta?.totalMatched || 0} registros.`}
         </p>
       )}
 
@@ -893,7 +962,7 @@ function AsignacionDefensores() {
               }}
             />
             <datalist id="pag-nuevo-defensor-list">
-              {defensoresOrdenados.map((d) => (
+              {defensoresSugeridos.map((d) => (
                 <option key={d.id} value={d.nombre} />
               ))}
             </datalist>
@@ -940,31 +1009,15 @@ function AsignacionDefensores() {
                 </tr>
               </thead>
               <tbody>
-                {rowsFiltradas.map((r, idx) => {
+                {rowsFiltradas.map((r) => {
                   const doc = String(r.numeroIdentificacion);
-                  const rowKey = `${doc}-${idx}`;
                   return (
-                    <tr key={rowKey} className="clickable-row" onClick={() => toggleSeleccion(doc)}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={seleccionados.has(doc)}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={() => toggleSeleccion(doc)}
-                          aria-label={`Seleccionar ${doc}`}
-                        />
-                      </td>
-                      <td>{displayOrDash(r.situacionJuridica)}</td>
-                      <td>{displayOrDash(r.numeroIdentificacion)}</td>
-                      <td>{displayOrDash(r.nombreUsuario)}</td>
-                      <td>{displayOrDash(r.departamentoLugarReclusion)}</td>
-                      <td>{displayOrDash(r.municipioLugarReclusion)}</td>
-                      <td>{displayOrDash(getAccionImpulsarDisplay(r))}</td>
-                      <td>{displayOrDash(r.defensorAsignado)}</td>
-                      <td>{displayOrDash(r.lugarReclusion)}</td>
-                      <td>{displayOrDash(r.autoridadCargo)}</td>
-                      <td>{displayOrDash(r.numeroProceso)}</td>
-                    </tr>
+                    <AsignacionRow
+                      key={r.rowKey}
+                      row={r}
+                      selected={seleccionados.has(doc)}
+                      onToggle={toggleSeleccion}
+                    />
                   );
                 })}
 

@@ -1,15 +1,17 @@
-﻿const items = [
+﻿import { FEATURE_FLAGS } from '../config/featureFlags.js';
+
+const items = [
   { id: 'inicio', label: 'Inicio' },
   { id: 'formulario', label: 'Formulario de atención' },
   { id: 'registros', label: 'Usuarios asignados' },
   { id: 'asignacion', label: 'PAG - Asignación de casos de condenados' },
   { id: 'herramientas', label: 'Caja de Herramientas' },
-  { id: 'manual', label: 'Manual Interactivo' },
+  { id: 'manual', label: 'Manual Interactivo', enabled: FEATURE_FLAGS.manualInteractivo },
   { id: 'admin-cargas', label: 'Cargas mensuales', adminOnly: true },
 ];
 
 function Sidebar({ vistaActual, onChangeView, showAdminCargas = false }) {
-  const visibleItems = items.filter((item) => !item.adminOnly || showAdminCargas);
+  const visibleItems = items.filter((item) => item.enabled !== false && (!item.adminOnly || showAdminCargas));
 
   return (
     <aside className="sidebar">

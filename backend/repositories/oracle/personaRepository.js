@@ -371,8 +371,10 @@ async function listCondenadosSummary({
   filters = {},
   limit = 1000,
   scopeDepartamentos = DEFAULT_SCOPE_DEPARTAMENTOS,
+  includeExactCounts = true,
 } = {}) {
   const safeLimit = Math.max(1, Number.parseInt(String(limit || '1000'), 10) || 1000);
+  const fetchLimit = includeExactCounts ? safeLimit : safeLimit + 1;
   const activeSituacionCte = buildActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
   const cte = `
     ${activeSituacionCte},
@@ -404,11 +406,7 @@ async function listCondenadosSummary({
     includeUserFilters: true,
   });
 
-  const rowsSql = `
-    WITH
-    ${cte}
-    SELECT *
-    FROM (
+  const baseSelectSql = `
       SELECT
         TO_CHAR(p.NUMERO) AS "Numero de identificacion",
         TO_CHAR(p.NUMERO) AS "numero",
@@ -489,24 +487,53 @@ async function listCondenadosSummary({
         g.ACCION_REALIZAR AS "Accion a realizar",
         CAST(NULL AS VARCHAR2(4000)) AS "posibleActuacionJudicial",
         ${POTENCIAL_SUBROGADO_EXPR} AS CATEGORIA_POTENCIAL_SUBROGADO,
-        ${ESTADO_LABEL_EXPR} AS ESTADO_DERIVADO,
-        COUNT(*) OVER() AS TOTAL_MATCHED
+        ${ESTADO_LABEL_EXPR} AS ESTADO_DERIVADO
+        ${includeExactCounts ? ',\n        COUNT(*) OVER() AS TOTAL_MATCHED' : ''}
       ${fromAndWhere}
+  `;
+
+  const rowsSql = includeExactCounts
+    ? `
+    WITH
+    ${cte}
+    SELECT *
+    FROM (
+      ${baseSelectSql}
+      ORDER BY TO_CHAR(p.NUMERO) ASC
+    )
+    WHERE ROWNUM <= :limit
+  `
+    : `
+    WITH
+    ${cte}
+    SELECT *
+    FROM (
+      ${baseSelectSql}
       ORDER BY TO_CHAR(p.NUMERO) ASC
     )
     WHERE ROWNUM <= :limit
   `;
 
-  const result = await execute(rowsSql, { ...binds, limit: safeLimit }, { operation: 'persona.listCondenadosSummary.rows' });
-  const rows = Array.isArray(result?.rows) ? result.rows : [];
-  const totalMatched = rows.length ? Number(rows[0]?.TOTAL_MATCHED || 0) : 0;
+  const result = await execute(rowsSql, { ...binds, limit: fetchLimit }, { operation: 'persona.listCondenadosSummary.rows' });
+  const fetchedRows = Array.isArray(result?.rows) ? result.rows : [];
+  const truncated = !includeExactCounts && fetchedRows.length > safeLimit;
+  const rows = truncated ? fetchedRows.slice(0, safeLimit) : fetchedRows;
+  const totalMatched = includeExactCounts
+    ? rows.length
+      ? Number(rows[0]?.TOTAL_MATCHED || 0)
+      : 0
+    : truncated
+      ? safeLimit + 1
+      : rows.length;
 
   const hasUserFilters = Object.values(filters || {}).some((value) => String(value || '').trim() !== '');
-  if (!hasUserFilters) {
+  if (!hasUserFilters || !includeExactCounts) {
     return {
       rows,
       totalMatched,
-      totalAvailable: totalMatched,
+      totalAvailable: includeExactCounts ? totalMatched : 0,
+      totalMatchedExact: includeExactCounts,
+      truncated: includeExactCounts ? totalMatched > safeLimit : truncated,
     };
   }
 
@@ -531,6 +558,8 @@ async function listCondenadosSummary({
     rows,
     totalMatched,
     totalAvailable: Number(availableRow?.TOTAL_AVAILABLE || 0),
+    totalMatchedExact: true,
+    truncated: totalMatched > safeLimit,
   };
 }
 
