@@ -71,6 +71,9 @@ function getHttpsOptions() {
   };
 }
 
+const httpsOptions = getHttpsOptions();
+const isHttpsEnabled = Boolean(httpsOptions);
+
 function corsOptionsDelegate(req, callback) {
   const origin = req.get('Origin');
   if (!origin) return callback(null, { origin: true });
@@ -103,8 +106,11 @@ app.use(
         frameAncestors: ["'none'"],
         formAction: ["'self'"],
         objectSrc: ["'none'"],
+        // upgrade-insecure-requests y HSTS solo deben activarse con HTTPS real configurado.
+        upgradeInsecureRequests: isHttpsEnabled ? [] : null,
       },
     },
+    strictTransportSecurity: isHttpsEnabled,
     referrerPolicy: { policy: 'no-referrer' },
   })
 );
@@ -151,7 +157,6 @@ app.use('/api', (req, res) => {
   res.status(404).json({ message: 'Endpoint API no encontrado' });
 });
 
-const httpsOptions = getHttpsOptions();
 const server = httpsOptions ? https.createServer(httpsOptions, app) : http.createServer(app);
 
 server.listen(PORT, '0.0.0.0', () => {
