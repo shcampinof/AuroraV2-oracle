@@ -35,7 +35,7 @@ Requisitos mínimos:
 - Docker Compose disponible como `docker compose`.
 - Conectividad desde el servidor hacia Oracle.
 - Archivo `.env` creado a partir de `.env.example`.
-- Puerto publicado disponible, por defecto `7860`.
+- Puerto publicado disponible, por defecto `443`.
 
 Ejemplo de despliegue:
 
@@ -79,8 +79,8 @@ curl http://127.0.0.1:7860/api/health/db
 Desde red autorizada o VPN, usar la IP o URL asignada por infraestructura:
 
 ```text
-http://<IP_O_HOST_INSTITUCIONAL>:7860
-http://<IP_O_HOST_INSTITUCIONAL>:7860/api/health
+https://<IP_O_HOST_INSTITUCIONAL>
+https://<IP_O_HOST_INSTITUCIONAL>/api/health
 ```
 
 `localhost` y `127.0.0.1` solo aplican dentro del servidor o mediante túnel SSH local.
@@ -91,7 +91,7 @@ Las variables se definen en `.env`. No se deben versionar credenciales, secretos
 
 Variables principales:
 
-- `HOST_PORT`: puerto publicado por Docker, por defecto `7860`.
+- `HOST_PORT`: puerto publicado por Docker, por defecto `443`.
 - `PORT`: puerto interno del servicio, por defecto `7860`.
 - `AUTH_JWT_SECRET`: secreto para tokens de sesión Aurora.
 - `AZURE_AD_TENANT_ID`: tenant institucional de Microsoft Entra ID.
