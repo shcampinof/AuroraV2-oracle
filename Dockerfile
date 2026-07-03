@@ -20,7 +20,7 @@ WORKDIR /app
 
 COPY scripts/cargas_bd/requirements.txt ./scripts/cargas_bd/requirements.txt
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 python3-pip \
+  && apt-get install -y --no-install-recommends python3 python3-pip gosu \
   && pip3 install --break-system-packages --no-cache-dir -r ./scripts/cargas_bd/requirements.txt \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
@@ -32,14 +32,16 @@ RUN npm ci --omit=dev --no-audit && npm cache clean --force
 
 COPY backend/ ./
 COPY scripts/cargas_bd/ ../scripts/cargas_bd/
+COPY scripts/docker-entrypoint.sh /usr/local/bin/aurora-entrypoint.sh
 COPY --from=frontend-builder /app/frontend/dist ./public/app
 
-RUN chown -R node:node /app
-USER node
+RUN chown -R node:node /app \
+  && chmod +x /usr/local/bin/aurora-entrypoint.sh
 
 EXPOSE 7860
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "process.env.NODE_TLS_REJECT_UNAUTHORIZED='0'; const protocol = process.env.HTTPS_KEY_PATH && process.env.HTTPS_CERT_PATH ? 'https' : 'http'; fetch(protocol + '://127.0.0.1:' + (process.env.PORT || 7860) + '/api/health').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
 
+ENTRYPOINT ["/usr/local/bin/aurora-entrypoint.sh"]
 CMD ["npm", "run", "start:prod"]

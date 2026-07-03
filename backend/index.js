@@ -122,6 +122,16 @@ app.use('/api/defensores', requireAuth, defensoresRoutes);
 app.use('/api/admin/cargas', requireAuth, adminCargasRoutes);
 app.use('/api/admin/users', requireAuth, adminUsersRoutes);
 
+app.use('/api', (err, req, res, _next) => {
+  console.error(`[api:error] ${req.method} ${req.originalUrl}:`, err?.message || err);
+  if (res.headersSent) return;
+  const status = Number(err?.status || err?.statusCode) || 500;
+  res.status(status).json({
+    message: String(err?.message || 'Error interno del backend.'),
+    code: err?.code || 'API_ERROR',
+  });
+});
+
 if (hasFrontendBuild) {
   // Sirve el build del frontend ya compilado.
   app.use(
