@@ -85,6 +85,12 @@ https://<IP_O_HOST_INSTITUCIONAL>/api/health
 
 `localhost` y `127.0.0.1` solo aplican dentro del servidor o mediante túnel SSH local.
 
+Para una guía detallada de reunión con TICS e infraestructura, ver:
+
+```text
+VALIDACION_DESPLIEGUE_TICS.md
+```
+
 ## Configuración Principal
 
 Las variables se definen en `.env`. No se deben versionar credenciales, secretos ni archivos `.env` reales.
@@ -99,6 +105,11 @@ Variables principales:
 - `AZURE_AD_REQUIRED_GROUP_IDS`: grupos permitidos, si aplica.
 - `AZURE_AD_REQUIRED_APP_ROLES`: roles permitidos, por ejemplo `admin,user`.
 - `AZURE_AD_ADMIN_GROUP_IDS`: grupos de Entra ID que reciben rol interno `admin`, si aplica.
+- `AUTH_USER_ACCESS_MODE`: `open` permite ingresar a usuarios validos por Azure/dominio; `managed` exige que el correo este habilitado en la administracion interna de Aurora.
+- `AUTH_BOOTSTRAP_ADMIN_EMAILS`: correos separados por coma que reciben rol `admin` para administrar usuarios desde Aurora.
+- `AUTH_USER_STORE_PATH`: ruta opcional del archivo JSON local de usuarios autorizados.
+- `LDAP_ENABLED`, `LDAP_URL`, `LDAP_DOMAIN`: habilitan login LDAP por bind directo del usuario contra Active Directory.
+- `LDAP_ALLOWED_EMAIL_DOMAINS`: dominios permitidos para usuarios LDAP.
 - `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_HOST`, `ORACLE_PORT`, `ORACLE_SERVICE_NAME`: conexión Oracle.
 - `CARGUEBD_ADMIN_ROLES`: roles autorizados para operar cargas mensuales.
 
@@ -118,8 +129,11 @@ El módulo de cargas permite procesar archivos `.xlsx` para staging y ejecución
 Los archivos de carga, evidencias, logs operativos y datos personales no deben subirse al repositorio. El contenedor usa un volumen persistente para almacenamiento operativo:
 
 ```text
+aurora_auth_users:/app/backend/storage/auth
 aurora_cargas_bd:/app/backend/storage/cargas_bd
 ```
+
+`aurora_auth_users` conserva la lista interna de usuarios autorizados cuando `AUTH_USER_ACCESS_MODE=managed`.
 
 ## Pruebas Técnicas
 

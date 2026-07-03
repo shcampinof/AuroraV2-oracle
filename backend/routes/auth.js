@@ -2,8 +2,10 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const {
   authenticateAzureAdToken,
+  authenticateLdapCredentials,
   authenticateLocal,
   getAzureAdConfig,
+  getLdapConfig,
   isLocalAdminEnabled,
   isAzureAdConfigured,
   signAppToken,
@@ -36,8 +38,12 @@ function publicUser(user) {
 
 router.get('/config', (_req, res) => {
   const azureAd = getAzureAdConfig();
+  const ldap = getLdapConfig();
   res.json({
     localAdminEnabled: isLocalAdminEnabled(),
+    ldap: {
+      enabled: Boolean(ldap.enabled),
+    },
     azureAd: {
       enabled: isAzureAdConfigured(),
       tenantId: azureAd.tenantId || null,
@@ -46,12 +52,13 @@ router.get('/config', (_req, res) => {
   });
 });
 
-router.post('/login', loginLimiter, (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const username = String(req.body?.username || '').trim();
     const password = String(req.body?.password || '').trim();
     const remember = Boolean(req.body?.remember);
-    const user = authenticateLocal(username, password);
+    let user = authenticateLocal(username, password);
+    if (!user) user = await authenticateLdapCredentials(username, password);
 
     if (!user) {
       return res.status(401).json({

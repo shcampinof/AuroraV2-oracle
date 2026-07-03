@@ -456,3 +456,44 @@ export async function getCargaBdLog(id) {
   if (!res.ok) throw new Error('Error consultando log de carga');
   return res.text();
 }
+
+// =====================
+// Administracion de usuarios
+// =====================
+export async function getAdminUsers() {
+  const res = await fetchJson(`${API_BASE}/admin/users`, { cache: 'no-store' });
+  const data = await readJsonOrThrow(res, 'Error consultando usuarios');
+  if (!res.ok) throw new Error(String(data?.message || 'Error consultando usuarios'));
+  return data;
+}
+
+export async function saveAdminUser(payload) {
+  const res = await fetchJson(`${API_BASE}/admin/users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await readJsonOrThrow(res, 'Error guardando usuario');
+  if (!res.ok) throw new Error(String(data?.message || 'Error guardando usuario'));
+  return data;
+}
+
+export async function updateAdminUser(id, payload) {
+  const res = await fetchJson(`${API_BASE}/admin/users/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await readJsonOrThrow(res, 'Error actualizando usuario');
+  if (!res.ok) throw new Error(String(data?.message || 'Error actualizando usuario'));
+  return data;
+}
+
+export async function deleteAdminUser(id) {
+  const res = await fetchJson(`${API_BASE}/admin/users/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  const data = await readJsonOrThrow(res, 'Error eliminando usuario');
+  if (!res.ok) throw new Error(String(data?.message || 'Error eliminando usuario'));
+  return data;
+}

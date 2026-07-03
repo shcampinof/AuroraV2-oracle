@@ -8,10 +8,16 @@ const items = [
   { id: 'herramientas', label: 'Caja de Herramientas' },
   { id: 'manual', label: 'Manual Interactivo', enabled: FEATURE_FLAGS.manualInteractivo },
   { id: 'admin-cargas', label: 'Cargas mensuales', adminOnly: true },
+  { id: 'admin-usuarios', label: 'Usuarios autorizados', userAdminOnly: true },
 ];
 
-function Sidebar({ vistaActual, onChangeView, showAdminCargas = false }) {
-  const visibleItems = items.filter((item) => item.enabled !== false && (!item.adminOnly || showAdminCargas));
+function Sidebar({ vistaActual, onChangeView, showAdminCargas = false, showAdminUsuarios = false }) {
+  const visibleItems = items.filter((item) => {
+    if (item.enabled === false) return false;
+    if (item.adminOnly && !showAdminCargas) return false;
+    if (item.userAdminOnly && !showAdminUsuarios) return false;
+    return true;
+  });
 
   return (
     <aside className="sidebar">

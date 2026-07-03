@@ -9,6 +9,7 @@ import RegistrosAsignados from './pages/RegistrosAsignados.jsx';
 import FormularioAtencion from './pages/FormularioAtencion.jsx';
 import AsignacionDefensores from './pages/AsignacionDefensores.jsx';
 import AdminCargasBD from './pages/AdminCargasBD.jsx';
+import AdminUsuarios from './pages/AdminUsuarios.jsx';
 import CajaHerramientas from './pages/CajaHerramientas.jsx';
 import ManualInteractivo from './pages/ManualInteractivo.jsx';
 import { completeAzureAdRedirect, getAuthConfig, logout, refreshSession } from './services/auth.js';
@@ -22,6 +23,7 @@ const VISTAS = new Set([
   'herramientas',
   ...(FEATURE_FLAGS.manualInteractivo ? ['manual'] : []),
   'admin-cargas',
+  'admin-usuarios',
 ]);
 
 function normalizarRoles(roles) {
@@ -47,6 +49,10 @@ function normalizarRoles(roles) {
 function tieneAccesoCargas(user) {
   const roles = normalizarRoles(user?.roles);
   return roles.some((role) => ['admin', 'carguebd', 'cargas_bd'].includes(role));
+}
+
+function esAdmin(user) {
+  return normalizarRoles(user?.roles).includes('admin');
 }
 
 function vistaDesdeHash(hashValue) {
@@ -123,11 +129,15 @@ function App() {
     if (vistaActual === 'admin-cargas' && !tieneAccesoCargas(session.user)) {
       window.location.hash = '/inicio';
     }
+    if (vistaActual === 'admin-usuarios' && !esAdmin(session.user)) {
+      window.location.hash = '/inicio';
+    }
   }, [session, vistaActual]);
 
   function cambiarVista(vista) {
     if (!VISTAS.has(vista)) return;
     if (vista === 'admin-cargas' && !tieneAccesoCargas(session?.user)) return;
+    if (vista === 'admin-usuarios' && !esAdmin(session?.user)) return;
     const nextHash = `/${vista}`;
     if (window.location.hash !== `#${nextHash}`) {
       window.location.hash = nextHash;
@@ -174,6 +184,7 @@ function App() {
   }
 
   const puedeAdministrarCargas = tieneAccesoCargas(session.user);
+  const puedeAdministrarUsuarios = esAdmin(session.user);
 
   let contenido = null;
 
@@ -203,6 +214,10 @@ function App() {
     contenido = <AdminCargasBD />;
   }
 
+  if (vistaActual === 'admin-usuarios' && puedeAdministrarUsuarios) {
+    contenido = <AdminUsuarios />;
+  }
+
   return (
     <div className="app-container">
       <Header user={session.user} onLogout={manejarSalida} />
@@ -211,6 +226,7 @@ function App() {
           vistaActual={vistaActual}
           onChangeView={cambiarVista}
           showAdminCargas={puedeAdministrarCargas}
+          showAdminUsuarios={puedeAdministrarUsuarios}
         />
         <main className="content-area">{contenido}</main>
       </div>

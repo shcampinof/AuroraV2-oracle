@@ -108,6 +108,9 @@ function LoginPage({ onAuthenticated }) {
           onAuthenticated(localSession);
           return;
         } catch (localErr) {
+          if (authConfig?.ldap?.enabled) {
+            throw localErr;
+          }
           if (localErr?.message !== 'Usuario o contraseña inválidos.') {
             throw localErr;
           }

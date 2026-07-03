@@ -25,6 +25,14 @@ services:
       AUTH_REMEMBER_TOKEN_TTL: ${AUTH_REMEMBER_TOKEN_TTL:-7d}
       AUTH_TOKEN_ISSUER: ${AUTH_TOKEN_ISSUER:-aurora}
       AUTH_TOKEN_AUDIENCE: ${AUTH_TOKEN_AUDIENCE:-aurora-api}
+      AUTH_USER_ACCESS_MODE: ${AUTH_USER_ACCESS_MODE:-open}
+      AUTH_BOOTSTRAP_ADMIN_EMAILS: ${AUTH_BOOTSTRAP_ADMIN_EMAILS:-}
+      AUTH_USER_STORE_PATH: ${AUTH_USER_STORE_PATH:-/app/backend/storage/auth/auth-users.json}
+      LDAP_ENABLED: ${LDAP_ENABLED:-false}
+      LDAP_URL: ${LDAP_URL:-}
+      LDAP_DOMAIN: ${LDAP_DOMAIN:-defensoria.gov.co}
+      LDAP_ALLOWED_EMAIL_DOMAINS: ${LDAP_ALLOWED_EMAIL_DOMAINS:-defensoria.gov.co}
+      LDAP_TIMEOUT_MS: ${LDAP_TIMEOUT_MS:-8000}
       AZURE_AD_TENANT_ID: ${AZURE_AD_TENANT_ID:-}
       AZURE_AD_CLIENT_ID: ${AZURE_AD_CLIENT_ID:-}
       AZURE_AD_ALLOWED_EMAIL_DOMAINS: ${AZURE_AD_ALLOWED_EMAIL_DOMAINS:-}
@@ -51,7 +59,9 @@ services:
       CARGUEBD_MAX_FILE_MB: ${CARGUEBD_MAX_FILE_MB:-120}
     volumes:
       - ./backend/certs:/app/backend/certs:ro
+      - aurora_auth_users:/app/backend/storage/auth
       - aurora_cargas_bd:/app/backend/storage/cargas_bd
 
 volumes:
+  aurora_auth_users:
   aurora_cargas_bd:

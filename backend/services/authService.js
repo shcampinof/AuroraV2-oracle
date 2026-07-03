@@ -1,7 +1,8 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const jwksRsa = require('jwks-rsa');
-const { syncAzureUser } = require('./userDirectoryService');
+const { findUser, syncAzureUser, upsertManagedUser } = require('./userDirectoryService');
+const { authenticateLdapUser, getLdapConfig, isLdapEnabled } = require('./ldapAuthService');
 
 const APP_TOKEN_ISSUER = process.env.AUTH_TOKEN_ISSUER || 'aurora';
 const APP_TOKEN_AUDIENCE = process.env.AUTH_TOKEN_AUDIENCE || 'aurora-api';
@@ -27,6 +28,10 @@ function parseList(value) {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function parseEmailList(value) {
+  return parseList(value).map((item) => item.toLowerCase());
 }
 
 function normalizeRoles(roles, fallback = ['user']) {
@@ -67,6 +72,18 @@ function resolveAzureAdRoles(claims, config) {
 
 function isProduction() {
   return String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+}
+
+function isManagedUserAccessEnabled() {
+  const mode = String(process.env.AUTH_USER_ACCESS_MODE || '').trim().toLowerCase();
+  const legacyFlag = String(process.env.AUTH_USER_ALLOWLIST_ENABLED || '').trim().toLowerCase();
+  return mode === 'managed' || legacyFlag === 'true';
+}
+
+function isBootstrapAdminEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) return false;
+  return parseEmailList(process.env.AUTH_BOOTSTRAP_ADMIN_EMAILS).includes(normalized);
 }
 
 function isLocalAdminEnabled() {
@@ -165,6 +182,48 @@ function authenticateLocal(username, password) {
     provider: 'local',
     roles: ['admin'],
   };
+}
+
+async function completeInstitutionalUserAccess(user) {
+  const email = String(user?.email || user?.username || '').trim();
+  const bootstrapAdmin = isBootstrapAdminEmail(email);
+  const roles = new Set(normalizeRoles(user?.roles));
+  if (bootstrapAdmin) roles.add('admin');
+  const candidate = {
+    ...user,
+    email,
+    username: String(user?.username || email),
+    roles: Array.from(roles),
+  };
+
+  const storedBeforeSync = findUser(candidate);
+  if (storedBeforeSync?.enabled === false && !bootstrapAdmin) {
+    const err = new Error('Su usuario no se encuentra habilitado para ingresar a AURORA.');
+    err.status = 403;
+    err.code = 'AUTH_USER_DISABLED';
+    throw err;
+  }
+  if (isManagedUserAccessEnabled() && !storedBeforeSync && !bootstrapAdmin) {
+    const err = new Error('Su usuario no se encuentra autorizado para ingresar a AURORA.');
+    err.status = 403;
+    err.code = 'AUTH_USER_NOT_ALLOWED';
+    throw err;
+  }
+  if (bootstrapAdmin) {
+    upsertManagedUser({ ...candidate, roles: Array.from(roles), enabled: true });
+  }
+
+  const storedUser = syncAzureUser(candidate);
+  return {
+    ...candidate,
+    roles: normalizeRoles(storedUser.roles || candidate.roles),
+  };
+}
+
+async function authenticateLdapCredentials(username, password) {
+  const user = await authenticateLdapUser(username, password);
+  if (!user) return null;
+  return completeInstitutionalUserAccess(user);
 }
 
 function getAzureAdConfig() {
@@ -292,12 +351,11 @@ async function authenticateAzureAdToken(idToken) {
   };
 
   try {
-    const storedUser = syncAzureUser(user);
-    return {
-      ...user,
-      roles: normalizeRoles(storedUser.roles || user.roles),
-    };
+    return await completeInstitutionalUserAccess(user);
   } catch (err) {
+    if (Number(err?.status) >= 400 && Number(err?.status) < 500) {
+      throw err;
+    }
     if (String(process.env.AUTH_USER_SYNC_REQUIRED || '').trim().toLowerCase() === 'true') {
       err.status = Number(err?.status) || 500;
       throw err;
@@ -309,10 +367,14 @@ async function authenticateAzureAdToken(idToken) {
 
 module.exports = {
   authenticateAzureAdToken,
+  authenticateLdapCredentials,
   authenticateLocal,
+  getLdapConfig,
   getAzureAdConfig,
   isAzureAdConfigured,
+  isLdapEnabled,
   isLocalAdminEnabled,
+  isManagedUserAccessEnabled,
   normalizeRoles,
   resolveAzureAdRoles,
   signAppToken,
