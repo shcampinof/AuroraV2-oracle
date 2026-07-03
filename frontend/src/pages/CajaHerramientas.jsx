@@ -26,21 +26,18 @@ function CajaHerramientas() {
     cargar();
   }, []);
 
-  function abrirDescarga(downloadUrl) {
-    const iframe = document.createElement('iframe');
-    iframe.title = 'Descarga de formato';
-    iframe.style.display = 'none';
-    iframe.src = downloadUrl;
-    document.body.appendChild(iframe);
-    window.setTimeout(() => iframe.remove(), 60000);
-  }
-
   async function descargarFormato(formato) {
     setDescargandoId(formato.id);
     setError('');
     try {
       const data = await getFormatoDownloadTarget(formato.id);
-      abrirDescarga(data.downloadUrl);
+      const enlace = document.createElement('a');
+      enlace.href = data.downloadUrl;
+      enlace.target = '_blank';
+      enlace.rel = 'noopener noreferrer';
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
     } catch (e) {
       reportError(e, 'descarga-formato');
       setError('Error preparando descarga.');

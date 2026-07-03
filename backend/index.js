@@ -96,21 +96,7 @@ app.disable('x-powered-by');
 app.use(
   helmet({
     crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        connectSrc: ["'self'", 'https://login.microsoftonline.com'],
-        imgSrc: ["'self'", 'data:', 'https://raw.githubusercontent.com'],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        baseUri: ["'self'"],
-        frameAncestors: ["'none'"],
-        formAction: ["'self'"],
-        objectSrc: ["'none'"],
-        // upgrade-insecure-requests y HSTS solo deben activarse con HTTPS real configurado.
-        upgradeInsecureRequests: isHttpsEnabled ? [] : null,
-      },
-    },
+    contentSecurityPolicy: false,
     strictTransportSecurity: isHttpsEnabled,
     referrerPolicy: { policy: 'no-referrer' },
   })
