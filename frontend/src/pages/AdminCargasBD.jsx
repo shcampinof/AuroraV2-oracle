@@ -63,11 +63,22 @@ function AdminCargasBD() {
   );
 
   async function refresh() {
-    const [fuentesData, cargasData] = await Promise.all([getCargaBdSources(), getCargasBd()]);
+    const [fuentesResult, cargasResult] = await Promise.allSettled([getCargaBdSources(), getCargasBd()]);
+    if (fuentesResult.status === 'rejected') throw fuentesResult.reason;
+
+    const fuentesData = fuentesResult.value;
     const nextFuentes = Array.isArray(fuentesData?.fuentes) ? fuentesData.fuentes : [];
     setFuentes(nextFuentes);
-    setCargas(Array.isArray(cargasData?.cargas) ? cargasData.cargas : []);
     setFuente((current) => current || nextFuentes.find((item) => item.enabled)?.id || '');
+
+    if (cargasResult.status === 'fulfilled') {
+      const cargasData = cargasResult.value;
+      setCargas(Array.isArray(cargasData?.cargas) ? cargasData.cargas : []);
+      return;
+    }
+
+    setCargas([]);
+    throw cargasResult.reason;
   }
 
   useEffect(() => {

@@ -74,6 +74,17 @@ function createId() {
   return `${stamp}-${crypto.randomBytes(4).toString('hex')}`;
 }
 
+function createCorruptRegistryBackup(registryPath, raw) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = `${registryPath}.corrupt-${stamp}.bak`;
+  try {
+    fs.writeFileSync(backupPath, raw);
+  } catch {
+    // El respaldo es diagnostico; si falla, igual protegemos la pantalla de cargas.
+  }
+  return backupPath;
+}
+
 function safeFileName(name) {
   const ext = path.extname(String(name || '')).toLowerCase() || '.xlsx';
   const base = path
@@ -89,10 +100,20 @@ function safeFileName(name) {
 function readRegistry() {
   const { registryPath } = ensureStorage();
   try {
-    const parsed = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    const raw = fs.readFileSync(registryPath, 'utf8');
+    const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
     if (err.code === 'ENOENT') return [];
+    if (err instanceof SyntaxError) {
+      const raw = fs.readFileSync(registryPath, 'utf8');
+      const backupPath = createCorruptRegistryBackup(registryPath, raw);
+      console.error(
+        `[cargas_bd] Registro de cargas corrupto en ${registryPath}. ` +
+          `Se ignora temporalmente y se guardo respaldo en ${backupPath}: ${err.message}`
+      );
+      return [];
+    }
     throw err;
   }
 }
@@ -236,7 +257,11 @@ function summarizePythonFailure(logPath, fallback) {
     const oracleLines = logText
       .split(/\r?\n/)
       .map((line) => line.trim())
-      .filter((line) => /^(ORA|PLS)-\d+:/i.test(line))
+      .map((line) => {
+        const match = line.match(/((?:ORA|PLS)-\d+:\s+.*)$/i);
+        return match ? match[1] : '';
+      })
+      .filter(Boolean)
       .slice(0, 3);
     if (oracleLines.length) {
       return oracleLines.join(' ');
