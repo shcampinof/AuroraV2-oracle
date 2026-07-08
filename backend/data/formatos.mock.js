@@ -98,11 +98,6 @@ const formatos = [
     downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:b:/s/DNDP-DOCUMENTACION/IQA7q2RCVU0ZTLGhvZPdHn_6Aa3pubO5Ovow0KGUc_LmxQY?e=Hd5fDo&download=1',
   },
   {
-    id: 'f20',
-    titulo: 'Utilidad Pública - SD-P03-F04 Misión de Trabajo',
-    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQCEILWewEZ7QKG8rkHEB34_AYeN2av--yEYTNrxhlE91qE?e=1GRuQf&download=1',
-  },
-  {
     id: 'f21',
     titulo: 'Utilidad Pública - Solicitud Ley 2292 de 2023',
     downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQAnckhNsqvdQIG2u_LskPWiAWo_gRObBR8AYOlTThyUUYU?e=WtuHec&download=1',

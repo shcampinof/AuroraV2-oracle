@@ -1,6 +1,7 @@
 import argparse
 import math
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -519,6 +520,111 @@ def connect_oracle():
     return oracledb.connect(user=config["user"], password=config["password"], dsn=dsn)
 
 
+def oracle_error_code(exc):
+    if not isinstance(exc, oracledb.Error) or not exc.args:
+        return None
+    error = exc.args[0]
+    return getattr(error, "code", None)
+
+
+def format_oracle_error(exc):
+    if not isinstance(exc, oracledb.Error) or not exc.args:
+        return str(exc)
+
+    error = exc.args[0]
+    code = getattr(error, "code", None)
+    full_code = getattr(error, "full_code", None) or (f"ORA-{code:05d}" if code else "")
+    message = getattr(error, "message", None) or str(exc)
+    message = str(message).strip()
+
+    if re.match(r"^X{20,}(?:\s|$)", message):
+        message = (
+            "Mensaje Oracle oculto/redactado por la base de datos. "
+            "Use el codigo ORA y los diagnosticos siguientes para ubicar la columna."
+        )
+
+    context = getattr(error, "context", None)
+    if context:
+        message = f"{message}\nContexto Oracle: {context}"
+
+    return f"{full_code}: {message}" if full_code and not message.startswith(full_code) else message
+
+
+def print_ponal_input_diagnostics(cursor, config):
+    if config.key != "ponal":
+        return
+
+    target = config.qualified_table
+    columns = [
+        "NUMERO_DOCUMENTO",
+        "NOMBRES",
+        "APELLIDOS",
+        "TIPO_IDENTIFICACION",
+        "ESTACION_CDT",
+        "DEPARTAMENTO",
+        "MUNICIPIO",
+        "SITUACION_JURIDICA",
+        "FECHA_CAPTURA_RAW",
+        "RADICADO",
+        "DELITOS_IMPUTADOS",
+        "AUTORIDAD_JUDICIAL",
+        "FECHA_CORTE",
+    ]
+    expressions = []
+    for column in columns:
+        if column == "FECHA_CORTE":
+            expressions.append(f"SUM(CASE WHEN {column} IS NULL THEN 1 ELSE 0 END)")
+        else:
+            expressions.append(f"SUM(CASE WHEN {column} IS NULL OR TRIM({column}) IS NULL THEN 1 ELSE 0 END)")
+
+    cursor.execute(f"SELECT COUNT(*), {', '.join(expressions)} FROM {target}")
+    row = cursor.fetchone()
+    if not row:
+        return
+
+    total = row[0]
+    null_counts = dict(zip(columns, row[1:]))
+    with_nulls = [(column, count) for column, count in null_counts.items() if count]
+    print("  Diagnostico PONAL staging:")
+    print(f"    Filas en {target}: {total:,}")
+    if with_nulls:
+        for column, count in with_nulls:
+            print(f"    {column}: {count:,} valores NULL/vacios")
+    else:
+        print("    Sin NULL/vacios en campos criticos revisados.")
+
+
+def print_not_null_diagnostics(cursor, schema=DEFAULT_SCHEMA):
+    tables = ["PERSONA", "SITUACION_CARCELARIA", "GESTION_JURIDICA", "ASIGNACION"]
+    placeholders = ", ".join(f":{index + 2}" for index in range(len(tables)))
+    cursor.execute(
+        f"""
+        SELECT TABLE_NAME, COLUMN_NAME
+          FROM ALL_TAB_COLUMNS
+         WHERE OWNER = :1
+           AND TABLE_NAME IN ({placeholders})
+           AND NULLABLE = 'N'
+         ORDER BY TABLE_NAME, COLUMN_ID
+        """,
+        [str(schema).upper(), *tables],
+    )
+    rows = cursor.fetchall()
+    if not rows:
+        return
+
+    print("  Columnas NOT NULL candidatas en tablas destino:")
+    current_table = None
+    current_columns = []
+    for table_name, column_name in rows:
+        if current_table and table_name != current_table:
+            print(f"    {current_table}: {', '.join(current_columns)}")
+            current_columns = []
+        current_table = table_name
+        current_columns.append(column_name)
+    if current_table:
+        print(f"    {current_table}: {', '.join(current_columns)}")
+
+
 def prepare_table(cursor, connection, config):
     target = config.qualified_table
     print(f"[3/6] Preparando tabla {target}...")
@@ -565,7 +671,7 @@ def insert_rows(connection, cursor, df, config):
             inserted += len(batch)
         except oracledb.Error as batch_error:
             connection.rollback()
-            print(f"  Error en lote {batch_number}; reintentando fila a fila: {batch_error}")
+            print(f"  Error en lote {batch_number}; reintentando fila a fila: {format_oracle_error(batch_error)}")
             for offset, row in enumerate(batch):
                 try:
                     cursor.execute(sql, row)
@@ -574,7 +680,7 @@ def insert_rows(connection, cursor, df, config):
                 except oracledb.Error as row_error:
                     connection.rollback()
                     excel_row = start + offset + 2
-                    errors.append({"fila_excel": excel_row, "error": str(row_error)})
+                    errors.append({"fila_excel": excel_row, "error": format_oracle_error(row_error)})
 
         processed = min(start + BATCH_SIZE, total)
         pct = (processed / total * 100) if total else 100
@@ -585,8 +691,18 @@ def insert_rows(connection, cursor, df, config):
 
 def call_etl(connection, cursor, config):
     print(f"[5/6] Ejecutando {config.procedure}...")
-    cursor.callproc(config.procedure)
-    connection.commit()
+    try:
+        cursor.callproc(config.procedure)
+        connection.commit()
+    except oracledb.Error as exc:
+        connection.rollback()
+        detail = format_oracle_error(exc)
+        print(f"  Error Oracle al ejecutar {config.procedure}: {detail}")
+        if oracle_error_code(exc) == 1400:
+            print("  ORA-01400 indica que el procedimiento intento insertar NULL en una columna obligatoria.")
+            print_ponal_input_diagnostics(cursor, config)
+            print_not_null_diagnostics(cursor)
+        raise RuntimeError(detail) from exc
     print("  Procedimiento ejecutado correctamente.")
 
 
@@ -661,6 +777,9 @@ def main(argv=None):
     try:
         run_load(args.source, args.file_path, execute_etl=not args.no_etl)
         return 0
+    except oracledb.Error as exc:
+        print(f"ERROR: {format_oracle_error(exc)}", file=sys.stderr)
+        return 1
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

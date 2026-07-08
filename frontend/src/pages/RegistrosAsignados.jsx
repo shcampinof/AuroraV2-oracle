@@ -15,9 +15,9 @@ function prettifyHeader(key) {
 }
 
 const EXTRA_COLUMNS = ['actuacionJudicial'];
-const ROWS_PER_PAGE = 100;
-const DEFAULT_INITIAL_LIMIT = 100;
-const DEFAULT_FILTERED_LIMIT = 200;
+const ROWS_PER_PAGE = 50;
+const DEFAULT_INITIAL_LIMIT = 50;
+const DEFAULT_FILTERED_LIMIT = 100;
 const ESTADOS_TRAMITE_OPTIONS = [
   'Analizar el caso',
   'Entrevistar al usuario',
