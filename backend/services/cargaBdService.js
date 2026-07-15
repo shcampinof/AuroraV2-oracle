@@ -37,6 +37,7 @@ const SOURCE_DEFINITIONS = {
 };
 
 const RUNNING_JOBS = new Map();
+const DEFAULT_PUBLIC_ERROR_MAX_LENGTH = 1000;
 
 function boolEnv(name, fallback) {
   const raw = process.env[name];
@@ -85,6 +86,26 @@ function createCorruptRegistryBackup(registryPath, raw) {
   return backupPath;
 }
 
+function createRegistryBackup(registryPath, raw, reason = 'backup') {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = `${registryPath}.${reason}-${stamp}.bak`;
+  fs.writeFileSync(backupPath, raw);
+  return backupPath;
+}
+
+function getPublicErrorMaxLength() {
+  const configured = Number(process.env.CARGUEBD_PUBLIC_ERROR_MAX_LENGTH || DEFAULT_PUBLIC_ERROR_MAX_LENGTH);
+  if (!Number.isFinite(configured) || configured < 100) return DEFAULT_PUBLIC_ERROR_MAX_LENGTH;
+  return Math.floor(configured);
+}
+
+function publicError(value) {
+  const text = String(value || '');
+  const maxLength = getPublicErrorMaxLength();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}...`;
+}
+
 function safeFileName(name) {
   const ext = path.extname(String(name || '')).toLowerCase() || '.xlsx';
   const base = path
@@ -123,6 +144,41 @@ function writeRegistry(records) {
   const tmpPath = `${registryPath}.tmp`;
   fs.writeFileSync(tmpPath, JSON.stringify(records, null, 2));
   fs.renameSync(tmpPath, registryPath);
+}
+
+function repairRegistryOnStartup() {
+  const shouldRepair = boolEnv('CARGUEBD_REPAIR_REGISTRY_ON_START', false);
+  const shouldClear = boolEnv('CARGUEBD_CLEAR_REGISTRY_ON_START', false);
+  if (!shouldRepair && !shouldClear) return { changed: false, reason: 'disabled' };
+
+  const { registryPath } = ensureStorage();
+  let raw = '';
+  try {
+    raw = fs.readFileSync(registryPath, 'utf8');
+  } catch (err) {
+    if (err.code === 'ENOENT') return { changed: false, reason: 'missing' };
+    throw err;
+  }
+
+  if (shouldClear) {
+    const backupPath = createRegistryBackup(registryPath, raw, 'cleared');
+    writeRegistry([]);
+    console.warn(`[cargas_bd] Historial de cargas limpiado por CARGUEBD_CLEAR_REGISTRY_ON_START. Respaldo: ${backupPath}`);
+    return { changed: true, reason: 'cleared', backupPath };
+  }
+
+  try {
+    JSON.parse(raw);
+    return { changed: false, reason: 'valid' };
+  } catch (err) {
+    const backupPath = createCorruptRegistryBackup(registryPath, raw);
+    writeRegistry([]);
+    console.warn(
+      `[cargas_bd] Historial de cargas corrupto reparado por CARGUEBD_REPAIR_REGISTRY_ON_START. ` +
+        `Respaldo: ${backupPath}: ${err.message}`
+    );
+    return { changed: true, reason: 'repaired', backupPath };
+  }
 }
 
 function saveRecord(record) {
@@ -387,6 +443,10 @@ function createCarga({ sourceId, tempPath, originalName, size, uploadedBy }) {
 
 function publicRecord(record) {
   if (!record) return null;
+  const error =
+    record.status === 'fallido'
+      ? summarizePythonFailure(record.logPath, record.error || 'La carga fallo. Revise el log.')
+      : record.error;
   return {
     id: record.id,
     sourceId: record.sourceId,
@@ -402,10 +462,7 @@ function publicRecord(record) {
     startedAt: record.startedAt,
     finishedAt: record.finishedAt,
     exitCode: record.exitCode,
-    error:
-      record.status === 'fallido'
-        ? summarizePythonFailure(record.logPath, record.error || 'La carga fallo. Revise el log.')
-        : record.error,
+    error: publicError(error),
     running: RUNNING_JOBS.has(record.id),
   };
 }
@@ -498,6 +555,7 @@ module.exports = {
   listCargas,
   listSources,
   readLog,
+  repairRegistryOnStartup,
   retryCarga,
   safeFileName,
   shutdownCargaJobs,

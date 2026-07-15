@@ -17,7 +17,7 @@ const healthRoutes = require('./routes/health');
 const { requireAuth } = require('./middleware/auth');
 const consolidado = require('./db/oracleConsolidado.repo');
 const { closePool } = require('./db/oraclePool');
-const { shutdownCargaJobs } = require('./services/cargaBdService');
+const { repairRegistryOnStartup, shutdownCargaJobs } = require('./services/cargaBdService');
 
 const app = express();
 const PORT = process.env.PORT || 7860;
@@ -74,6 +74,12 @@ function getHttpsOptions() {
 
 const httpsOptions = getHttpsOptions();
 const isHttpsEnabled = Boolean(httpsOptions);
+
+try {
+  repairRegistryOnStartup();
+} catch (err) {
+  console.error('[cargas_bd] No fue posible validar/reparar el historial de cargas:', err?.message || err);
+}
 
 function corsOptionsDelegate(req, callback) {
   const origin = req.get('Origin');

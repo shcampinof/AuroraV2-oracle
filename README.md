@@ -135,6 +135,20 @@ aurora_cargas_bd:/app/backend/storage/cargas_bd
 
 `aurora_auth_users` conserva la lista interna de usuarios autorizados cuando `AUTH_USER_ACCESS_MODE=managed`.
 
+Si el historial de cargas queda corrupto o se requiere limpiar la tabla operativa de cargas en un despliegue, el backend puede repararlo al arrancar:
+
+```env
+CARGUEBD_REPAIR_REGISTRY_ON_START=true
+```
+
+Para limpiar todo el historial visual una sola vez, conservando un respaldo `.bak` del archivo anterior:
+
+```env
+CARGUEBD_CLEAR_REGISTRY_ON_START=true
+```
+
+Después del primer arranque exitoso, retire la bandera de limpieza o déjela en `false`.
+
 ## Pruebas Técnicas
 
 Comandos útiles:
