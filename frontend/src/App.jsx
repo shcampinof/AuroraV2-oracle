@@ -166,6 +166,7 @@ function App() {
 
   function manejarSalida() {
     logout();
+    window.location.hash = '/inicio';
     setSession(null);
   }
 
