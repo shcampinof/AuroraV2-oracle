@@ -281,6 +281,7 @@ const OPCIONES_CELESTE_ANALISIS_ACTUACION = [
   'No se avanzará con la revocatoria porque son tres o más los acusados y aún no se cumple el tiempo para solicitar el levantamiento de la detención preventiva en este supuesto',
   'No se avanzará con la revocatoria porque la persona está procesada por delitos atribuibles a Grupos Delictivos Organizados (GDO) o Grupos Armados Organizados (GAO) y aún no cumple el tiempo permitido',
   'No se avanzará con la revocatoria porque ya hay una solicitud en trámite',
+  'No se avanzará porque no tiene defensor público asignado',
   'No se avanzar\u00E1 porque ya no soy el defensor en este caso',
 ];
 const OPCIONES_SENTIDO_DECISION_CELESTE = [
