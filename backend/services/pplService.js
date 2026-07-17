@@ -354,13 +354,6 @@ const DEFENSOR_FIELD_ALIASES = [
   'Defensor',
 ];
 
-const FECHA_ASIGNACION_FIELD_ALIASES = [
-  'Fecha de asignación del PAG',
-  'Fecha de asignacion del PAG',
-  'fechaAsignacionPag',
-  'fechaAsignacion',
-];
-
 function isDefensorFieldKey(key) {
   const normalized = normalizeText(key)
     .replace(/[^a-z0-9]+/g, ' ')
@@ -370,18 +363,6 @@ function isDefensorFieldKey(key) {
     normalized === 'defensor a publico a asignado para tramitar la solicitud' ||
     normalized === 'defensor asignado' ||
     normalized === 'defensor'
-  );
-}
-
-function isFechaAsignacionFieldKey(key) {
-  const normalized = normalizeText(key)
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return (
-    normalized === 'fecha de asignacion del pag' ||
-    normalized === 'fecha asignacion pag' ||
-    normalized === 'fecha asignacion'
   );
 }
 
@@ -674,20 +655,6 @@ function payloadHasDefensorField(payload) {
   return Object.keys(source).some((key) => isDefensorFieldKey(key));
 }
 
-function extractFechaAsignacion(payload) {
-  const source = payload && typeof payload === 'object' ? payload : {};
-  const directValue = coalesce(...FECHA_ASIGNACION_FIELD_ALIASES.map((key) => source?.[key]));
-  if (directValue) return parseLooseDate(directValue);
-
-  for (const [key, value] of Object.entries(source)) {
-    if (!isFechaAsignacionFieldKey(key)) continue;
-    const parsed = parseLooseDate(value);
-    if (parsed) return parsed;
-  }
-
-  return null;
-}
-
 function hydrateDefensorAliases(record, fallback = '') {
   const defensor = coalesce(extractDefensor(record), fallback);
   return {
@@ -816,7 +783,9 @@ async function getActuacionesByDocumento(documento) {
   });
 
   if (!rows.length) return [];
-  const records = toRecordList(rows);
+  const records = toRecordList(rows).filter((record) => Number(record.__oracleIdGestion || 0) > 0);
+
+  if (!records.length) return [];
 
   let fallbackDefensor = '';
   return records.map((record, idx) => {
@@ -849,7 +818,6 @@ async function createActuacionByDocumento(documento, payload) {
   const updates = splitUpdatesByTable(payload);
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
   const normalizedPayload = normalizePayload(payload);
-
   if (Object.keys(updates.PERSONA).length) {
     await personaRepo.updatePersonaById(context.P_ID_PERSONA, updates.PERSONA);
   }
@@ -867,15 +835,12 @@ async function createActuacionByDocumento(documento, payload) {
   if (payloadHasDefensorField(normalizedPayload)) {
     const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
     const currentDefensor = String(context.G_DEFENSOR || '').trim();
-    if (normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
-      if (nextDefensor) {
-        await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
-          defensorNombre: nextDefensor,
-          pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
-          pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
-          fechaAsignacion: extractFechaAsignacion(normalizedPayload) || undefined,
-        });
-      }
+    if (nextDefensor && normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
+      await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
+        defensorNombre: nextDefensor,
+        pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
+        pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
+      });
     }
   }
 
@@ -909,7 +874,6 @@ async function updateByDocumento(documento, payload) {
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
   const incoming = payload && typeof payload === 'object' ? payload : {};
   const normalizedPayload = normalizePayload(payload);
-
   if (Object.keys(updates.PERSONA).length) {
     await personaRepo.updatePersonaById(context.P_ID_PERSONA, updates.PERSONA);
   }
@@ -950,16 +914,13 @@ async function updateByDocumento(documento, payload) {
   if (payloadHasDefensorField(normalizedPayload)) {
     const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
     const currentDefensor = String(context.G_DEFENSOR || '').trim();
-    if (normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
-      if (nextDefensor) {
-        await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
-          defensorNombre: nextDefensor,
-          pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
-          pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
-          fechaAsignacion: extractFechaAsignacion(normalizedPayload) || undefined,
-        });
-        dataVersion += 1;
-      }
+    if (nextDefensor && normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
+      await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
+        defensorNombre: nextDefensor,
+        pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
+        pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
+      });
+      dataVersion += 1;
     }
   }
 
@@ -997,7 +958,6 @@ async function assignDefensor(documentos, defensor, options = {}) {
   const pagAsignador = String(options?.pagAsignador || '').trim();
   const pagNombre = String(options?.pagNombre || pagAsignador || '').trim();
   const pagCedula = normalizeDocumento(options?.pagCedula || options?.cedulaPag || '');
-  const fechaAsignacion = parseLooseDate(options?.fechaAsignacion || options?.fechaAsignacionPag) || undefined;
   let defensorCedula = defensoresRepo.normalizeCedula(options?.defensorCedula || options?.defensorId || '');
 
   if (defensorCedula) {
@@ -1024,7 +984,6 @@ async function assignDefensor(documentos, defensor, options = {}) {
       pagNombre,
       pagCedula,
       defensorCedula,
-      fechaAsignacion,
     });
     if (affected > 0) updated += affected;
   }

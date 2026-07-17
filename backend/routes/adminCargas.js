@@ -13,6 +13,11 @@ const {
   readLog,
   retryCarga,
 } = require('../services/cargaBdService');
+const {
+  cleanupDefensor,
+  executeCleanup,
+  previewCleanup,
+} = require('../services/actuacionCleanupService');
 
 const router = express.Router();
 
@@ -97,6 +102,33 @@ router.get('/fuentes', (_req, res) => {
 
 router.get('/', (_req, res) => {
   res.json({ cargas: listCargas() });
+});
+
+router.get('/actuaciones/preview', async (req, res, next) => {
+  try {
+    const defensor = req.query?.defensor || cleanupDefensor();
+    const preview = await previewCleanup(defensor);
+    return res.json({ preview });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+router.delete('/actuaciones', async (req, res, next) => {
+  try {
+    const result = await executeCleanup({
+      defensor: req.body?.defensor,
+      expectedCount: req.body?.expectedCount,
+      confirmation: req.body?.confirmation,
+      user: req.user,
+    });
+    return res.json({
+      message: `${result.deleted} actuaciones eliminadas. No se modificaron personas, situaciones ni asignaciones.`,
+      result,
+    });
+  } catch (err) {
+    return next(err);
+  }
 });
 
 router.get('/:id', (req, res) => {

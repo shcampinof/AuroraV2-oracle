@@ -16,7 +16,6 @@ async function replaceActiveAssignmentByPersona(
     defensorCedula = '',
     pagCedula = '',
     pagNombre = '',
-    fechaAsignacion = new Date(),
   } = {}
 ) {
   const cleanNombreDefensor = cleanText(defensorNombre);
@@ -43,7 +42,7 @@ async function replaceActiveAssignmentByPersona(
         :nombreDefensor,
         :cedulaPag,
         :nombrePag,
-        :fechaAsignacion
+        SYSDATE
       );
     END;
   `;
@@ -56,7 +55,6 @@ async function replaceActiveAssignmentByPersona(
       nombreDefensor: cleanNombreDefensor,
       cedulaPag: normalizeCedula(pagCedula) || null,
       nombrePag: cleanText(pagNombre),
-      fechaAsignacion: fechaAsignacion instanceof Date ? fechaAsignacion : new Date(),
     },
     {
       autoCommit: true,

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import {
+  deleteActuacionesCleanup,
+  getActuacionesCleanupPreview,
   getCargaBdLog,
   getCargaBdSources,
   getCargasBd,
@@ -56,6 +58,12 @@ function AdminCargasBD() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [log, setLog] = useState(null);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanupPreview, setCleanupPreview] = useState(null);
+  const [cleanupConfirmation, setCleanupConfirmation] = useState('');
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupDeleting, setCleanupDeleting] = useState(false);
+  const [cleanupError, setCleanupError] = useState('');
 
   const hasRunningCarga = useMemo(
     () => cargas.some((carga) => RUNNING_STATUSES.has(carga.status)),
@@ -157,6 +165,50 @@ function AdminCargasBD() {
     }
   }
 
+  async function loadCleanupPreview({ preserveError = false } = {}) {
+    setCleanupLoading(true);
+    setCleanupConfirmation('');
+    if (!preserveError) setCleanupError('');
+    try {
+      const data = await getActuacionesCleanupPreview();
+      setCleanupPreview(data?.preview || null);
+    } catch (err) {
+      setCleanupPreview(null);
+      setCleanupError(String(err?.message || 'No fue posible consultar las actuaciones de prueba.'));
+    } finally {
+      setCleanupLoading(false);
+    }
+  }
+
+  function handleOpenCleanup() {
+    setCleanupOpen(true);
+    setCleanupError('');
+    loadCleanupPreview();
+  }
+
+  async function handleDeleteActuaciones() {
+    if (!cleanupPreview?.totalActuaciones) return;
+    setCleanupDeleting(true);
+    setMessage('');
+    setError('');
+    try {
+      const data = await deleteActuacionesCleanup({
+        defensor: cleanupPreview.defensor,
+        expectedCount: cleanupPreview.totalActuaciones,
+        confirmation: cleanupConfirmation,
+      });
+      setMessage(data?.message || 'Actuaciones de prueba eliminadas.');
+      setCleanupOpen(false);
+      setCleanupPreview(null);
+      setCleanupConfirmation('');
+    } catch (err) {
+      setCleanupError(String(err?.message || 'No fue posible eliminar las actuaciones de prueba.'));
+      await loadCleanupPreview({ preserveError: true });
+    } finally {
+      setCleanupDeleting(false);
+    }
+  }
+
   const selectedSource = fuentes.find((item) => item.id === fuente);
 
   return (
@@ -166,9 +218,14 @@ function AdminCargasBD() {
           <h2>Cargas mensuales</h2>
           <p>Suba los Excel oficiales y ejecute la actualizacion de staging y ETL desde Aurora.</p>
         </div>
-        <button type="button" className="secondary-button" onClick={() => refresh()} disabled={loading}>
-          Actualizar
-        </button>
+        <div className="admin-loads-header-actions">
+          <button type="button" className="danger-outline-button" onClick={handleOpenCleanup}>
+            Depurar actuaciones
+          </button>
+          <button type="button" className="secondary-button" onClick={() => refresh()} disabled={loading}>
+            Actualizar
+          </button>
+        </div>
       </header>
 
       {message ? <div className="status-banner status-banner--ok">{message}</div> : null}
@@ -266,6 +323,95 @@ function AdminCargasBD() {
             </button>
           </div>
           <pre>{log.text || 'Sin registros de log.'}</pre>
+        </div>
+      ) : null}
+
+      {cleanupOpen ? (
+        <div className="admin-modal-backdrop" role="presentation">
+          <section
+            className="admin-cleanup-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cleanup-title"
+          >
+            <div className="admin-cleanup-toolbar">
+              <div>
+                <h3 id="cleanup-title">Depuración de actuaciones ficticias</h3>
+                <p>Esta operación solo elimina actuaciones. No elimina personas, situaciones ni asignaciones.</p>
+              </div>
+              <button type="button" onClick={() => setCleanupOpen(false)} disabled={cleanupDeleting}>
+                Cerrar
+              </button>
+            </div>
+
+            <div className="admin-cleanup-content">
+              {cleanupError ? <div className="status-banner status-banner--error">{cleanupError}</div> : null}
+              {cleanupLoading ? <p>Consultando actuaciones...</p> : null}
+              {!cleanupLoading && cleanupPreview ? (
+                <>
+                  <div className="admin-cleanup-summary">
+                    <div><span>Defensor activo</span><strong>{cleanupPreview.defensor}</strong></div>
+                    <div><span>Actuaciones</span><strong>{cleanupPreview.totalActuaciones}</strong></div>
+                    <div><span>Personas relacionadas</span><strong>{cleanupPreview.totalPersonas}</strong></div>
+                  </div>
+
+                  {cleanupPreview.totalActuaciones ? (
+                    <>
+                      <div className="admin-cleanup-table-wrap">
+                        <table className="admin-loads-table admin-cleanup-table">
+                          <thead>
+                            <tr>
+                              <th>ID</th>
+                              <th>Documento</th>
+                              <th>Nombre</th>
+                              <th>Fecha</th>
+                              <th>Actuación</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cleanupPreview.actuaciones.map((item) => (
+                              <tr key={item.ID_GESTION}>
+                                <td>{item.ID_GESTION}</td>
+                                <td>{item.DOCUMENTO || '-'}</td>
+                                <td>{item.NOMBRE || '-'}</td>
+                                <td>{formatDate(item.FECHA_REGISTRO)}</td>
+                                <td>{item.ACTUACION_ADELANTAR || '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {cleanupPreview.truncated ? <p className="admin-cleanup-note">La vista previa muestra los primeros 500 registros.</p> : null}
+                      <label className="admin-cleanup-confirmation">
+                        Para confirmar, escriba <strong>{cleanupPreview.confirmation}</strong>
+                        <input
+                          type="text"
+                          value={cleanupConfirmation}
+                          onChange={(event) => setCleanupConfirmation(event.target.value)}
+                          autoComplete="off"
+                        />
+                      </label>
+                      <div className="admin-cleanup-actions">
+                        <button type="button" className="secondary-button" onClick={() => loadCleanupPreview()} disabled={cleanupDeleting}>
+                          Actualizar vista previa
+                        </button>
+                        <button
+                          type="button"
+                          className="danger-button"
+                          onClick={handleDeleteActuaciones}
+                          disabled={cleanupDeleting || cleanupConfirmation !== cleanupPreview.confirmation}
+                        >
+                          {cleanupDeleting ? 'Eliminando...' : `Eliminar ${cleanupPreview.totalActuaciones} actuaciones`}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="status-banner status-banner--ok">No hay actuaciones para depurar.</div>
+                  )}
+                </>
+              ) : null}
+            </div>
+          </section>
         </div>
       ) : null}
     </section>

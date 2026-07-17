@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node scripts/auth-config.test.js && node scripts/carga-bd-service.test.js",
+    "test": "node scripts/auth-config.test.js && node scripts/carga-bd-service.test.js && node scripts/actuacion-cleanup-service.test.js && node scripts/asignacion-safety.test.js",
     "start": "node index.js",
     "start:prod": "node index.js",
     "dev": "nodemon index.js",

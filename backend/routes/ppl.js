@@ -737,61 +737,6 @@ async function resolveDefensorByDocumento(documento) {
   return fallback;
 }
 
-function extractDefensorFromPayload(payload) {
-  const body = payload && typeof payload === 'object' ? payload : {};
-  const source = body?.data && typeof body.data === 'object' ? body.data : body;
-  const hasOwn = (key) => Object.prototype.hasOwnProperty.call(source, key);
-
-  const keys = [
-    'defensorAsignado',
-    'Defensor',
-    'Defensor(a) Publico(a) Asignado para tramitar la solicitud',
-    'Defensor(a) Público(a) Asignado para tramitar la solicitud',
-    'Defensor(a) P?blico(a) Asignado para tramitar la solicitud',
-  ];
-
-  for (const key of keys) {
-    if (!hasOwn(key)) continue;
-    return String(source[key] ?? '').trim();
-  }
-
-  for (const [key, value] of Object.entries(source)) {
-    const normalized = normalizeText(key).replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-    const isDefensorField =
-      normalized === 'defensor a publico a asignado para tramitar la solicitud' ||
-      normalized === 'defensor asignado' ||
-      normalized === 'defensor';
-    if (isDefensorField) return String(value ?? '').trim();
-  }
-
-  return null;
-}
-
-function isOnlyDefensorPayload(payload) {
-  const body = payload && typeof payload === 'object' ? payload : {};
-  const source = body?.data && typeof body.data === 'object' ? body.data : body;
-  const keys = Object.keys(source || {});
-  if (!keys.length) return false;
-
-  let hasDefensorKey = false;
-  for (const key of keys) {
-    const normalized = normalizeText(key).replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-    const isDefensorField =
-      normalized === 'defensor a publico a asignado para tramitar la solicitud' ||
-      normalized === 'defensor asignado' ||
-      normalized === 'defensor';
-
-    if (isDefensorField) {
-      hasDefensorKey = true;
-      continue;
-    }
-
-    return false;
-  }
-
-  return hasDefensorKey;
-}
-
 // Listado por tipo: /api/ppl?tipo=condenado | sindicado
 router.get('/', async (req, res) => {
   const tipo = String(req.query.tipo || 'all').trim().toLowerCase();
@@ -972,11 +917,6 @@ router.post('/asignar-defensor', async (req, res) => {
       pagNombre: String(pag?.nombre || '').trim(),
       pagCedula: pag.cedula,
       defensorCedula,
-      fechaAsignacion:
-        body?.fechaAsignacion ||
-        body?.fechaAsignacionPag ||
-        body?.['Fecha de asignación del PAG'] ||
-        body?.['Fecha de asignacion del PAG'],
     });
     return res.json({
       ok: true,
@@ -1070,14 +1010,6 @@ router.put('/:documento', async (req, res) => {
 
   try {
     if (await consolidado.getByDocumento(doc)) {
-      const defensor = extractDefensorFromPayload(body);
-      if (defensor !== null && isOnlyDefensorPayload(body)) {
-        const updated = await consolidado.assignDefensor([doc], defensor);
-        if (!updated) return res.status(404).json({ message: 'No encontrado' });
-        const refreshed = await consolidado.getByDocumento(doc);
-        return res.json({ tipo: consolidado.computeTipo(refreshed), registro: hydrateRegistroDefensor(refreshed) });
-      }
-
       const upd = await consolidado.updateByDocumento(doc, body);
       if (!upd) return res.status(404).json({ message: 'No encontrado' });
       return res.json({ tipo: consolidado.computeTipo(upd), registro: hydrateRegistroDefensor(upd) });

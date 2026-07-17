@@ -457,6 +457,27 @@ export async function getCargaBdLog(id) {
   return res.text();
 }
 
+export async function getActuacionesCleanupPreview(defensor = '') {
+  const params = new URLSearchParams();
+  if (defensor) params.set('defensor', defensor);
+  const query = params.size ? `?${params}` : '';
+  const res = await fetchJson(`${API_BASE}/admin/cargas/actuaciones/preview${query}`, { cache: 'no-store' });
+  const data = await readJsonOrThrow(res, 'Error consultando actuaciones de prueba');
+  if (!res.ok) throw new Error(String(data?.message || 'Error consultando actuaciones de prueba'));
+  return data;
+}
+
+export async function deleteActuacionesCleanup({ defensor, expectedCount, confirmation }) {
+  const res = await fetchJson(`${API_BASE}/admin/cargas/actuaciones`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ defensor, expectedCount, confirmation }),
+  });
+  const data = await readJsonOrThrow(res, 'Error eliminando actuaciones de prueba');
+  if (!res.ok) throw new Error(String(data?.message || 'Error eliminando actuaciones de prueba'));
+  return data;
+}
+
 // =====================
 // Administracion de usuarios
 // =====================
