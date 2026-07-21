@@ -104,22 +104,18 @@ function parsePotencialSubrogadoFilter(value) {
 
 function computeCategoriaPotencialSubrogado(row) {
   const categorizacion = normalizeText(getValueWithFallback(row, 'Categorizacion', 'CATEGORIZACION', ''));
-  const categoriasBeneficiarias = new Set([
+  const criteriosBeneficiarios = [
     normalizeText('Prisión Domiciliaria y Libertad condicional'),
     normalizeText('Prisión Domiciliaria'),
     normalizeText('Revisar por pena'),
     normalizeText('Libertad condicional'),
     normalizeText('Utilidad Pública'),
-  ]);
-  const categoriasProximas = new Set([
-    normalizeText('Preliminar Prisión Domiciliaria'),
-    normalizeText('Preliminar Libertad condicional'),
-  ]);
-  if (categoriasBeneficiarias.has(categorizacion)) {
-    return POTENCIAL_SUBROGADO_CATEGORY.BENEFICIARIO;
-  }
-  if (categoriasProximas.has(categorizacion)) {
+  ];
+  if (categorizacion.startsWith('preliminar ')) {
     return POTENCIAL_SUBROGADO_CATEGORY.PROXIMO;
+  }
+  if (criteriosBeneficiarios.some((criterio) => categorizacion.includes(criterio))) {
+    return POTENCIAL_SUBROGADO_CATEGORY.BENEFICIARIO;
   }
   return POTENCIAL_SUBROGADO_CATEGORY.NO_REUNE;
 }

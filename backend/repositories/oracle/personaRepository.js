@@ -239,17 +239,13 @@ const PORCENTAJE_NORMALIZADO_EXPR = `
 
 const POTENCIAL_SUBROGADO_EXPR = `
   CASE
-    WHEN ${normalizedSqlExpr('s.CATEGORIZACION')} IN (
-      'PRISION DOMICILIARIA Y LIBERTAD CONDICIONAL',
-      'PRISION DOMICILIARIA',
-      'REVISAR POR PENA',
-      'LIBERTAD CONDICIONAL',
-      'UTILIDAD PUBLICA'
-    ) THEN 'potenciales_beneficiarios'
-    WHEN ${normalizedSqlExpr('s.CATEGORIZACION')} IN (
-      'PRELIMINAR PRISION DOMICILIARIA',
-      'PRELIMINAR LIBERTAD CONDICIONAL'
-    ) THEN 'proximos_requisito_temporal'
+    WHEN ${normalizedSqlExpr('s.CATEGORIZACION')} LIKE 'PRELIMINAR %'
+      THEN 'proximos_requisito_temporal'
+    WHEN ${normalizedSqlExpr('s.CATEGORIZACION')} LIKE '%PRISION DOMICILIARIA%'
+      OR ${normalizedSqlExpr('s.CATEGORIZACION')} LIKE '%LIBERTAD CONDICIONAL%'
+      OR ${normalizedSqlExpr('s.CATEGORIZACION')} LIKE '%REVISAR POR PENA%'
+      OR ${normalizedSqlExpr('s.CATEGORIZACION')} LIKE '%UTILIDAD PUBLICA%'
+      THEN 'potenciales_beneficiarios'
     ELSE 'no_reunen_requisitos'
   END
 `;
