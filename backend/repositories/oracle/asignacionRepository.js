@@ -29,6 +29,7 @@ async function replaceActiveAssignmentByPersona(
          AND FECHA_FIN IS NULL;
 
       INSERT INTO DNDP.ASIGNACION (
+        ID_ASIGNACION,
         ID_PERSONA,
         CEDULA_DEFENSOR,
         NOMBRE_DEFENSOR,
@@ -37,6 +38,7 @@ async function replaceActiveAssignmentByPersona(
         FECHA_ASIGNACION
       )
       VALUES (
+        DNDP.SEQ_ASIGNACION.NEXTVAL,
         :idPersona,
         :cedulaDefensor,
         :nombreDefensor,

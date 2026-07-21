@@ -25,6 +25,8 @@ async function testRepositoryUsesDatabaseClock() {
 
     assert(captured, 'La operación de asignación debe ejecutar SQL.');
     assert.match(captured.sql, /SET FECHA_FIN = SYSDATE/);
+    assert.match(captured.sql, /ID_ASIGNACION/);
+    assert.match(captured.sql, /DNDP\.SEQ_ASIGNACION\.NEXTVAL/);
     assert.match(captured.sql, /:nombrePag,\s*SYSDATE\s*\)/);
     assert(!Object.prototype.hasOwnProperty.call(captured.binds, 'fechaAsignacion'));
     assert.strictEqual(captured.options.autoCommit, true);
