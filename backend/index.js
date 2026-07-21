@@ -144,8 +144,12 @@ if (hasFrontendBuild) {
     express.static(frontendDistPath, {
       setHeaders: (res, filePath) => {
         const fileName = path.basename(filePath);
-        if (fileName === 'service-worker.js' || fileName === 'manifest.json') {
-          res.setHeader('Cache-Control', 'no-cache');
+        if (fileName === 'index.html' || fileName === 'service-worker.js') {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+        } else if (fileName === 'manifest.json') {
+          res.setHeader('Cache-Control', 'no-cache, must-revalidate');
         }
       },
     })
