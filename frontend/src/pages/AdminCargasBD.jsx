@@ -187,7 +187,7 @@ function AdminCargasBD() {
   }
 
   async function handleDeleteActuaciones() {
-    if (!cleanupPreview?.totalActuaciones) return;
+    if (!cleanupPreview?.totalAsignaciones) return;
     setCleanupDeleting(true);
     setMessage('');
     setError('');
@@ -195,6 +195,7 @@ function AdminCargasBD() {
       const data = await deleteActuacionesCleanup({
         defensor: cleanupPreview.defensor,
         expectedCount: cleanupPreview.totalActuaciones,
+        expectedAssignments: cleanupPreview.totalAsignaciones,
         confirmation: cleanupConfirmation,
       });
       setMessage(data?.message || 'Actuaciones de prueba eliminadas.');
@@ -337,7 +338,7 @@ function AdminCargasBD() {
             <div className="admin-cleanup-toolbar">
               <div>
                 <h3 id="cleanup-title">Depuración de actuaciones ficticias</h3>
-                <p>Esta operación solo elimina actuaciones. No elimina personas, situaciones ni asignaciones.</p>
+                <p>Esta operación elimina las actuaciones ficticias y las asignaciones activas del defensor de prueba. No elimina personas ni situaciones.</p>
               </div>
               <button type="button" onClick={() => setCleanupOpen(false)} disabled={cleanupDeleting}>
                 Cerrar
@@ -352,10 +353,10 @@ function AdminCargasBD() {
                   <div className="admin-cleanup-summary">
                     <div><span>Defensor activo</span><strong>{cleanupPreview.defensor}</strong></div>
                     <div><span>Actuaciones</span><strong>{cleanupPreview.totalActuaciones}</strong></div>
-                    <div><span>Personas relacionadas</span><strong>{cleanupPreview.totalPersonas}</strong></div>
+                    <div><span>Asignaciones a retirar</span><strong>{cleanupPreview.totalAsignaciones}</strong></div>
                   </div>
 
-                  {cleanupPreview.totalActuaciones ? (
+                  {cleanupPreview.totalAsignaciones ? (
                     <>
                       <div className="admin-cleanup-table-wrap">
                         <table className="admin-loads-table admin-cleanup-table">
@@ -401,12 +402,12 @@ function AdminCargasBD() {
                           onClick={handleDeleteActuaciones}
                           disabled={cleanupDeleting || cleanupConfirmation !== cleanupPreview.confirmation}
                         >
-                          {cleanupDeleting ? 'Eliminando...' : `Eliminar ${cleanupPreview.totalActuaciones} actuaciones`}
+                          {cleanupDeleting ? 'Eliminando...' : `Depurar ${cleanupPreview.totalAsignaciones} usuarios`}
                         </button>
                       </div>
                     </>
                   ) : (
-                    <div className="status-banner status-banner--ok">No hay actuaciones para depurar.</div>
+                    <div className="status-banner status-banner--ok">No hay actuaciones ni asignaciones para depurar.</div>
                   )}
                 </>
               ) : null}

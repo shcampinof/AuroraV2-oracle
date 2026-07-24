@@ -87,6 +87,11 @@ withEnv({}, ({ normalizeRoles }) => {
     ['aurora.admin', 'admin', 'aurora.user', 'user'],
     'Azure app role values must be usable as Aurora internal roles'
   );
+  assert.deepEqual(
+    normalizeRoles(['Aurora.PAG'], []),
+    ['aurora.pag', 'pag'],
+    'Azure PAG app role must grant the internal PAG role'
+  );
 });
 
 withEnv(

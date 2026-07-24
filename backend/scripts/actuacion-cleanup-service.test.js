@@ -9,6 +9,7 @@ const {
 function testConfirmationIncludesExactCount() {
   assert.equal(expectedConfirmation(12), 'ELIMINAR 12 ACTUACIONES');
   assert.equal(expectedConfirmation('3'), 'ELIMINAR 3 ACTUACIONES');
+  assert.equal(expectedConfirmation(4, 9), 'ELIMINAR 4 ACTUACIONES Y 9 ASIGNACIONES');
 }
 
 function testDefensorNormalization() {

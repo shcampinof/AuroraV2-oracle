@@ -3,6 +3,7 @@ import { getPplActuacionesByDocumento } from '../services/api.js';
 import { getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
 import { reportError } from '../utils/reportError.js';
 import { getLabelAccionCaso } from '../utils/actuacionesLabels.js';
+import { shouldShowVirtualPendingActuacion } from '../utils/actuacionesValidation.js';
 import './HistorialActuacionesPPL.css';
 
 function decodeUnicodeEscapes(text) {
@@ -415,6 +416,28 @@ export default function HistorialActuacionesPPL({
       return normalizeActuacion(item, idx, shouldUseLiveRegistro ? registroActual : null);
     });
 
+    if (shouldShowVirtualPendingActuacion(rows, registroActual)) {
+      rows.push({
+        ...normalizeActuacion(
+          {
+            id: 'actuacion-inicial-pendiente',
+            rowIndex: 0,
+            registro: registroActual,
+          },
+          0,
+          registroActual
+        ),
+        iniciada: true,
+        bloque3Iniciado: false,
+        virtualPendiente: true,
+        fechaAnalisisJuridico: '',
+        resumenAnalisis: '',
+        actuacionJudicial: '',
+        estadoLabel: 'Analizar el caso',
+        estadoClass: 'estado--verde',
+      });
+    }
+
     if (activeId && registroActual && !activeRowFound) {
       rows.push(
         normalizeActuacion(
@@ -574,7 +597,11 @@ export default function HistorialActuacionesPPL({
                         <button
                           type="button"
                           className="primary-button historial-action-button"
-                          onClick={() => onSelectActuacion?.(actuacion)}
+                          onClick={() =>
+                            actuacion?.virtualPendiente
+                              ? onIniciarActuacion?.()
+                              : onSelectActuacion?.(actuacion)
+                          }
                         >
                           {displayText(textoAccionFila)}
                         </button>

@@ -1,5 +1,10 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getCondenados, getCondenadosFilterOptions } from '../services/api.js';
+import {
+  getCachedCondenados,
+  getCachedCondenadosFilterOptions,
+  getCondenados,
+  getCondenadosFilterOptions,
+} from '../services/api.js';
 import { pickActiveCaseData } from '../utils/entrevistaEstado.js';
 import { displayOrDash } from '../utils/pplDisplay.js';
 import { getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
@@ -15,9 +20,10 @@ function prettifyHeader(key) {
 }
 
 const EXTRA_COLUMNS = ['actuacionJudicial'];
-const ROWS_PER_PAGE = 50;
+const ROWS_PER_PAGE = 25;
 const DEFAULT_INITIAL_LIMIT = 50;
 const DEFAULT_FILTERED_LIMIT = 100;
+const INITIAL_FILTER_OPTIONS_QUERY = { tipo: 'all' };
 const ESTADOS_TRAMITE_OPTIONS = [
   'Analizar el caso',
   'Entrevistar al usuario',
@@ -172,6 +178,34 @@ function distinctSorted(rows, getter) {
   return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
 }
 
+function normalizeRowsPayload(data) {
+  if (!data) return null;
+  const cols = Array.isArray(data?.columns) ? data.columns : [];
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const inferred = cols.length
+    ? cols
+    : Array.from(
+        rows.reduce((acc, row) => {
+          Object.keys(row || {}).forEach((key) => acc.add(key));
+          return acc;
+        }, new Set())
+      );
+  const columns = [...inferred];
+  for (const extra of EXTRA_COLUMNS) {
+    if (!columns.includes(extra)) columns.push(extra);
+  }
+  return { columns, rows, meta: data?.meta || null };
+}
+
+function normalizeFilterOptions(data) {
+  return {
+    defensores: Array.isArray(data?.defensores) ? data.defensores : [],
+    departamentos: Array.isArray(data?.departamentos) ? data.departamentos : [],
+    municipios: Array.isArray(data?.municipios) ? data.municipios : [],
+    lugares: Array.isArray(data?.lugares) ? data.lugares : [],
+  };
+}
+
 function DropdownField({ label, value, onChange, options, searchable = false, listId }) {
   const normalizedOptions = useMemo(
     () =>
@@ -280,9 +314,12 @@ function getColumnWidth(col) {
 }
 
 export default function RegistrosAsignados({ onSelectRegistro }) {
-  const [cargando, setCargando] = useState(true);
-  const [preparandoInteraccion, setPreparandoInteraccion] = useState(true);
+  const [initialOptions] = useState(() =>
+    normalizeFilterOptions(getCachedCondenadosFilterOptions(INITIAL_FILTER_OPTIONS_QUERY))
+  );
+  const [cargando, setCargando] = useState(false);
   const [errorCarga, setErrorCarga] = useState('');
+  const [busquedaRealizada, setBusquedaRealizada] = useState(false);
 
   const [columns, setColumns] = useState([]);
   const [rows, setRows] = useState([]);
@@ -310,13 +347,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   const [filtroAdicionalSeleccionado, setFiltroAdicionalSeleccionado] = useState('');
   const [pagina, setPagina] = useState(1);
 
-  const [defensores, setDefensores] = useState([]);
-  const [opcionesFiltro, setOpcionesFiltro] = useState({
-    defensores: [],
-    departamentos: [],
-    municipios: [],
-    lugares: [],
-  });
+  const [defensores, setDefensores] = useState(() => initialOptions.defensores);
+  const [opcionesFiltro, setOpcionesFiltro] = useState(() => initialOptions);
   const isDev = typeof import.meta !== 'undefined' && import.meta?.env?.DEV;
   const estadoInfoCacheRef = useRef(new WeakMap());
   const tableScrollRef = useRef(null);
@@ -443,43 +475,25 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       lugar: String(safe.lugar || '').trim(),
       departamento: String(safe.departamento || '').trim(),
       municipio: String(safe.municipio || '').trim(),
-      estado: '',
+      estado: String(safe.estado || '').trim(),
     };
   }
 
   const cargarRowsFromBackend = useCallback(async (nextFiltros = {}) => {
-    setCargando(true);
-    setPreparandoInteraccion(true);
+    const request = {
+      tipo: 'all',
+      limit: DEFAULT_INITIAL_LIMIT,
+      filteredLimit: DEFAULT_FILTERED_LIMIT,
+      filters: buildBackendFilters(nextFiltros),
+    };
+    const hasCachedRows = Boolean(getCachedCondenados(request));
+    setCargando(!hasCachedRows);
     setErrorCarga('');
     try {
-      const data = await getCondenados({
-        tipo: 'all',
-        limit: DEFAULT_INITIAL_LIMIT,
-        filteredLimit: DEFAULT_FILTERED_LIMIT,
-        filters: buildBackendFilters(nextFiltros),
-      });
-
-      const cols = Array.isArray(data?.columns) ? data.columns : [];
-      const rws = Array.isArray(data?.rows) ? data.rows : [];
-
-      const inferred =
-        cols.length > 0
-          ? cols
-          : Array.from(
-              rws.reduce((acc, r) => {
-                Object.keys(r || {}).forEach((k) => acc.add(k));
-                return acc;
-              }, new Set())
-            );
-
-      const withExtras = [...inferred];
-      for (const extra of EXTRA_COLUMNS) {
-        if (!withExtras.includes(extra)) withExtras.push(extra);
-      }
-
-      setColumns(withExtras);
-      setRows(rws);
-      setMetaConsulta(data?.meta || null);
+      const normalized = normalizeRowsPayload(await getCondenados(request));
+      setColumns(normalized?.columns || []);
+      setRows(normalized?.rows || []);
+      setMetaConsulta(normalized?.meta || null);
       setPagina(1);
     } catch (e) {
       console.error(e);
@@ -494,13 +508,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
   const cargarOpcionesFiltro = useCallback(async () => {
     try {
-      const data = await getCondenadosFilterOptions({ tipo: 'all' });
-      const next = {
-        defensores: Array.isArray(data?.defensores) ? data.defensores : [],
-        departamentos: Array.isArray(data?.departamentos) ? data.departamentos : [],
-        municipios: Array.isArray(data?.municipios) ? data.municipios : [],
-        lugares: Array.isArray(data?.lugares) ? data.lugares : [],
-      };
+      const data = await getCondenadosFilterOptions(INITIAL_FILTER_OPTIONS_QUERY);
+      const next = normalizeFilterOptions(data);
       setOpcionesFiltro(next);
       setDefensores((prev) => {
         const merged = new Map();
@@ -516,10 +525,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       console.error(e);
     }
   }, []);
-
-  useEffect(() => {
-    cargarRowsFromBackend();
-  }, [cargarRowsFromBackend]);
 
   useEffect(() => {
     cargarOpcionesFiltro();
@@ -679,35 +684,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     syncingHorizontalScrollRef.current = false;
   }
 
-  useEffect(() => {
-    if (cargando) {
-      setPreparandoInteraccion(true);
-      return undefined;
-    }
-
-    let active = true;
-    const finish = () => {
-      if (!active) return;
-      setPreparandoInteraccion(false);
-    };
-
-    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
-      const idleId = window.requestIdleCallback(finish, { timeout: 700 });
-      return () => {
-        active = false;
-        if (typeof window.cancelIdleCallback === 'function') {
-          window.cancelIdleCallback(idleId);
-        }
-      };
-    }
-
-    const timeoutId = setTimeout(finish, 180);
-    return () => {
-      active = false;
-      clearTimeout(timeoutId);
-    };
-  }, [cargando, rows.length, paginaActual]);
-
   async function aplicarFiltros() {
     const next = {
       defensor: String(filtrosDraft.defensor || '').trim(),
@@ -720,11 +696,23 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     };
 
     setFiltrosDraft(next);
+    if (!Object.values(next).some((value) => String(value || '').trim() !== '')) {
+      setFiltrosAplicados(next);
+      setBusquedaRealizada(false);
+      setErrorCarga('Ingrese al menos un filtro antes de buscar.');
+      setColumns([]);
+      setRows([]);
+      setMetaConsulta(null);
+      setPagina(1);
+      return;
+    }
+
     setFiltrosAplicados(next);
+    setBusquedaRealizada(true);
     await cargarRowsFromBackend(next);
   }
 
-  async function reiniciar() {
+  function reiniciar() {
     const empty = {
       defensor: '',
       nombre: '',
@@ -737,7 +725,12 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     setFiltrosDraft(empty);
     setFiltrosAplicados(empty);
     setFiltroAdicionalSeleccionado('');
-    await cargarRowsFromBackend(empty);
+    setBusquedaRealizada(false);
+    setErrorCarga('');
+    setColumns([]);
+    setRows([]);
+    setMetaConsulta(null);
+    setPagina(1);
   }
 
   const orderedColumns = useMemo(() => {
@@ -843,7 +836,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   }
 
   function handleRowClick(r) {
-    if (cargando || preparandoInteraccion) return;
+    if (cargando) return;
     const doc = String(getNumeroIdentificacionValue(r) || '').trim();
     if (!doc) return;
     if (typeof onSelectRegistro === 'function') {
@@ -851,7 +844,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     }
   }
 
-  const mostrarOverlayCarga = cargando || preparandoInteraccion;
+  const mostrarOverlayCarga = cargando;
   const mensajeOverlayCarga = 'Cargando información...';
 
   return (
@@ -1032,7 +1025,9 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                   {rowsFiltradas.length === 0 && (
                     <tr>
                       <td colSpan={Math.max(orderedColumns.length, 1)} style={{ textAlign: 'center', padding: '1rem' }}>
-                        No hay registros para mostrar.
+                        {busquedaRealizada
+                          ? 'No se encontraron registros con los filtros aplicados.'
+                          : 'Ingrese al menos un filtro y presione Buscar.'}
                       </td>
                     </tr>
                   )}
@@ -1074,9 +1069,11 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
               </div>
             )}
 
-            <p className="hint-text">
-              Haga clic sobre una fila para abrir el formulario de entrevista del usuario seleccionado.
-            </p>
+            {busquedaRealizada && rowsFiltradas.length > 0 && (
+              <p className="hint-text">
+                Haga clic sobre una fila para abrir el formulario de entrevista del usuario seleccionado.
+              </p>
+            )}
           </div>
         </div>
       )}

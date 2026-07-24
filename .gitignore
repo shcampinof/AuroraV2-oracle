@@ -20,8 +20,11 @@ pnpm-debug.log*
 
 .cleanup-backups/
 
-# Documentacion formal entregada por canal institucional separado.
-documentacion/
+# La documentación fuente Markdown acompaña al código. Los entregables binarios
+# (Word, PDF, diagramas e insumos de base de datos) permanecen fuera de Git.
+documentacion/**
+!documentacion/**/
+!documentacion/**/*.md
 
 # Archivos de entrega, pruebas funcionales y cargues operativos.
 *.zip

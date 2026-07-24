@@ -35,6 +35,7 @@ const TEXT_BASENAMES = new Set([
 ]);
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.vite']);
+const SKIP_PATHS = new Set(['backend/public/app']);
 const UTF8_FATAL = new TextDecoder('utf-8', { fatal: true });
 const BROKEN_BYTES_RE = /[\u00C3\u00C2\u00E2\u0192]/u;
 
@@ -44,6 +45,7 @@ function collectTextFiles(dir, out = []) {
     if (SKIP_DIRS.has(entry.name)) continue;
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
+      if (SKIP_PATHS.has(path.relative(ROOT, fullPath).split(path.sep).join('/'))) continue;
       collectTextFiles(fullPath, out);
       continue;
     }

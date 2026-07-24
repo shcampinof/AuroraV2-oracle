@@ -1,9 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { deleteAdminUser, getAdminUsers, saveAdminUser, updateAdminUser } from '../services/api.js';
+import {
+  deleteAdminUser,
+  getAdminUsers,
+  importAdminUsersCsv,
+  previewAdminUsersCsv,
+  saveAdminUser,
+  updateAdminUser,
+} from '../services/api.js';
 
 const ROLE_OPTIONS = [
   { id: 'user', label: 'Usuario' },
+  { id: 'pag', label: 'PAG' },
   { id: 'admin', label: 'Admin' },
   { id: 'carguebd', label: 'Cargas' },
 ];
@@ -36,7 +44,7 @@ function normalizeRoles(roles) {
 
 function AdminUsuarios() {
   const [users, setUsers] = useState([]);
-  const [form, setForm] = useState({ email: '', name: '', roles: ['user'], enabled: true });
+  const [form, setForm] = useState({ email: '', roles: ['user'], enabled: true });
   const [query, setQuery] = useState('');
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
@@ -44,6 +52,10 @@ function AdminUsuarios() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [csvFile, setCsvFile] = useState(null);
+  const [csvPreview, setCsvPreview] = useState(null);
+  const [csvLoading, setCsvLoading] = useState(false);
+  const csvInputRef = useRef(null);
 
   const sortedUsers = useMemo(() => {
     return [...users].sort((a, b) => String(a.email || '').localeCompare(String(b.email || '')));
@@ -117,13 +129,67 @@ function AdminUsuarios() {
     setSubmitting(true);
     try {
       await saveAdminUser({ ...form, email, roles: normalizeRoles(form.roles) });
-      setForm({ email: '', name: '', roles: ['user'], enabled: true });
+      setForm({ email: '', roles: ['user'], enabled: true });
       setMessage('Usuario guardado.');
       await refresh();
     } catch (err) {
       setError(String(err?.message || 'No fue posible guardar el usuario.'));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  function downloadTemplate() {
+    const blob = new Blob(['\uFEFFcorreo\r\n'], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'plantilla_usuarios_autorizados.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function clearCsv() {
+    setCsvFile(null);
+    setCsvPreview(null);
+    if (csvInputRef.current) csvInputRef.current.value = '';
+  }
+
+  async function handleCsvPreview() {
+    if (!csvFile) {
+      setError('Seleccione un archivo CSV.');
+      return;
+    }
+    setMessage('');
+    setError('');
+    setCsvLoading(true);
+    try {
+      const data = await previewAdminUsersCsv(csvFile);
+      setCsvPreview(data?.preview || null);
+    } catch (err) {
+      setCsvPreview(null);
+      setError(String(err?.message || 'No fue posible analizar el CSV.'));
+    } finally {
+      setCsvLoading(false);
+    }
+  }
+
+  async function handleCsvImport() {
+    if (!csvFile || !csvPreview?.summary?.ready) return;
+    setMessage('');
+    setError('');
+    setCsvLoading(true);
+    try {
+      const data = await importAdminUsersCsv(csvFile);
+      clearCsv();
+      setMessage(`${Number(data?.imported || 0)} usuarios importados. Los registros existentes no fueron modificados.`);
+      await refresh();
+    } catch (err) {
+      setError(String(err?.message || 'No fue posible importar los usuarios.'));
+    } finally {
+      setCsvLoading(false);
     }
   }
 
@@ -180,15 +246,6 @@ function AdminUsuarios() {
             onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
           />
         </label>
-        <label>
-          Nombre
-          <input
-            type="text"
-            value={form.name}
-            placeholder="Nombre visible"
-            onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-          />
-        </label>
         <fieldset className="admin-users-roles">
           <legend>Roles</legend>
           {ROLE_OPTIONS.map((role) => (
@@ -214,6 +271,74 @@ function AdminUsuarios() {
           {submitting ? 'Guardando...' : 'Guardar usuario'}
         </button>
       </form>
+
+      <section className="admin-users-import" aria-labelledby="csv-import-title">
+        <div className="admin-users-import-header">
+          <div>
+            <h3 id="csv-import-title">Importar usuarios desde CSV</h3>
+            <p>El archivo solo necesita la columna <strong>correo</strong>. Los usuarios se crean habilitados con rol Usuario.</p>
+          </div>
+          <button type="button" className="secondary-button" onClick={downloadTemplate}>
+            Descargar plantilla
+          </button>
+        </div>
+        <div className="admin-users-import-controls">
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            aria-label="Archivo CSV de usuarios autorizados"
+            onChange={(event) => {
+              setCsvFile(event.target.files?.[0] || null);
+              setCsvPreview(null);
+              setMessage('');
+              setError('');
+            }}
+          />
+          <button type="button" onClick={handleCsvPreview} disabled={!csvFile || csvLoading}>
+            {csvLoading && !csvPreview ? 'Analizando...' : 'Ver vista previa'}
+          </button>
+          {(csvFile || csvPreview) ? (
+            <button type="button" className="secondary-button" onClick={clearCsv} disabled={csvLoading}>
+              Cancelar
+            </button>
+          ) : null}
+        </div>
+
+        {csvPreview ? (
+          <div className="admin-users-preview">
+            <div className="admin-users-preview-summary">
+              <span><strong>{csvPreview.summary?.ready || 0}</strong> nuevos</span>
+              <span><strong>{csvPreview.summary?.existing || 0}</strong> existentes</span>
+              <span><strong>{csvPreview.summary?.duplicates || 0}</strong> repetidos</span>
+              <span><strong>{csvPreview.summary?.invalid || 0}</strong> con error</span>
+            </div>
+            <div className="admin-users-preview-table-wrap">
+              <table className="admin-users-preview-table">
+                <thead>
+                  <tr><th>Línea</th><th>Correo</th><th>Resultado</th></tr>
+                </thead>
+                <tbody>
+                  {(csvPreview.entries || []).slice(0, 100).map((entry) => (
+                    <tr key={`${entry.line}-${entry.email}`}>
+                      <td>{entry.line}</td>
+                      <td>{entry.email || '-'}</td>
+                      <td className={`csv-status csv-status--${entry.status}`}>{entry.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {(csvPreview.entries || []).length > 100 ? <p>Se muestran las primeras 100 filas de la vista previa.</p> : null}
+            <div className="admin-users-preview-actions">
+              <p>Los correos existentes no se modificarán.</p>
+              <button type="button" className="primary-button" onClick={handleCsvImport} disabled={!csvPreview.summary?.ready || csvLoading}>
+                {csvLoading ? 'Importando...' : `Confirmar importación (${csvPreview.summary?.ready || 0})`}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </section>
 
       <div className="admin-users-toolbar">
         <label>
@@ -258,7 +383,7 @@ function AdminUsuarios() {
                 return (
                   <tr key={user.id || user.email}>
                     <td>{user.email || '-'}</td>
-                    <td>{user.name || '-'}</td>
+                    <td>{user.name || 'Pendiente de primer ingreso'}</td>
                     <td>{roles.join(', ')}</td>
                     <td>
                       <span className={`user-status ${enabled ? 'user-status--enabled' : 'user-status--disabled'}`}>
@@ -269,6 +394,12 @@ function AdminUsuarios() {
                     <td className="admin-loads-actions">
                       <button type="button" onClick={() => patchUser(user, { enabled: !enabled })}>
                         {enabled ? 'Deshabilitar' : 'Habilitar'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => patchUser(user, { roles: roles.includes('pag') ? roles.filter((role) => role !== 'pag') : [...roles, 'pag'] })}
+                      >
+                        {roles.includes('pag') ? 'Quitar PAG' : 'Habilitar PAG'}
                       </button>
                       <button
                         type="button"

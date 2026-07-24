@@ -5,6 +5,7 @@ const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const personaRepo = require('../repositories/oracle/personaRepository');
 
 const router = express.Router();
+const { requirePag } = require('../middleware/roles');
 
 const DEFAULT_LIST_LIMIT = 5000;
 const MAX_LIST_LIMIT = 10000;
@@ -27,10 +28,8 @@ const MAX_ROUTE_CACHE_VARIANTS = 12;
 const FILTER_OPTIONS_CACHE_TTL_MS = 5 * 60 * 1000;
 const pplListCache = new Map();
 const condenadosListCache = new Map();
+const condenadosListInFlight = new Map();
 const condenadosFilterOptionsCache = new Map();
-let mappedCondenadoRowCache = new WeakMap();
-const orderedCondenadosByTipoCache = new Map();
-let orderedCondenadosVersion = null;
 
 function boundedCacheSet(map, key, value, maxEntries = MAX_ROUTE_CACHE_VARIANTS) {
   if (map.size >= maxEntries && !map.has(key)) {
@@ -76,6 +75,7 @@ function normalizeDocumento(value) {
 
 const POTENCIAL_SUBROGADO_CATEGORY = {
   BENEFICIARIO: 'potenciales_beneficiarios',
+  MUJER_UTILIDAD_PUBLICA: 'mujeres_potenciales_utilidad_publica',
   PROXIMO: 'proximos_requisito_temporal',
   NO_REUNE: 'no_reunen_requisitos',
 };
@@ -91,6 +91,12 @@ function parsePotencialSubrogadoFilter(value) {
   if (key.includes('todas las personas condenadas') || key === 'todas' || key === 'all') return '';
   if (key === POTENCIAL_SUBROGADO_CATEGORY.BENEFICIARIO || key.includes('potenciales beneficiarios')) {
     return POTENCIAL_SUBROGADO_CATEGORY.BENEFICIARIO;
+  }
+  if (
+    key === POTENCIAL_SUBROGADO_CATEGORY.MUJER_UTILIDAD_PUBLICA ||
+    key.includes('mujeres potenciales beneficiarias unicamente de utilidad publica')
+  ) {
+    return POTENCIAL_SUBROGADO_CATEGORY.MUJER_UTILIDAD_PUBLICA;
   }
   if (key === POTENCIAL_SUBROGADO_CATEGORY.PROXIMO || key.includes('proximas a cumplir requisito temporal')) {
     return POTENCIAL_SUBROGADO_CATEGORY.PROXIMO;
@@ -109,10 +115,12 @@ function computeCategoriaPotencialSubrogado(row) {
     normalizeText('Prisión Domiciliaria'),
     normalizeText('Revisar por pena'),
     normalizeText('Libertad condicional'),
-    normalizeText('Utilidad Pública'),
   ];
   if (categorizacion.startsWith('preliminar ')) {
     return POTENCIAL_SUBROGADO_CATEGORY.PROXIMO;
+  }
+  if (categorizacion === normalizeText('Utilidad Pública')) {
+    return POTENCIAL_SUBROGADO_CATEGORY.MUJER_UTILIDAD_PUBLICA;
   }
   if (criteriosBeneficiarios.some((criterio) => categorizacion.includes(criterio))) {
     return POTENCIAL_SUBROGADO_CATEGORY.BENEFICIARIO;
@@ -130,14 +138,6 @@ function firstFilled(...values) {
 
 function getValueWithFallback(row, primary, secondary = '', fallback = '') {
   return consolidado.getValue(row, primary, consolidado.getValue(row, secondary, fallback));
-}
-
-function hasSituacionCarcelaria(row) {
-  return firstFilled(
-    getValueWithFallback(row, 'Situación Jurídica', 'Situacion Juridica', ''),
-    getValueWithFallback(row, 'situacion', 'situacionJuridica', ''),
-    row?.S_SITUACION
-  ) !== '';
 }
 
 function canonicalEstadoLabel(value) {
@@ -453,6 +453,15 @@ function buildEstadoSource(row) {
   };
 }
 
+function compactFilledFields(source) {
+  return Object.fromEntries(
+    Object.entries(source || {}).filter(([, value]) => {
+      if (value === null || value === undefined) return false;
+      return typeof value !== 'string' || value.trim() !== '';
+    })
+  );
+}
+
 function mapCondenadoRow(row) {
   const categoriaPotencialSubrogado =
     String(row?.CATEGORIA_POTENCIAL_SUBROGADO || '').trim() || computeCategoriaPotencialSubrogado(row);
@@ -497,42 +506,11 @@ function mapCondenadoRow(row) {
     accionImpulsar: getValueWithFallback(row, 'Acción a realizar', 'Accion a realizar', ''),
     categoriaPotencialSubrogado,
     esPotencialSubrogado,
-    estadoSource: buildEstadoSource(row),
+    // Los campos vacios no aportan a las reglas de estado y aumentaban
+    // considerablemente el JSON enviado por cada fila.
+    estadoSource: compactFilledFields(buildEstadoSource(row)),
     'Estado del caso': resolveEstadoLabelFromRawRow(row),
   };
-}
-
-function mapCondenadoRowCached(row) {
-  if (!row || typeof row !== 'object') return mapCondenadoRow(row);
-  const cached = mappedCondenadoRowCache.get(row);
-  if (cached) return cached;
-  const mapped = mapCondenadoRow(row);
-  mappedCondenadoRowCache.set(row, mapped);
-  return mapped;
-}
-
-function clearOrderedCondenadosCacheIfNeeded(version) {
-  if (orderedCondenadosVersion === version) return;
-  orderedCondenadosByTipoCache.clear();
-  mappedCondenadoRowCache = new WeakMap();
-  orderedCondenadosVersion = version;
-}
-
-async function getOrderedMappedRowsByTipo(tipo, version) {
-  clearOrderedCondenadosCacheIfNeeded(version);
-  const key = `${tipo}`;
-  if (orderedCondenadosByTipoCache.has(key)) {
-    return orderedCondenadosByTipoCache.get(key);
-  }
-
-  const all = await consolidado.getAll();
-  const sourceRows =
-    tipo === 'all'
-      ? all.filter((row) => hasSituacionCarcelaria(row))
-      : all.filter((row) => consolidado.computeTipo(row) === tipo);
-  const ordered = uniqueMappedRows(sourceRows.map((row) => mapCondenadoRowCached(row)));
-  orderedCondenadosByTipoCache.set(key, ordered);
-  return ordered;
 }
 
 function getCondenadosFiltersFromQuery(query) {
@@ -647,22 +625,6 @@ function matchesCondenadoFilters(row, filters) {
   }
 
   return true;
-}
-
-function uniqueMappedRows(rows) {
-  const byKey = new Map();
-  for (const row of rows || []) {
-    const key = [
-      normalizeText(row?.numeroIdentificacion),
-      normalizeText(row?.numeroProceso),
-      normalizeText(row?.nombreUsuario),
-      normalizeText(row?.situacionJuridica),
-      normalizeText(row?.municipioLugarReclusion),
-    ].join('|');
-    // Conserva la version mas reciente de cada caso (misma llave).
-    byKey.set(key, row);
-  }
-  return Array.from(byKey.values());
 }
 
 function keepLatestByDocumento(rows) {
@@ -807,6 +769,11 @@ router.get('/condenados', async (req, res) => {
       : 'condenado';
   const filters = getCondenadosFiltersFromQuery(req.query);
   const hasFilters = hasCondenadosFilters(filters);
+  if (tipo === 'all' && !hasFilters) {
+    return res.status(400).json({
+      message: 'Debe indicar al menos un filtro para consultar usuarios asignados.',
+    });
+  }
   const limit = parseLimit(req.query.limit, DEFAULT_CONDENADOS_LIMIT);
   const filteredLimit = parseFilteredLimit(req.query.filteredLimit, DEFAULT_CONDENADOS_FILTERED_LIMIT);
   const effectiveLimit = hasFilters ? filteredLimit : limit;
@@ -814,45 +781,64 @@ router.get('/condenados', async (req, res) => {
   const filtersKey = hasFilters ? JSON.stringify(filters) : 'nofilter';
   const cacheKey = `${version}|${tipo}|${limit}|${filteredLimit}|${filtersKey}`;
   if (condenadosListCache.has(cacheKey)) {
+    res.setHeader('Server-Timing', 'condenados;dur=0;desc="cache-hit"');
+    res.setHeader('X-Aurora-Cache', 'HIT');
     return res.json(condenadosListCache.get(cacheKey));
   }
 
+  const startedAt = Date.now();
+  const existingRequest = condenadosListInFlight.get(cacheKey);
   try {
-    const summary = await personaRepo.listCondenadosSummary({
-      tipo,
-      filters,
-      limit: effectiveLimit,
-      includeExactCounts: !hasFilters,
-    });
-    const rows = (Array.isArray(summary?.rows) ? summary.rows : []).map((row) => mapCondenadoRow(row));
-    const payload = {
-      columns: CONDENADOS_COLUMNS,
-      rows,
-      meta: {
-        tipo,
-        filtered: hasFilters,
-        totalAvailable: Number(summary?.totalAvailable || 0),
-        totalMatched: Number(summary?.totalMatched || 0),
-        totalMatchedExact: summary?.totalMatchedExact !== false,
-        returned: rows.length,
-        limitApplied: effectiveLimit,
-        truncated:
-          typeof summary?.truncated === 'boolean'
-            ? summary.truncated
-            : Number(summary?.totalMatched || 0) > effectiveLimit,
-      },
-    };
-    boundedCacheSet(condenadosListCache, cacheKey, payload);
+    const request =
+      existingRequest ||
+      (async () => {
+        const summary = await personaRepo.listCondenadosSummary({
+          tipo,
+          filters,
+          limit: effectiveLimit,
+          // Para la tabla basta saber si hay mas resultados. Evita COUNT(*)
+          // sobre todo el conjunto, que era la parte mas costosa del primer ingreso.
+          includeExactCounts: false,
+        });
+        const rows = (Array.isArray(summary?.rows) ? summary.rows : []).map((row) => mapCondenadoRow(row));
+        const payload = {
+          columns: CONDENADOS_COLUMNS,
+          rows,
+          meta: {
+            tipo,
+            filtered: hasFilters,
+            totalAvailable: Number(summary?.totalAvailable || 0),
+            totalMatched: Number(summary?.totalMatched || 0),
+            totalMatchedExact: summary?.totalMatchedExact !== false,
+            returned: rows.length,
+            limitApplied: effectiveLimit,
+            truncated:
+              typeof summary?.truncated === 'boolean'
+                ? summary.truncated
+                : Number(summary?.totalMatched || 0) > effectiveLimit,
+          },
+        };
+        boundedCacheSet(condenadosListCache, cacheKey, payload);
+        return payload;
+      })();
+
+    if (!existingRequest) condenadosListInFlight.set(cacheKey, request);
+    const payload = await request;
+    const elapsedMs = Date.now() - startedAt;
+    res.setHeader('Server-Timing', `condenados;dur=${elapsedMs};desc="${existingRequest ? 'coalesced' : 'oracle'}"`);
+    res.setHeader('X-Aurora-Cache', existingRequest ? 'COALESCED' : 'MISS');
     return res.json(payload);
   } catch (err) {
     console.error('[ppl:condenados] Error Oracle:', err?.message || err);
     return res.status(500).json({ message: 'Error consultando condenados.' });
+  } finally {
+    if (!existingRequest) condenadosListInFlight.delete(cacheKey);
   }
 });
 
 // Validar cedula PAG contra catalogo Oracle
 // GET /api/ppl/pag/:cedula/validar
-router.get('/pag/:cedula/validar', async (req, res) => {
+router.get('/pag/:cedula/validar', requirePag, async (req, res) => {
   const cedula = String(req.params?.cedula || '').trim();
   if (!cedula) {
     return res.status(400).json({ message: 'Debe indicar la cedula del PAG.' });
@@ -874,7 +860,7 @@ router.get('/pag/:cedula/validar', async (req, res) => {
 // Asignacion masiva de defensor por documento(s)
 // POST /api/ppl/asignar-defensor
 // body: { documentos: string[] | string, defensor: string, pagCedula: string, defensorCedula?: string }
-router.post('/asignar-defensor', async (req, res) => {
+router.post('/asignar-defensor', requirePag, async (req, res) => {
   const body = req.body || {};
   const defensor = String(body?.defensor || '').trim();
   const defensorCedula = defensoresRepo.normalizeCedula(body?.defensorCedula || body?.defensorId || '');
@@ -1019,45 +1005,6 @@ router.put('/:documento', async (req, res) => {
 
 async function warmupCondenadosIndex() {
   const version = Number(consolidado.getDataVersion?.() || 0);
-  const tipos = ['all', 'condenado', 'sindicado'];
-  for (const tipo of tipos) {
-    try {
-      await getOrderedMappedRowsByTipo(tipo, version);
-    } catch (_e) {
-      // Warmup best-effort: no bloquea el inicio del servidor.
-    }
-  }
-
-  const presets = [
-    { tipo: 'all', limit: 400, filteredLimit: DEFAULT_CONDENADOS_FILTERED_LIMIT },
-    { tipo: 'all', limit: 600, filteredLimit: DEFAULT_CONDENADOS_FILTERED_LIMIT },
-    { tipo: 'condenado', limit: 500, filteredLimit: DEFAULT_CONDENADOS_FILTERED_LIMIT },
-  ];
-
-  for (const { tipo, limit, filteredLimit } of presets) {
-    try {
-      const ordered = await getOrderedMappedRowsByTipo(tipo, version);
-      const rows = ordered.slice(0, limit);
-      const payload = {
-        columns: CONDENADOS_COLUMNS,
-        rows,
-        meta: {
-          tipo,
-          filtered: false,
-          totalAvailable: ordered.length,
-          totalMatched: ordered.length,
-          returned: rows.length,
-          limitApplied: limit,
-          truncated: ordered.length > limit,
-        },
-      };
-      const cacheKey = `${version}|${tipo}|${limit}|${filteredLimit}|nofilter`;
-      boundedCacheSet(condenadosListCache, cacheKey, payload);
-    } catch (_e) {
-      // Warmup best-effort: omite preset fallido.
-    }
-  }
-
   try {
     const tipo = 'all';
     const options = await personaRepo.listDistinctCondenadosFilterOptions({

@@ -15,16 +15,19 @@ const adminCargasRoutes = require('./routes/adminCargas');
 const adminUsersRoutes = require('./routes/adminUsers');
 const healthRoutes = require('./routes/health');
 const { requireAuth } = require('./middleware/auth');
-const consolidado = require('./db/oracleConsolidado.repo');
 const { closePool } = require('./db/oraclePool');
 const { repairRegistryOnStartup, shutdownCargaJobs } = require('./services/cargaBdService');
 
 const app = express();
 const PORT = process.env.PORT || 7860;
-const enableStartupWarmup = String(process.env.ENABLE_STARTUP_WARMUP || '').trim().toLowerCase() === 'true';
+const enableStartupWarmup = String(process.env.ENABLE_STARTUP_WARMUP ?? 'true').trim().toLowerCase() !== 'false';
 const frontendDistPath = path.join(__dirname, 'public', 'app');
 const frontendIndexPath = path.join(frontendDistPath, 'index.html');
 const hasFrontendBuild = fs.existsSync(frontendIndexPath);
+const configuredTutorialVideosPath = String(process.env.AURORA_VIDEOS_DIR || '').trim();
+const tutorialVideosPath = configuredTutorialVideosPath
+  ? path.resolve(configuredTutorialVideosPath)
+  : path.join(__dirname, 'tutorial-videos');
 
 const corsOrigins = String(process.env.CORS_ORIGIN || '')
   .split(',')
@@ -121,6 +124,21 @@ app.get('/api/health', (req, res) => {
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 
+// Videos locales del Manual Interactivo. Express atiende solicitudes Range,
+// necesarias para adelantar el video sin descargar el archivo completo.
+app.use(
+  '/tutorial-videos',
+  express.static(tutorialVideosPath, {
+    acceptRanges: true,
+    fallthrough: false,
+    maxAge: '1d',
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    },
+  })
+);
+
 // Rutas principales
 app.use('/api/formatos', requireAuth, formatosRoutes);
 app.use('/api/ppl', requireAuth, pplRoutes);
@@ -176,22 +194,13 @@ server.listen(PORT, '0.0.0.0', () => {
       return;
     }
 
-    const startedAt = Date.now();
-    try {
-      const total = (await consolidado.getAll()).length;
-      const elapsed = Date.now() - startedAt;
-      console.log(`[warmup] Oracle cargado: ${total} registros (${elapsed} ms)`);
-    } catch (err) {
-      console.error('[warmup] No fue posible consultar Oracle:', err?.message || err);
-    }
-
     try {
       const warmupCondenadosStartedAt = Date.now();
       if (typeof pplRoutes.warmupCondenadosIndex === 'function') {
         await pplRoutes.warmupCondenadosIndex();
       }
       const warmupCondenadosElapsed = Date.now() - warmupCondenadosStartedAt;
-      console.log(`[warmup] Indice de usuarios asignados precalculado (${warmupCondenadosElapsed} ms)`);
+      console.log(`[warmup] Filtros de usuarios asignados precalculados (${warmupCondenadosElapsed} ms)`);
     } catch (err) {
       console.error('[warmup] No fue posible precargar cache de condenados:', err?.message || err);
     }

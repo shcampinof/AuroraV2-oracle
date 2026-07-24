@@ -1,6 +1,7 @@
 const express = require('express');
 const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const consolidado = require('../db/oracleConsolidado.repo');
+const { requirePag } = require('../middleware/roles');
 
 const router = express.Router();
 
@@ -29,7 +30,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/defensores
 // body: { cedula: string, nombre: string, correo?: string, regional?: string, cedulaPag?: string }
-router.post('/', async (req, res) => {
+router.post('/', requirePag, async (req, res) => {
   try {
     const nombre = defensoresRepo.normalizeNombre(req.body?.nombre);
     defensoresRepo.assertNombreValido(nombre);

@@ -30,4 +30,6 @@ Las banderas funcionales simples del frontend se centralizan en:
 frontend/src/config/featureFlags.js
 ```
 
-Para esta versión `manualInteractivo` está en `false`, por lo que la pestaña **Manual Interactivo** no aparece en el menú y la ruta `#/manual` redirige a Inicio. Cuando exista el video institucional, cambiar la bandera a `true` para reactivar la pestaña sin reconstruir el componente.
+Para esta versión `manualInteractivo` está en `true`, por lo que la pestaña **Manual Interactivo** aparece en el menú y la ruta `#/manual` muestra el video institucional configurado.
+
+El catálogo se define en `src/config/externalAssets.js`. En desarrollo, Vite proxifica `/tutorial-videos` al backend; en producción los archivos versionados en `backend/tutorial-videos/` se sirven desde el mismo origen.

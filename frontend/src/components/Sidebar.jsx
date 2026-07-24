@@ -4,16 +4,23 @@ const items = [
   { id: 'inicio', label: 'Inicio' },
   { id: 'formulario', label: 'Formulario de atención' },
   { id: 'registros', label: 'Usuarios asignados' },
-  { id: 'asignacion', label: 'PAG - Asignación de casos de condenados' },
+  { id: 'asignacion', label: 'PAG - Asignación de casos de condenados', pagOnly: true },
   { id: 'herramientas', label: 'Caja de Herramientas' },
   { id: 'manual', label: 'Manual Interactivo', enabled: FEATURE_FLAGS.manualInteractivo },
   { id: 'admin-cargas', label: 'Cargas mensuales', adminOnly: true },
   { id: 'admin-usuarios', label: 'Usuarios autorizados', userAdminOnly: true },
 ];
 
-function Sidebar({ vistaActual, onChangeView, showAdminCargas = false, showAdminUsuarios = false }) {
+function Sidebar({
+  vistaActual,
+  onChangeView,
+  showAdminCargas = false,
+  showAdminUsuarios = false,
+  showPag = false,
+}) {
   const visibleItems = items.filter((item) => {
     if (item.enabled === false) return false;
+    if (item.pagOnly && !showPag) return false;
     if (item.adminOnly && !showAdminCargas) return false;
     if (item.userAdminOnly && !showAdminUsuarios) return false;
     return true;

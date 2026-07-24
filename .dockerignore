@@ -6,9 +6,13 @@
 frontend/dist
 backend/public/app
 backend/certs
+backend/storage
 
 .env
 .env.*
+**/.env
+**/.env.*
+**/.env_*
 !.env.example
 backend/.env
 backend/.env.*
@@ -18,6 +22,7 @@ frontend/.env.*
 
 logs
 *.log
+**/*.log
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*

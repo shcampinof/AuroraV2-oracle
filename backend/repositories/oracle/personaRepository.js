@@ -241,10 +241,11 @@ const POTENCIAL_SUBROGADO_EXPR = `
   CASE
     WHEN ${normalizedSqlExpr('s.CATEGORIZACION')} LIKE 'PRELIMINAR %'
       THEN 'proximos_requisito_temporal'
+    WHEN ${normalizedSqlExpr('s.CATEGORIZACION')} = 'UTILIDAD PUBLICA'
+      THEN 'mujeres_potenciales_utilidad_publica'
     WHEN ${normalizedSqlExpr('s.CATEGORIZACION')} LIKE '%PRISION DOMICILIARIA%'
       OR ${normalizedSqlExpr('s.CATEGORIZACION')} LIKE '%LIBERTAD CONDICIONAL%'
       OR ${normalizedSqlExpr('s.CATEGORIZACION')} LIKE '%REVISAR POR PENA%'
-      OR ${normalizedSqlExpr('s.CATEGORIZACION')} LIKE '%UTILIDAD PUBLICA%'
       THEN 'potenciales_beneficiarios'
     ELSE 'no_reunen_requisitos'
   END
@@ -316,7 +317,13 @@ function buildCondenadosSummaryWhereClause({
       clauses.push(`${POTENCIAL_SUBROGADO_EXPR} <> 'no_reunen_requisitos'`);
     } else if (['0', 'false', 'no', 'no_reunen_requisitos'].includes(potencial)) {
       clauses.push(`${POTENCIAL_SUBROGADO_EXPR} = 'no_reunen_requisitos'`);
-    } else if (['potenciales_beneficiarios', 'proximos_requisito_temporal'].includes(potencial)) {
+    } else if (
+      [
+        'potenciales_beneficiarios',
+        'mujeres_potenciales_utilidad_publica',
+        'proximos_requisito_temporal',
+      ].includes(potencial)
+    ) {
       binds.potencialSubrogado = potencial;
       clauses.push(`${POTENCIAL_SUBROGADO_EXPR} = :potencialSubrogado`);
     }

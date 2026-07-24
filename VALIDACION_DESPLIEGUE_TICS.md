@@ -1,5 +1,7 @@
 # Validacion de Despliegue AURORA - TICS e Infraestructura
 
+Fecha de actualización: 2026-07-24
+
 Este documento resume lo que se debe validar antes, durante y despues del despliegue de AURORA en ambiente productivo o de pruebas institucionales.
 
 ## 1. Arquitectura Esperada
@@ -11,6 +13,7 @@ AURORA corre como una aplicacion Node.js/Express que sirve:
 - Autenticacion institucional por Microsoft Entra ID/Azure AD.
 - Login alterno LDAP por bind directo, si se habilita.
 - Conexion a Oracle.
+- Manual Interactivo con tres videos incluidos en la imagen.
 
 El backend escucha internamente en:
 
@@ -147,6 +150,8 @@ Variables:
 AUTH_USER_ACCESS_MODE=managed
 AUTH_BOOTSTRAP_ADMIN_EMAILS=correo.admin@defensoria.gov.co
 AUTH_USER_STORE_PATH=
+AUTH_USER_IMPORT_MAX_MB=2
+AUTH_USER_IMPORT_MAX_ROWS=5000
 ```
 
 Modos:
@@ -180,6 +185,8 @@ y volumen persistente:
 ```text
 aurora_auth_users:/app/backend/storage/auth
 ```
+
+Los roles internos vigentes son `user`, `pag`, `admin`, `carguebd` y `cargas_bd`. El rol `pag` controla las operaciones de asignación y creación de defensores; `admin` controla el directorio de usuarios. Las cuentas importadas por CSV se crean habilitadas con rol `user`, y los roles o deshabilitaciones administrados se aplican en la siguiente petición aunque el JWT haya sido emitido antes.
 
 ## 6. LDAP / Active Directory Direct Bind
 
@@ -278,6 +285,10 @@ Validar dentro del servidor:
 curl -k https://127.0.0.1:7860/api/health
 curl -k https://127.0.0.1:7860/api/auth/config
 curl -k https://127.0.0.1:7860/api/health/db
+curl -k -I -H 'Range: bytes=0-1023' \
+  https://127.0.0.1:7860/tutorial-videos/defensor-publico-condenados-eron.mp4
+docker compose exec aurora sh -c \
+  'cd /app/backend/tutorial-videos && sha256sum --check SHA256SUMS'
 ```
 
 Volumenes persistentes esperados:
@@ -286,6 +297,8 @@ Volumenes persistentes esperados:
 aurora_auth_users -> usuarios autorizados internos
 aurora_cargas_bd  -> archivos/logs de cargas mensuales
 ```
+
+Los videos no usan un volumen persistente: se versionan en `backend/tutorial-videos/` y el `Dockerfile` verifica su integridad durante el build. `AURORA_VIDEOS_DIR=/app/backend/tutorial-videos` es la ruta estándar; solo debe modificarse si infraestructura suministra y monta un catálogo externo completo.
 
 ## 9. PM2 / Node Directo
 
@@ -403,4 +416,3 @@ Aplicacion:
 - Confirmar pestaña `Usuarios autorizados`.
 - Confirmar guardar formulario sin defensor.
 - Confirmar comportamiento de asignacion de defensor segun estado de BD.
-

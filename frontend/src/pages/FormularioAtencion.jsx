@@ -15,6 +15,7 @@ import auroraFormRules from '../config/formRules.aurora.ts';
 import { AURORA_FIELD_IDS } from '../config/auroraFieldIds.ts';
 import { reportError } from '../utils/reportError.js';
 import { getLabelAccionCaso } from '../utils/actuacionesLabels.js';
+import { shouldBlockNuevaActuacion } from '../utils/actuacionesValidation.js';
 
 const OPCIONES_TIPO_IDENTIFICACION = ['CC', 'CE', 'PASAPORTE', 'OTRA'];
 const OPCIONES_SI_NO = ['Sí', 'No'];
@@ -1669,10 +1670,12 @@ export default function FormularioAtencion({ numeroInicial }) {
   }, [defensoresCatalogo]);
 
   const flow = useMemo(() => (registro ? computeFlow(registro, tipoRegistro) : null), [registro, tipoRegistro]);
-  const tieneInfoDesdePregunta29 = useMemo(() => {
-    if (!registro) return false;
-    return CAMPOS_AURORA_DESDE_P29.some((alias) => isMeaningfullyFilled(readRegistroTextByAliases(registro, [alias])));
-  }, [registro]);
+  const tieneInfoDesdePregunta29 = useCallback((source) => {
+    if (!source || typeof source !== 'object') return false;
+    return CAMPOS_AURORA_DESDE_P29.some((alias) =>
+      isMeaningfullyFilled(readRegistroTextByAliases(source, [alias]))
+    );
+  }, []);
   const tiempoPrivacionMeses = useMemo(() => {
     if (!registro) return '';
 
@@ -1909,6 +1912,20 @@ export default function FormularioAtencion({ numeroInicial }) {
     triggerFormularioAutoScroll();
   }
 
+  function handleIniciarPrimeraActuacion() {
+    if (!registro || !getDocumentoActual(registro)) {
+      setError('Debe cargar un usuario antes de actualizar la actuacion.');
+      return;
+    }
+
+    setError('');
+    setGuardadoOk(false);
+    setToastOpen(false);
+    setActuacionActivaId('');
+    setMostrarFormularioDetalle(true);
+    triggerFormularioAutoScroll();
+  }
+
   async function handleCrearNuevaActuacion(options = {}) {
     if (!registro) {
       setError('Debe cargar un usuario antes de crear una nueva actuacion.');
@@ -1920,7 +1937,13 @@ export default function FormularioAtencion({ numeroInicial }) {
       setError('Debe cargar un usuario antes de crear una nueva actuacion.');
       return;
     }
-    if (flow === 'condenado' && !tieneInfoDesdePregunta29) {
+    if (
+      shouldBlockNuevaActuacion({
+        flow,
+        actuaciones: actuacionesCalificacion,
+        hasInfoDesdePregunta29: tieneInfoDesdePregunta29,
+      })
+    ) {
       const mensajeBloqueo =
         'No se puede crear una nueva actuacion porque la ultima actuacion disponible para actualizacion aun no tiene datos desde la pregunta 29. Por favor actualice o diligencie primero ese formulario y luego cree una nueva actuacion.';
       setError(mensajeBloqueo);
@@ -3483,7 +3506,7 @@ export default function FormularioAtencion({ numeroInicial }) {
               numeroDocumento={getDocumentoActual(registro)}
               onSelectActuacion={handleSeleccionarActuacion}
               onCrearNuevaActuacion={handleCrearNuevaActuacion}
-              onIniciarActuacion={() => handleCrearNuevaActuacion({ abrirFormulario: true })}
+              onIniciarActuacion={handleIniciarPrimeraActuacion}
               refreshToken={historialRefreshToken}
               actuacionActivaId={actuacionActivaId}
               creandoActuacion={creandoActuacion}

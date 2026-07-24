@@ -14,6 +14,12 @@ export default defineConfig({
       '/api': {
         target: devApiTarget,
         changeOrigin: true,
+        secure: false,
+      },
+      '/tutorial-videos': {
+        target: devApiTarget,
+        changeOrigin: true,
+        secure: false,
       },
     },
   },

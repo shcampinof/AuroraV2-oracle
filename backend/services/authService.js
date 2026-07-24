@@ -18,9 +18,11 @@ const jwksClients = new Map();
 const ROLE_ALIASES = new Map([
   ['aurora.admin', 'admin'],
   ['aurora.user', 'user'],
+  ['aurora.pag', 'pag'],
   ['administrator', 'admin'],
   ['administrador', 'admin'],
   ['usuario', 'user'],
+  ['programa.pag', 'pag'],
 ]);
 
 function parseList(value) {

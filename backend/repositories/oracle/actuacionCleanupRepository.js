@@ -3,6 +3,34 @@ const { normalizedSqlExpr } = require('./sqlFragments');
 
 const DEFENSOR_ACTIVO_EXPR = 'COALESCE(TO_NCHAR(a.NOMBRE_DEFENSOR), TO_NCHAR(d.NOMBRE))';
 
+function targetAssignmentsSql() {
+  return `
+    SELECT a.ID_ASIGNACION
+      FROM (
+        SELECT
+          aa.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY aa.ID_PERSONA
+            ORDER BY aa.FECHA_ASIGNACION DESC NULLS LAST, aa.ID_ASIGNACION DESC
+          ) AS RN
+        FROM DNDP.ASIGNACION aa
+        WHERE aa.FECHA_FIN IS NULL
+      ) a
+      LEFT JOIN DNDP.DEFENSORES d
+        ON d.CEDULA = a.CEDULA_DEFENSOR
+     WHERE a.RN = 1
+       AND ${normalizedSqlExpr(DEFENSOR_ACTIVO_EXPR)} = ${normalizedSqlExpr(':defensor')}
+  `;
+}
+
+function targetPersonasSql() {
+  return `
+    SELECT a.ID_PERSONA
+      FROM DNDP.ASIGNACION a
+     WHERE a.ID_ASIGNACION IN (${targetAssignmentsSql()})
+  `;
+}
+
 function targetSituacionesSql() {
   return `
     SELECT s.ID_SITUACION
@@ -20,24 +48,8 @@ function targetSituacionesSql() {
           ) AS RN
         FROM DNDP.SITUACION_CARCELARIA sc
       ) s
-      JOIN DNDP.PERSONA p
-        ON p.ID_PERSONA = s.ID_PERSONA
-      JOIN (
-        SELECT
-          aa.*,
-          ROW_NUMBER() OVER (
-            PARTITION BY aa.ID_PERSONA
-            ORDER BY aa.FECHA_ASIGNACION DESC NULLS LAST, aa.ID_ASIGNACION DESC
-          ) AS RN
-        FROM DNDP.ASIGNACION aa
-        WHERE aa.FECHA_FIN IS NULL
-      ) a
-        ON a.ID_PERSONA = p.ID_PERSONA
-       AND a.RN = 1
-      LEFT JOIN DNDP.DEFENSORES d
-        ON d.CEDULA = a.CEDULA_DEFENSOR
      WHERE s.RN = 1
-       AND ${normalizedSqlExpr(DEFENSOR_ACTIVO_EXPR)} = ${normalizedSqlExpr(':defensor')}
+       AND s.ID_PERSONA IN (${targetPersonasSql()})
   `;
 }
 
@@ -45,12 +57,13 @@ async function previewByActiveDefensor(defensor, { limit = 500 } = {}) {
   const targetSql = targetSituacionesSql();
   const summarySql = `
     SELECT
-      COUNT(*) AS TOTAL_ACTUACIONES,
-      COUNT(DISTINCT p.ID_PERSONA) AS TOTAL_PERSONAS
-    FROM DNDP.GESTION_JURIDICA g
-    JOIN DNDP.SITUACION_CARCELARIA s ON s.ID_SITUACION = g.ID_SITUACION
-    JOIN DNDP.PERSONA p ON p.ID_PERSONA = s.ID_PERSONA
-    WHERE g.ID_SITUACION IN (${targetSql})
+      (
+        SELECT COUNT(*)
+        FROM DNDP.GESTION_JURIDICA g
+        WHERE g.ID_SITUACION IN (${targetSql})
+      ) AS TOTAL_ACTUACIONES,
+      (SELECT COUNT(*) FROM (${targetAssignmentsSql()})) AS TOTAL_ASIGNACIONES
+    FROM dual
   `;
   const detailSql = `
     SELECT
@@ -76,35 +89,64 @@ async function previewByActiveDefensor(defensor, { limit = 500 } = {}) {
 
   return {
     totalActuaciones: Number(summary?.TOTAL_ACTUACIONES || 0),
-    totalPersonas: Number(summary?.TOTAL_PERSONAS || 0),
+    totalPersonas: Number(summary?.TOTAL_ASIGNACIONES || 0),
+    totalAsignaciones: Number(summary?.TOTAL_ASIGNACIONES || 0),
     actuaciones: Array.isArray(detailResult?.rows) ? detailResult.rows : [],
   };
 }
 
-async function deleteByActiveDefensor(defensor, expectedCount) {
+async function deleteByActiveDefensor(defensor, expectedCount, expectedAssignments) {
   const targetSql = targetSituacionesSql();
-  const candidatesSql = `
-    SELECT g2.ID_GESTION
-      FROM DNDP.GESTION_JURIDICA g2
-     WHERE g2.ID_SITUACION IN (${targetSql})
-  `;
+  const assignmentsSql = targetAssignmentsSql();
   const sql = `
-    DELETE FROM DNDP.GESTION_JURIDICA g
-     WHERE g.ID_GESTION IN (${candidatesSql})
-       AND (SELECT COUNT(*) FROM (${candidatesSql})) = :expectedCount
+    DECLARE
+      v_actuaciones NUMBER;
+      v_asignaciones NUMBER;
+    BEGIN
+      SELECT COUNT(*)
+        INTO v_actuaciones
+        FROM DNDP.GESTION_JURIDICA g
+       WHERE g.ID_SITUACION IN (${targetSql});
+
+      SELECT COUNT(*)
+        INTO v_asignaciones
+        FROM (${assignmentsSql});
+
+      IF v_actuaciones != :expectedCount OR v_asignaciones != :expectedAssignments THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Los registros cambiaron desde la vista previa');
+      END IF;
+
+      DELETE FROM DNDP.GESTION_JURIDICA g
+       WHERE g.ID_SITUACION IN (${targetSql});
+
+      IF SQL%ROWCOUNT != :expectedCount THEN
+        RAISE_APPLICATION_ERROR(-20002, 'Cambio concurrente al eliminar actuaciones');
+      END IF;
+
+      DELETE FROM DNDP.ASIGNACION a
+       WHERE a.ID_ASIGNACION IN (${assignmentsSql});
+
+      IF SQL%ROWCOUNT != :expectedAssignments THEN
+        RAISE_APPLICATION_ERROR(-20003, 'Cambio concurrente al eliminar asignaciones');
+      END IF;
+    END;
   `;
-  const result = await execute(
+  await execute(
     sql,
     {
       defensor: String(defensor || '').trim(),
       expectedCount: Number(expectedCount),
+      expectedAssignments: Number(expectedAssignments),
     },
     {
       autoCommit: true,
       operation: 'actuacionCleanup.deleteByActiveDefensor',
     }
   );
-  return Number(result?.rowsAffected || 0);
+  return {
+    deleted: Number(expectedCount),
+    assignmentsDeleted: Number(expectedAssignments),
+  };
 }
 
 module.exports = {

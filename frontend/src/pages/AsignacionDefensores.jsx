@@ -12,6 +12,7 @@ import {
 } from '../services/api.js';
 import Toast from '../components/Toast.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
+import PagUsuariosAdmin from '../components/PagUsuariosAdmin.jsx';
 import { getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
 import { displayOrDash } from '../utils/pplDisplay.js';
 import { reportError } from '../utils/reportError.js';
@@ -73,8 +74,8 @@ const AsignacionRow = memo(function AsignacionRow({ row, selected, onToggle }) {
   );
 });
 
-function AsignacionDefensores() {
-  const [tab, setTab] = useState('asignacion'); // 'asignacion' | 'reasignacion' | 'crearDefensor'
+function AsignacionDefensores({ isAdmin = false }) {
+  const [tab, setTab] = useState('asignacion'); // 'asignacion' | 'reasignacion' | 'crearDefensor' | 'usuariosPag'
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
   const [toastOpen, setToastOpen] = useState(false);
@@ -623,6 +624,8 @@ function AsignacionDefensores() {
     setNuevoDefensorId('');
     setNuevoDefensorInput('');
 
+    if (nextTab === 'usuariosPag') return;
+
     if (nextTab === 'asignacion') {
       setFDefensorActual('');
       const nextFiltros = { ...(filtrosAplicados || {}), defensorActual: '' };
@@ -638,7 +641,7 @@ function AsignacionDefensores() {
     guardandoDefensor ||
     String(crearDefensorCedula || '').trim() === '' ||
     String(crearDefensorNombre || '').trim() === '';
-  const mostrarOverlayCarga = tab !== 'crearDefensor' && (cargando || validandoPag);
+  const mostrarOverlayCarga = !['crearDefensor', 'usuariosPag'].includes(tab) && (cargando || validandoPag);
   const mensajeOverlayCarga = 'Cargando información...';
 
   return (
@@ -651,7 +654,7 @@ function AsignacionDefensores() {
         onClose={() => setToastOpen(false)}
       />
 
-      {tab !== 'crearDefensor' && metaConsulta?.filtered && (
+      {!['crearDefensor', 'usuariosPag'].includes(tab) && metaConsulta?.filtered && (
         <p className="hint-text">
           {metaConsulta?.truncated
             ? metaConsulta?.totalMatchedExact === false
@@ -661,8 +664,8 @@ function AsignacionDefensores() {
         </p>
       )}
 
-      {tab !== 'crearDefensor' && error && <p className="hint-text">{error}</p>}
-      {tab !== 'crearDefensor' && sugerenciaReasignacion && (
+      {!['crearDefensor', 'usuariosPag'].includes(tab) && error && <p className="hint-text">{error}</p>}
+      {!['crearDefensor', 'usuariosPag'].includes(tab) && sugerenciaReasignacion && (
         <p className="hint-text">{sugerenciaReasignacion}</p>
       )}
 
@@ -691,6 +694,16 @@ function AsignacionDefensores() {
         >
           Crear defensor
         </button>
+        {isAdmin ? (
+          <button
+            className={`primary-button aurora-tab ${tab === 'usuariosPag' ? 'active' : ''}`}
+            type="button"
+            aria-pressed={tab === 'usuariosPag'}
+            onClick={() => cambiarTab('usuariosPag')}
+          >
+            Accesos PAG
+          </button>
+        ) : null}
       </div>
 
       {tab === 'crearDefensor' ? (
@@ -751,6 +764,8 @@ function AsignacionDefensores() {
             </button>
           </div>
         </div>
+      ) : tab === 'usuariosPag' && isAdmin ? (
+        <PagUsuariosAdmin />
       ) : (
         <>
       <div className="card" style={{ marginTop: '1rem' }}>
@@ -897,6 +912,9 @@ function AsignacionDefensores() {
             >
               <option value="">Todas las personas condenadas</option>
               <option value="potenciales_beneficiarios">Potenciales beneficiarios</option>
+              <option value="mujeres_potenciales_utilidad_publica">
+                Mujeres potenciales beneficiarias únicamente de Utilidad Pública
+              </option>
               <option value="proximos_requisito_temporal">Personas próximas a cumplir requisito temporal</option>
               <option value="no_reunen_requisitos">Condenados que no reúnen los requisitos</option>
             </select>
@@ -928,6 +946,8 @@ function AsignacionDefensores() {
             {filtrosAplicados.lugar || '-'} / {filtrosAplicados.documento || '-'} /{' '}
             {filtrosAplicados.potencialSubrogado === 'potenciales_beneficiarios'
               ? 'Potenciales beneficiarios'
+              : filtrosAplicados.potencialSubrogado === 'mujeres_potenciales_utilidad_publica'
+                ? 'Mujeres potenciales beneficiarias únicamente de Utilidad Pública'
               : filtrosAplicados.potencialSubrogado === 'proximos_requisito_temporal'
                 ? 'Próximos a cumplir requisito temporal'
                 : filtrosAplicados.potencialSubrogado === 'no_reunen_requisitos'

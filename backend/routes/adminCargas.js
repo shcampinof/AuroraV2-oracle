@@ -119,11 +119,12 @@ router.delete('/actuaciones', async (req, res, next) => {
     const result = await executeCleanup({
       defensor: req.body?.defensor,
       expectedCount: req.body?.expectedCount,
+      expectedAssignments: req.body?.expectedAssignments,
       confirmation: req.body?.confirmation,
       user: req.user,
     });
     return res.json({
-      message: `${result.deleted} actuaciones eliminadas. No se modificaron personas, situaciones ni asignaciones.`,
+      message: `${result.deleted} actuaciones y ${result.assignmentsDeleted} asignaciones eliminadas. Las personas y situaciones no se modificaron.`,
       result,
     });
   } catch (err) {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import Header from './components/Header.jsx';
 import Sidebar from './components/Sidebar.jsx';
+import DataTreatmentNotice from './components/DataTreatmentNotice.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 
 import Home from './pages/Home.jsx';
@@ -13,6 +14,7 @@ import AdminUsuarios from './pages/AdminUsuarios.jsx';
 import CajaHerramientas from './pages/CajaHerramientas.jsx';
 import ManualInteractivo from './pages/ManualInteractivo.jsx';
 import { completeAzureAdRedirect, getAuthConfig, logout, refreshSession } from './services/auth.js';
+import { getCondenadosFilterOptions } from './services/api.js';
 import { FEATURE_FLAGS } from './config/featureFlags.js';
 
 const VISTAS = new Set([
@@ -41,6 +43,7 @@ function normalizarRoles(roles) {
 
       if (raw === 'aurora.admin' || raw === 'administrator' || raw === 'administrador') set.add('admin');
       if (raw === 'aurora.user' || raw === 'usuario') set.add('user');
+      if (raw === 'aurora.pag' || raw === 'programa.pag') set.add('pag');
       return set;
     }, new Set())
   );
@@ -53,6 +56,10 @@ function tieneAccesoCargas(user) {
 
 function esAdmin(user) {
   return normalizarRoles(user?.roles).includes('admin');
+}
+
+function tieneAccesoPag(user) {
+  return normalizarRoles(user?.roles).includes('pag');
 }
 
 function vistaDesdeHash(hashValue) {
@@ -79,6 +86,7 @@ function App() {
   const [numeroSeleccionado, setNumeroSeleccionado] = useState(null);
   const [session, setSession] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
+  const [conditionsAccepted, setConditionsAccepted] = useState(false);
   const isMsalResponse = esRespuestaMsal();
 
   useEffect(() => {
@@ -105,7 +113,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!session) return undefined;
+    if (!session || !conditionsAccepted) return undefined;
 
     function syncVistaWithHash() {
       const resolved = vistaDesdeHash(window.location.hash);
@@ -122,22 +130,42 @@ function App() {
     return () => {
       window.removeEventListener('hashchange', syncVistaWithHash);
     };
-  }, [session]);
+  }, [session, conditionsAccepted]);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || !conditionsAccepted) return undefined;
+
+    async function precargarFiltrosUsuariosAsignados() {
+      try {
+        await getCondenadosFilterOptions({ tipo: 'all' });
+      } catch (error) {
+        console.warn('[usuarios-asignados:prefetch] No fue posible precargar los filtros:', error);
+      }
+    }
+
+    precargarFiltrosUsuariosAsignados();
+    return undefined;
+  }, [session, conditionsAccepted]);
+
+  useEffect(() => {
+    if (!session || !conditionsAccepted) return;
     if (vistaActual === 'admin-cargas' && !tieneAccesoCargas(session.user)) {
       window.location.hash = '/inicio';
     }
     if (vistaActual === 'admin-usuarios' && !esAdmin(session.user)) {
       window.location.hash = '/inicio';
     }
-  }, [session, vistaActual]);
+    if (vistaActual === 'asignacion' && !tieneAccesoPag(session.user)) {
+      window.location.hash = '/inicio';
+    }
+  }, [session, vistaActual, conditionsAccepted]);
 
   function cambiarVista(vista) {
+    if (!conditionsAccepted) return;
     if (!VISTAS.has(vista)) return;
     if (vista === 'admin-cargas' && !tieneAccesoCargas(session?.user)) return;
     if (vista === 'admin-usuarios' && !esAdmin(session?.user)) return;
+    if (vista === 'asignacion' && !tieneAccesoPag(session?.user)) return;
     const nextHash = `/${vista}`;
     if (window.location.hash !== `#${nextHash}`) {
       window.location.hash = nextHash;
@@ -167,6 +195,7 @@ function App() {
   function manejarSalida() {
     logout();
     window.location.hash = '/inicio';
+    setConditionsAccepted(false);
     setSession(null);
   }
 
@@ -186,6 +215,7 @@ function App() {
 
   const puedeAdministrarCargas = tieneAccesoCargas(session.user);
   const puedeAdministrarUsuarios = esAdmin(session.user);
+  const puedeAccederPag = tieneAccesoPag(session.user);
 
   let contenido = null;
 
@@ -201,7 +231,9 @@ function App() {
     contenido = <RegistrosAsignados onSelectRegistro={manejarSeleccionRegistro} />;
   }
 
-  if (vistaActual === 'asignacion') contenido = <AsignacionDefensores />;
+  if (vistaActual === 'asignacion' && puedeAccederPag) {
+    contenido = <AsignacionDefensores isAdmin={puedeAdministrarUsuarios} />;
+  }
 
   if (vistaActual === 'herramientas') {
     contenido = <CajaHerramientas />;
@@ -220,18 +252,27 @@ function App() {
   }
 
   return (
-    <div className="app-container">
-      <Header user={session.user} onLogout={manejarSalida} />
-      <div className="app-main">
-        <Sidebar
-          vistaActual={vistaActual}
-          onChangeView={cambiarVista}
-          showAdminCargas={puedeAdministrarCargas}
-          showAdminUsuarios={puedeAdministrarUsuarios}
-        />
-        <main className="content-area">{contenido}</main>
+    <>
+      <div className="app-container" inert={!conditionsAccepted}>
+        <Header user={session.user} onLogout={manejarSalida} />
+        <div className="app-main">
+          <Sidebar
+            vistaActual={vistaActual}
+            onChangeView={cambiarVista}
+            showAdminCargas={puedeAdministrarCargas}
+            showAdminUsuarios={puedeAdministrarUsuarios}
+            showPag={puedeAccederPag}
+          />
+          <main className="content-area">{conditionsAccepted ? contenido : <Home />}</main>
+        </div>
       </div>
-    </div>
+      {!conditionsAccepted ? (
+        <DataTreatmentNotice
+          onAccept={() => setConditionsAccepted(true)}
+          onDecline={manejarSalida}
+        />
+      ) : null}
+    </>
   );
 }
 

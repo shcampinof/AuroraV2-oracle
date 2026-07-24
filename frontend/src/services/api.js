@@ -69,6 +69,56 @@ const DEFAULT_API_BASE = '/api';
 export const API_BASE = shouldUseConfiguredApiBase(CONFIGURED_API_BASE) ? CONFIGURED_API_BASE : DEFAULT_API_BASE;
 
 const DEFAULT_FETCH_TIMEOUT_MS = 120000;
+const CONDENADOS_CLIENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const condenadosClientCache = new Map();
+const condenadosFilterOptionsClientCache = new Map();
+let condenadosCacheAuthToken = null;
+
+function syncCondenadosCacheAuth() {
+  const token = String(getAuthToken() || '');
+  if (condenadosCacheAuthToken === token) return;
+  condenadosClientCache.clear();
+  condenadosFilterOptionsClientCache.clear();
+  condenadosCacheAuthToken = token;
+}
+
+function readFreshClientCache(cache, key) {
+  syncCondenadosCacheAuth();
+  const hit = cache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.createdAt >= CONDENADOS_CLIENT_CACHE_TTL_MS) {
+    cache.delete(key);
+    return null;
+  }
+  return hit.value;
+}
+
+async function loadWithClientCache(cache, key, loader, forceRefresh = false) {
+  syncCondenadosCacheAuth();
+  if (!forceRefresh) {
+    const cached = readFreshClientCache(cache, key);
+    if (cached) return cached;
+  }
+
+  const current = cache.get(key);
+  if (!forceRefresh && current?.promise) return current.promise;
+
+  const promise = Promise.resolve().then(loader);
+  cache.set(key, { createdAt: Date.now(), promise, value: null });
+  try {
+    const value = await promise;
+    cache.set(key, { createdAt: Date.now(), promise: null, value });
+    return value;
+  } catch (error) {
+    if (cache.get(key)?.promise === promise) cache.delete(key);
+    throw error;
+  }
+}
+
+export function invalidateCondenadosClientCache() {
+  condenadosClientCache.clear();
+  condenadosFilterOptionsClientCache.clear();
+}
 
 function createFetchTimeoutError(timeoutMs) {
   const seconds = Math.max(1, Math.round(Number(timeoutMs || DEFAULT_FETCH_TIMEOUT_MS) / 1000));
@@ -181,6 +231,7 @@ export async function updatePpl(documento, payload) {
   });
   if (!res.ok) throw new Error('Error actualizando registro');
   const data = await readJsonOrThrow(res, 'Error actualizando registro');
+  invalidateCondenadosClientCache();
   return normalizeQueuedResponse(data, {
     registro: payload?.data && typeof payload.data === 'object' ? payload.data : null,
   }); // { tipo, registro }
@@ -196,6 +247,7 @@ export async function createPplActuacion(documento, payload) {
   });
   if (!res.ok) throw new Error('Error creando actuacion');
   const data = await readJsonOrThrow(res, 'Error creando actuacion');
+  invalidateCondenadosClientCache();
   return normalizeQueuedResponse(data, { documento }); // { documento, actuacion, registro }
 }
 
@@ -232,7 +284,7 @@ export async function getFormatoDownloadTarget(id) {
 // =====================
 // Asignacion de defensores (condenados)
 // =====================
-export async function getCondenados(options = 1000) {
+function getCondenadosRequest(options = 1000) {
   const isLegacyNumeric = typeof options === 'number' || typeof options === 'string';
   const source = isLegacyNumeric ? { limit: options } : options && typeof options === 'object' ? options : {};
   const rawTipo = String(source?.tipo || '').trim().toLowerCase();
@@ -274,12 +326,32 @@ export async function getCondenados(options = 1000) {
     params.set('filteredLimit', String(safeFilteredLimit));
   }
 
-  const res = await fetchJson(`${API_BASE}/ppl/condenados?${params.toString()}`);
-  if (!res.ok) throw new Error('Error consultando condenados');
-  return readJsonOrThrow(res, 'Error consultando condenados'); // { columns, rows, meta }
+  return {
+    key: params.toString(),
+    forceRefresh: source?.forceRefresh === true,
+  };
 }
 
-export async function getCondenadosFilterOptions(options = {}) {
+export function getCachedCondenados(options = 1000) {
+  const { key } = getCondenadosRequest(options);
+  return readFreshClientCache(condenadosClientCache, key);
+}
+
+export async function getCondenados(options = 1000) {
+  const { key, forceRefresh } = getCondenadosRequest(options);
+  return loadWithClientCache(
+    condenadosClientCache,
+    key,
+    async () => {
+      const res = await fetchJson(`${API_BASE}/ppl/condenados?${key}`);
+      if (!res.ok) throw new Error('Error consultando condenados');
+      return readJsonOrThrow(res, 'Error consultando condenados'); // { columns, rows, meta }
+    },
+    forceRefresh
+  );
+}
+
+function getCondenadosFilterOptionsRequest(options = {}) {
   const source = options && typeof options === 'object' ? options : {};
   const rawTipo = String(source?.tipo || '').trim().toLowerCase();
   const safeTipo =
@@ -294,9 +366,29 @@ export async function getCondenadosFilterOptions(options = {}) {
     if (value) params.set(key, value);
   });
 
-  const res = await fetchJson(`${API_BASE}/ppl/condenados/filter-options?${params.toString()}`);
-  if (!res.ok) throw new Error('Error consultando opciones de filtros');
-  return readJsonOrThrow(res, 'Error consultando opciones de filtros');
+  return {
+    key: params.toString(),
+    forceRefresh: source?.forceRefresh === true,
+  };
+}
+
+export function getCachedCondenadosFilterOptions(options = {}) {
+  const { key } = getCondenadosFilterOptionsRequest(options);
+  return readFreshClientCache(condenadosFilterOptionsClientCache, key);
+}
+
+export async function getCondenadosFilterOptions(options = {}) {
+  const { key, forceRefresh } = getCondenadosFilterOptionsRequest(options);
+  return loadWithClientCache(
+    condenadosFilterOptionsClientCache,
+    key,
+    async () => {
+      const res = await fetchJson(`${API_BASE}/ppl/condenados/filter-options?${key}`);
+      if (!res.ok) throw new Error('Error consultando opciones de filtros');
+      return readJsonOrThrow(res, 'Error consultando opciones de filtros');
+    },
+    forceRefresh
+  );
 }
 
 export async function getDefensores() {
@@ -403,6 +495,7 @@ export async function assignDefensorPpl(documento, defensor, options = {}) {
 
   if (!res.ok) throw new Error('Error guardando la asignacion de defensor');
   const data = await readJsonOrThrow(res, 'Error guardando la asignacion de defensor');
+  invalidateCondenadosClientCache();
   return normalizeQueuedResponse(data, { documentos, defensor: defensorNombre });
 }
 
@@ -467,14 +560,15 @@ export async function getActuacionesCleanupPreview(defensor = '') {
   return data;
 }
 
-export async function deleteActuacionesCleanup({ defensor, expectedCount, confirmation }) {
+export async function deleteActuacionesCleanup({ defensor, expectedCount, expectedAssignments, confirmation }) {
   const res = await fetchJson(`${API_BASE}/admin/cargas/actuaciones`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ defensor, expectedCount, confirmation }),
+    body: JSON.stringify({ defensor, expectedCount, expectedAssignments, confirmation }),
   });
   const data = await readJsonOrThrow(res, 'Error eliminando actuaciones de prueba');
   if (!res.ok) throw new Error(String(data?.message || 'Error eliminando actuaciones de prueba'));
+  invalidateCondenadosClientCache();
   return data;
 }
 
@@ -497,6 +591,26 @@ export async function saveAdminUser(payload) {
   const data = await readJsonOrThrow(res, 'Error guardando usuario');
   if (!res.ok) throw new Error(String(data?.message || 'Error guardando usuario'));
   return data;
+}
+
+async function sendAdminUsersCsv(path, file, fallbackMessage) {
+  const formData = new FormData();
+  formData.append('archivo', file);
+  const res = await fetchJson(`${API_BASE}/admin/users${path}`, {
+    method: 'POST',
+    body: formData,
+  });
+  const data = await readJsonOrThrow(res, fallbackMessage);
+  if (!res.ok) throw new Error(String(data?.message || fallbackMessage));
+  return data;
+}
+
+export function previewAdminUsersCsv(file) {
+  return sendAdminUsersCsv('/import/preview', file, 'Error analizando el archivo CSV');
+}
+
+export function importAdminUsersCsv(file) {
+  return sendAdminUsersCsv('/import', file, 'Error importando los usuarios');
 }
 
 export async function updateAdminUser(id, payload) {

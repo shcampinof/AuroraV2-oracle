@@ -20,7 +20,17 @@ function readStore(filePath) {
 
 function writeStore(filePath, data) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    fs.writeFileSync(tempPath, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
+    fs.renameSync(tempPath, filePath);
+  } finally {
+    try {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    } catch {
+      // El archivo temporal no debe ocultar el resultado de la escritura principal.
+    }
+  }
 }
 
 function normalizeKey(value) {
@@ -41,6 +51,7 @@ function normalizeRoles(roles, fallback = ['user']) {
       set.add(raw);
       if (raw === 'aurora.admin' || raw === 'administrator' || raw === 'administrador') set.add('admin');
       if (raw === 'aurora.user' || raw === 'usuario') set.add('user');
+      if (raw === 'aurora.pag' || raw === 'programa.pag') set.add('pag');
       const dotIndex = raw.lastIndexOf('.');
       if (dotIndex >= 0 && dotIndex < raw.length - 1) set.add(raw.slice(dotIndex + 1));
       return set;
@@ -63,7 +74,7 @@ function publicUser(user) {
     id: String(user.id || user.azureObjectId || user.email || ''),
     azureObjectId: String(user.azureObjectId || ''),
     tenantId: String(user.tenantId || ''),
-    name: String(user.name || user.email || ''),
+    name: String(user.name || ''),
     email: String(user.email || ''),
     username: String(user.username || user.email || ''),
     provider: String(user.provider || 'azure-ad'),
@@ -107,7 +118,7 @@ function upsertManagedUser(profile) {
     id: String(existing?.id || profile.id || profile.azureObjectId || email),
     azureObjectId: String(profile.azureObjectId || existing?.azureObjectId || ''),
     tenantId: String(profile.tenantId || existing?.tenantId || ''),
-    name: String(profile.name || existing?.name || email),
+    name: String(profile.name || existing?.name || '').trim(),
     email,
     username: String(profile.username || existing?.username || email),
     provider: 'azure-ad',
@@ -123,6 +134,46 @@ function upsertManagedUser(profile) {
   else data.users.push(record);
   writeStore(filePath, data);
   return publicUser(record);
+}
+
+function importManagedUsers(emails) {
+  const now = new Date().toISOString();
+  const filePath = storePath();
+  const data = readStore(filePath);
+  const existingEmails = new Set(
+    data.users.flatMap((user) => [normalizeKey(user.email), normalizeKey(user.username)]).filter(Boolean)
+  );
+  const imported = [];
+  const skipped = [];
+
+  for (const value of Array.isArray(emails) ? emails : []) {
+    const email = normalizeKey(value);
+    if (!email || existingEmails.has(email)) {
+      if (email) skipped.push(email);
+      continue;
+    }
+    const record = {
+      id: email,
+      azureObjectId: '',
+      tenantId: '',
+      name: '',
+      email,
+      username: email,
+      provider: 'azure-ad',
+      roles: ['user'],
+      enabled: true,
+      firstLoginAt: null,
+      lastLoginAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    data.users.push(record);
+    existingEmails.add(email);
+    imported.push(publicUser(record));
+  }
+
+  if (imported.length) writeStore(filePath, data);
+  return { imported, skipped };
 }
 
 function updateManagedUser(id, patch) {
@@ -207,6 +258,7 @@ function syncAzureUser(profile) {
 module.exports = {
   deleteManagedUser,
   findUser,
+  importManagedUsers,
   listUsers,
   syncAzureUser,
   updateManagedUser,
