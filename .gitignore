@@ -20,11 +20,12 @@ pnpm-debug.log*
 
 .cleanup-backups/
 
-# La documentación fuente Markdown acompaña al código. Los entregables binarios
-# (Word, PDF, diagramas e insumos de base de datos) permanecen fuera de Git.
+# Solo la guía operativa de despliegue acompaña al código. El resto de la
+# documentación y los entregables binarios permanecen fuera de Git.
 documentacion/**
-!documentacion/**/
-!documentacion/**/*.md
+!documentacion/
+!documentacion/documentacion_tecnica/
+!documentacion/documentacion_tecnica/GUIA_DESPLIEGUE_AURORA.md
 
 # Archivos de entrega, pruebas funcionales y cargues operativos.
 *.zip

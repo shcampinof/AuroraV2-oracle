@@ -36,6 +36,9 @@ desktop.ini
 documentacion
 docs
 README*.md
+**/*.md
+**/*.docx
+**/*.pdf
 SET_PRUEBAS_AURORA.md
 
 scripts/cargas_bd/*.xlsx

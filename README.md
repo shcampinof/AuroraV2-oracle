@@ -15,7 +15,7 @@ Este repositorio contiene el código fuente requerido para compilación, desplie
 - `docker-compose.yml`: definición de despliegue.
 - `.env.example`: plantilla de variables de entorno.
 
-La documentación fuente en Markdown se mantiene en `documentacion/`. Los entregables binarios Word/PDF, diagramas e insumos institucionales se gestionan por el canal documental correspondiente y no se versionan.
+El repositorio conserva únicamente la guía operativa `documentacion/documentacion_tecnica/GUIA_DESPLIEGUE_AURORA.md`. Los demás documentos, entregables Word/PDF, diagramas e insumos institucionales se gestionan por el canal documental correspondiente y no se versionan.
 
 ## Capacidades Vigentes
 
@@ -196,7 +196,7 @@ Para una entrega limpia del repositorio:
 - No incluir `dist/` ni salidas de compilación.
 - No incluir `.env` ni secretos.
 - No incorporar `backend/storage/` a Git ni a las capas Docker; contiene usuarios, cargas y logs operativos.
-- Incluir la documentación fuente `.md`; mantener fuera los entregables Word/PDF, diagramas y paquetes documentales.
+- Incluir únicamente `GUIA_DESPLIEGUE_AURORA.md`; mantener fuera el resto de la documentación y sus entregables binarios.
 - No incluir archivos Excel, evidencias funcionales ni respaldos operativos.
 
 El archivo `.gitignore` mantiene estas exclusiones para que el repositorio contenga únicamente el código y la configuración base necesaria para despliegue.
