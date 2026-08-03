@@ -333,6 +333,7 @@ export default function HistorialActuacionesPPL({
   refreshToken,
   actuacionActivaId,
   creandoActuacion = false,
+  soloLectura = false,
   onActionLabelChange,
 }) {
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
@@ -515,7 +516,7 @@ export default function HistorialActuacionesPPL({
   function handleIniciarDesdeFilaVacia() {
     if (seleccionarActuacionPendienteMasReciente()) return;
     if (onIniciarActuacion) {
-      onIniciarActuacion();
+      onIniciarActuacion({ soloConsulta: soloLectura });
       return;
     }
     onCrearNuevaActuacion?.({ abrirFormulario: true });
@@ -583,9 +584,11 @@ export default function HistorialActuacionesPPL({
                       <td>{displayText(firstFilledValue(actuacion?.resumenAnalisis) || '\u2014')}</td>
                       <td>{displayText(firstFilledValue(actuacion?.actuacionJudicial) || '\u2014')}</td>
                       <td>
-                        {actuacion?.estadoLabel ? (
-                          actuacion?.estadoClass ? (
-                            <span className={`estadoBadge ${actuacion.estadoClass}`}>{displayText(actuacion.estadoLabel)}</span>
+                        {soloLectura || actuacion?.estadoLabel ? (
+                          soloLectura || actuacion?.estadoClass ? (
+                            <span className={`estadoBadge ${soloLectura ? 'estado--fuera-prision' : actuacion.estadoClass}`}>
+                              {displayText(soloLectura ? 'Persona fuera de prisión — caso cerrado' : actuacion.estadoLabel)}
+                            </span>
                           ) : (
                             displayText(actuacion.estadoLabel)
                           )
@@ -599,11 +602,11 @@ export default function HistorialActuacionesPPL({
                           className="primary-button historial-action-button"
                           onClick={() =>
                             actuacion?.virtualPendiente
-                              ? onIniciarActuacion?.()
+                              ? onIniciarActuacion?.({ soloConsulta: soloLectura })
                               : onSelectActuacion?.(actuacion)
                           }
                         >
-                          {displayText(textoAccionFila)}
+                          {displayText(soloLectura ? 'Ver detalle' : textoAccionFila)}
                         </button>
                       </td>
                     </tr>
@@ -613,8 +616,17 @@ export default function HistorialActuacionesPPL({
               {sinActuaciones && (
                 <tr className="historial-empty-row">
                   <td className="historial-col-numero-cell">-</td>
-                  <td colSpan={4} className="historial-empty-message">
+                  <td colSpan={3} className="historial-empty-message">
                     {displayText('Sin actuaciones por el momento')}
+                  </td>
+                  <td>
+                    {soloLectura ? (
+                      <span className="estadoBadge estado--fuera-prision">
+                        {displayText('Persona fuera de prisión — caso cerrado')}
+                      </span>
+                    ) : (
+                      '\u2014'
+                    )}
                   </td>
                   <td className="historial-col-acciones-cell">
                     <button
@@ -622,7 +634,7 @@ export default function HistorialActuacionesPPL({
                       className="primary-button historial-action-button"
                       onClick={handleIniciarDesdeFilaVacia}
                     >
-                      {displayText(textoAccionCaso)}
+                      {displayText(soloLectura ? 'Ver detalle' : textoAccionCaso)}
                     </button>
                   </td>
                 </tr>
@@ -637,9 +649,13 @@ export default function HistorialActuacionesPPL({
           className="save-button historial-create-button"
           type="button"
           onClick={handleCrearNuevaActuacionClick}
-          disabled={creandoActuacion || !documentoNormalizado}
+          disabled={soloLectura || creandoActuacion || !documentoNormalizado}
         >
-          {creandoActuacion ? displayText('Creando...') : displayText('Crear nueva actuaci\u00f3n')}
+          {soloLectura
+            ? displayText('Fuera de prisión — solo consulta')
+            : creandoActuacion
+              ? displayText('Creando...')
+              : displayText('Crear nueva actuaci\u00f3n')}
         </button>
       </div>
     </section>

@@ -7,7 +7,20 @@ import {
 } from '../services/api.js';
 import { pickActiveCaseData } from '../utils/entrevistaEstado.js';
 import { displayOrDash } from '../utils/pplDisplay.js';
-import { getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
+import {
+  ESTADOS_TRAMITE_OPTIONS,
+  buildAssignedUsersFilters,
+  normalizeFilterOptions,
+  resolveCentroByLabel,
+  resolveDefensorIdByLabel,
+} from '../utils/asignadosCatalogs.js';
+import {
+  ESTADO_RECLUSION_INACTIVO,
+  SITUACION_JURIDICA_INACTIVA,
+  getEstadoReclusion,
+  isSituacionActiva,
+} from '../utils/pplStatus.js';
+import { getEstadoClassByLabel, getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
 
 function prettifyHeader(key) {
@@ -24,17 +37,6 @@ const ROWS_PER_PAGE = 25;
 const DEFAULT_INITIAL_LIMIT = 50;
 const DEFAULT_FILTERED_LIMIT = 100;
 const INITIAL_FILTER_OPTIONS_QUERY = { tipo: 'all' };
-const ESTADOS_TRAMITE_OPTIONS = [
-  'Analizar el caso',
-  'Entrevistar al usuario',
-  'Presentar solicitud',
-  'Pendiente audiencia',
-  'Pendiente decisi\u00f3n de audiencia',
-  'Pendiente decisi\u00f3n',
-  'Presentar recurso',
-  'Caso cerrado',
-];
-
 const HEADER_LABELS = {
   Title: 'N\u00famero de identificaci\u00f3n',
   TITLE: 'N\u00famero de identificaci\u00f3n',
@@ -197,15 +199,6 @@ function normalizeRowsPayload(data) {
   return { columns, rows, meta: data?.meta || null };
 }
 
-function normalizeFilterOptions(data) {
-  return {
-    defensores: Array.isArray(data?.defensores) ? data.defensores : [],
-    departamentos: Array.isArray(data?.departamentos) ? data.departamentos : [],
-    municipios: Array.isArray(data?.municipios) ? data.municipios : [],
-    lugares: Array.isArray(data?.lugares) ? data.lugares : [],
-  };
-}
-
 function DropdownField({ label, value, onChange, options, searchable = false, listId }) {
   const normalizedOptions = useMemo(
     () =>
@@ -274,7 +267,19 @@ function InputField({
   inputMode,
   pattern,
 }) {
-  const normalizedOptions = (Array.isArray(options) ? options : []).map((opt) => String(opt ?? '').trim()).filter(Boolean);
+  const normalizedOptions = (Array.isArray(options) ? options : [])
+    .map((opt) => {
+      if (opt && typeof opt === 'object') {
+        return {
+          value: String(opt.label ?? opt.value ?? '').trim(),
+          label: String(opt.homologado === false ? `${opt.label} (no homologado)` : opt.label ?? opt.value ?? '').trim(),
+          key: String(opt.id ?? opt.value ?? opt.label ?? '').trim(),
+        };
+      }
+      const value = String(opt ?? '').trim();
+      return { value, label: value, key: value };
+    })
+    .filter((opt) => opt.value);
   return (
     <div className="form-field">
       <label>{label}</label>
@@ -291,7 +296,7 @@ function InputField({
       {listId && normalizedOptions.length > 0 && (
         <datalist id={listId}>
           {normalizedOptions.map((opt) => (
-            <option key={opt} value={opt} />
+            <option key={opt.key} value={opt.value}>{opt.label}</option>
           ))}
         </datalist>
       )}
@@ -301,12 +306,14 @@ function InputField({
 
 function getColumnWidth(col) {
   const widths = {
+    __estadoReclusion__: 135,
     __situacionJuridica__: 110,
     __numeroIdentificacion__: 130,
     __nombreUsuario__: 145,
     __defensor__: 120,
     __lugarPrivacion__: 155,
-    __estadoTramite__: 130,
+    __estadoCaso__: 135,
+    __accionPendiente__: 165,
     __departamentoReclusion__: 140,
     __municipioReclusion__: 130,
   };
@@ -327,21 +334,27 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   const [mostrarFiltros, setMostrarFiltros] = useState(true);
   const [filtrosDraft, setFiltrosDraft] = useState({
     defensor: '',
+    defensorId: '',
     nombre: '',
     documento: '',
     lugar: '',
+    centroId: '',
     departamento: '',
     municipio: '',
-    estado: '',
+    estadoCodigo: '',
+    accionCodigo: '',
   });
   const [filtrosAplicados, setFiltrosAplicados] = useState({
     defensor: '',
+    defensorId: '',
     nombre: '',
     documento: '',
     lugar: '',
+    centroId: '',
     departamento: '',
     municipio: '',
-    estado: '',
+    estadoCodigo: '',
+    accionCodigo: '',
   });
   const [metaConsulta, setMetaConsulta] = useState(null);
   const [filtroAdicionalSeleccionado, setFiltroAdicionalSeleccionado] = useState('');
@@ -376,6 +389,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
   function getSituacionJuridicaValue(obj) {
     const data = pickActiveCaseData(obj);
+    if (!isSituacionActiva(data)) return SITUACION_JURIDICA_INACTIVA;
     return (
       data?.['Situaci\u00f3n jur\u00eddica actualizada (de conformidad con la rama judicial)'] ??
       data?.['Situacion juridica actualizada (de conformidad con la rama judicial)'] ??
@@ -438,13 +452,28 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     if (!obj || typeof obj !== 'object') return getEstadoDisplayInfo(obj);
     const cached = estadoInfoCacheRef.current.get(obj);
     if (cached) return cached;
-    const computed = getEstadoDisplayInfo(obj);
+    const backendLabel = String(obj?.estadoEtiqueta || obj?.['Estado del caso'] || '').trim();
+    const computed = backendLabel
+      ? { label: backendLabel, className: getEstadoClassByLabel(backendLabel) }
+      : getEstadoDisplayInfo(obj);
     estadoInfoCacheRef.current.set(obj, computed);
     return computed;
   }
 
   function setFiltroDraft(key, value) {
     setFiltrosDraft((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function setDefensorDraft(value) {
+    const defensor = String(value || '');
+    const defensorId = resolveDefensorIdByLabel(defensor, opcionesFiltro.defensorOptions);
+    setFiltrosDraft((prev) => ({ ...prev, defensor, defensorId }));
+  }
+
+  function setCentroDraft(value) {
+    const lugar = String(value || '');
+    const centro = resolveCentroByLabel(lugar, opcionesFiltro.centros);
+    setFiltrosDraft((prev) => ({ ...prev, lugar, centroId: centro?.id || '' }));
   }
 
   function seleccionarFiltroAdicional(value) {
@@ -454,6 +483,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       ...prev,
       nombre: selected === 'nombre' ? prev.nombre : '',
       lugar: selected === 'lugar' ? prev.lugar : '',
+      centroId: selected === 'lugar' ? prev.centroId : '',
       departamento: selected === 'departamento' ? prev.departamento : '',
       municipio: selected === 'municipio' ? prev.municipio : '',
     }));
@@ -461,22 +491,10 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       ...prev,
       nombre: selected === 'nombre' ? prev.nombre : '',
       lugar: selected === 'lugar' ? prev.lugar : '',
+      centroId: selected === 'lugar' ? prev.centroId : '',
       departamento: selected === 'departamento' ? prev.departamento : '',
       municipio: selected === 'municipio' ? prev.municipio : '',
     }));
-  }
-
-  function buildBackendFilters(filters) {
-    const safe = filters && typeof filters === 'object' ? filters : {};
-    return {
-      defensor: String(safe.defensor || '').trim(),
-      nombre: String(safe.nombre || '').trim(),
-      documento: String(safe.documento || '').trim(),
-      lugar: String(safe.lugar || '').trim(),
-      departamento: String(safe.departamento || '').trim(),
-      municipio: String(safe.municipio || '').trim(),
-      estado: String(safe.estado || '').trim(),
-    };
   }
 
   const cargarRowsFromBackend = useCallback(async (nextFiltros = {}) => {
@@ -484,7 +502,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       tipo: 'all',
       limit: DEFAULT_INITIAL_LIMIT,
       filteredLimit: DEFAULT_FILTERED_LIMIT,
-      filters: buildBackendFilters(nextFiltros),
+      filters: buildAssignedUsersFilters(nextFiltros),
     };
     const hasCachedRows = Boolean(getCachedCondenados(request));
     setCargando(!hasCachedRows);
@@ -562,8 +580,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
   const lugaresDisponibles = useMemo(() => {
     if (filtroAdicionalSeleccionado !== 'lugar') return [];
-    return opcionesFiltro.lugares.length ? opcionesFiltro.lugares : distinctSorted(rows, getLugarPrivacionValue);
-  }, [opcionesFiltro.lugares, rows, filtroAdicionalSeleccionado]);
+    return opcionesFiltro.centros.length ? opcionesFiltro.centros : distinctSorted(rows, getLugarPrivacionValue);
+  }, [opcionesFiltro.centros, rows, filtroAdicionalSeleccionado]);
   const departamentosDisponibles = useMemo(() => {
     if (filtroAdicionalSeleccionado !== 'departamento' && filtroAdicionalSeleccionado !== 'municipio') return [];
     return opcionesFiltro.departamentos.length
@@ -571,7 +589,15 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       : distinctSorted(rows, getDepartamentoPrivacionValue);
   }, [opcionesFiltro.departamentos, rows, filtroAdicionalSeleccionado]);
 
-  const estadosDisponibles = useMemo(() => ESTADOS_TRAMITE_OPTIONS, []);
+  const estadosDisponibles = useMemo(
+    () => (opcionesFiltro.estados.length ? opcionesFiltro.estados : ESTADOS_TRAMITE_OPTIONS),
+    [opcionesFiltro.estados]
+  );
+  const accionesDisponibles = useMemo(() => opcionesFiltro.acciones || [], [opcionesFiltro.acciones]);
+  const centroSeleccionado = useMemo(
+    () => resolveCentroByLabel(filtrosDraft.lugar, opcionesFiltro.centros),
+    [filtrosDraft.lugar, opcionesFiltro.centros]
+  );
 
   const municipiosDisponiblesDraft = useMemo(() => {
     if (filtroAdicionalSeleccionado !== 'municipio') return [];
@@ -584,10 +610,23 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   }, [opcionesFiltro.municipios, rows, filtrosDraft.departamento, filtroAdicionalSeleccionado]);
 
   const rowsFiltradas = useMemo(() => {
-    const estadoNeedle = normalize(filtrosAplicados.estado);
-    if (!estadoNeedle) return rows;
-    return rows.filter((row) => normalize(getEstadoDisplayInfoMemo(row).label) === estadoNeedle);
-  }, [rows, filtrosAplicados.estado]);
+    const estadoCodigo = String(filtrosAplicados.estadoCodigo || '').trim();
+    const accionCodigo = String(filtrosAplicados.accionCodigo || '').trim();
+    if (!estadoCodigo && !accionCodigo) return rows;
+    const estadoLabel = estadosDisponibles.find((item) => item.value === estadoCodigo)?.label || '';
+    const accionSeleccionada = accionesDisponibles.find((item) => item.value === accionCodigo);
+    return rows.filter((row) => {
+      const rowCodigo = String(row?.estadoCodigo || '').trim();
+      const matchesEstado = !estadoCodigo || (rowCodigo
+        ? rowCodigo === estadoCodigo
+        : estadoLabel && normalize(getEstadoDisplayInfoMemo(row).label) === normalize(estadoLabel));
+      const rowAccionCodigo = String(row?.accionPendiente?.codigo || '').trim();
+      const matchesAccion = !accionCodigo || (rowAccionCodigo
+        ? rowAccionCodigo === accionCodigo
+        : accionSeleccionada?.estadoCodigos?.includes(rowCodigo));
+      return matchesEstado && matchesAccion;
+    });
+  }, [rows, filtrosAplicados.estadoCodigo, filtrosAplicados.accionCodigo, estadosDisponibles, accionesDisponibles]);
 
   const totalPaginas = useMemo(() => Math.max(1, Math.ceil(rowsFiltradas.length / ROWS_PER_PAGE)), [rowsFiltradas.length]);
   const paginaActual = Math.min(pagina, totalPaginas);
@@ -685,14 +724,20 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   }
 
   async function aplicarFiltros() {
+    const defensor = String(filtrosDraft.defensor || '').trim();
+    const lugar = String(filtrosDraft.lugar || '').trim();
+    const centro = resolveCentroByLabel(lugar, opcionesFiltro.centros);
     const next = {
-      defensor: String(filtrosDraft.defensor || '').trim(),
+      defensor,
+      defensorId: resolveDefensorIdByLabel(defensor, opcionesFiltro.defensorOptions),
       nombre: String(filtrosDraft.nombre || '').trim(),
       documento: String(filtrosDraft.documento || '').trim(),
-      lugar: String(filtrosDraft.lugar || '').trim(),
+      lugar,
+      centroId: centro?.id || '',
       departamento: String(filtrosDraft.departamento || '').trim(),
       municipio: String(filtrosDraft.municipio || '').trim(),
-      estado: String(filtrosDraft.estado || '').trim(),
+      estadoCodigo: String(filtrosDraft.estadoCodigo || '').trim(),
+      accionCodigo: String(filtrosDraft.accionCodigo || '').trim(),
     };
 
     setFiltrosDraft(next);
@@ -715,12 +760,15 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   function reiniciar() {
     const empty = {
       defensor: '',
+      defensorId: '',
       nombre: '',
       documento: '',
       lugar: '',
+      centroId: '',
       departamento: '',
       municipio: '',
-      estado: '',
+      estadoCodigo: '',
+      accionCodigo: '',
     };
     setFiltrosDraft(empty);
     setFiltrosAplicados(empty);
@@ -735,12 +783,14 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
   const orderedColumns = useMemo(() => {
     const fixed = [
+      '__estadoReclusion__',
       '__situacionJuridica__',
       '__numeroIdentificacion__',
       '__nombreUsuario__',
       '__defensor__',
       '__lugarPrivacion__',
-      '__estadoTramite__',
+      '__estadoCaso__',
+      '__accionPendiente__',
       '__departamentoReclusion__',
       '__municipioReclusion__',
     ];
@@ -778,6 +828,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       'Situacion juridica ',
       'situacionJuridica',
       'situacionJuridicaActualizada',
+      'situacionActiva',
+      'estadoReclusion',
       'Departamento del lugar de reclusi\u00f3n',
       'Departamento del lugar de reclusion',
       'departamentoLugarReclusion',
@@ -796,6 +848,13 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       'Acci\u00f3n a realizar',
       'Accion a realizar',
       'accionImpulsar',
+      'accionPendiente',
+      'estadoCodigo',
+      'estadoEtiqueta',
+      'centroId',
+      'centroHomologado',
+      'centroReclusion',
+      'lugarReclusionOriginal',
       'casos',
       'activeCaseId',
     ]);
@@ -805,30 +864,65 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   }, [columns]);
 
   function renderHeader(col) {
+    if (col === '__estadoReclusion__') return 'ESTADO DE RECLUSIÓN';
     if (col === '__situacionJuridica__') return 'SITUACIÓN JURÍDICA';
     if (col === '__numeroIdentificacion__') return 'NÚMERO DE IDENTIFICACIÓN';
     if (col === '__nombreUsuario__') return 'NOMBRE USUARIO';
     if (col === '__defensor__') return 'DEFENSOR';
     if (col === '__lugarPrivacion__') return 'NOMBRE DEL LUGAR DE PRIVACIÓN DE LA LIBERTAD';
-    if (col === '__estadoTramite__') return 'ACCIÓN A IMPULSAR';
+    if (col === '__estadoCaso__') return 'ESTADO DEL CASO';
+    if (col === '__accionPendiente__') return 'ACCIÓN PENDIENTE';
     if (col === '__departamentoReclusion__') return 'DEPARTAMENTO';
     if (col === '__municipioReclusion__') return 'MUNICIPIO';
     return getTableHeaderLabel(col);
   }
 
   function renderCell(row, col) {
+    if (col === '__estadoReclusion__') {
+      const estado = getEstadoReclusion(pickActiveCaseData(row));
+      const estadoClass = estado === ESTADO_RECLUSION_INACTIVO ? 'estado--fuera-prision' : 'estado--en-prision';
+      return <span className={`estadoBadge ${estadoClass}`}>{estado}</span>;
+    }
     if (col === '__situacionJuridica__') return displayOrDash(getSituacionJuridicaValue(row));
     if (col === '__numeroIdentificacion__') return displayOrDash(getNumeroIdentificacionValue(row));
     if (col === '__nombreUsuario__') return displayOrDash(getNombreUsuarioValue(row));
     if (col === '__defensor__') return displayOrDash(getDefensorValue(row));
-    if (col === '__lugarPrivacion__') return displayOrDash(getLugarPrivacionValue(row));
-    if (col === '__estadoTramite__') {
+    if (col === '__lugarPrivacion__') {
+      const lugar = displayOrDash(getLugarPrivacionValue(row));
+      if (row?.centroReclusion?.homologado !== false) return lugar;
+      return (
+        <div>
+          <span>{lugar}</span>
+          <small style={{ display: 'block', color: '#8a5a00', marginTop: '0.25rem' }}>No homologado</small>
+        </div>
+      );
+    }
+    if (col === '__estadoCaso__') {
+      if (!isSituacionActiva(pickActiveCaseData(row))) {
+        return <span className="estadoBadge estado--fuera-prision">PERSONA FUERA DE PRISIÓN — CASO CERRADO</span>;
+      }
       const estadoInfo = getEstadoDisplayInfoMemo(row);
       const estado = String(estadoInfo.label || '').trim();
       if (!estado) return '\u2014';
       const estadoClass = String(estadoInfo.className || '').trim();
       if (!estadoClass) return estado;
       return <span className={`estadoBadge ${estadoClass}`}>{estado}</span>;
+    }
+    if (col === '__accionPendiente__') {
+      const accion = row?.accionPendiente;
+      const etiqueta = String(accion?.etiqueta || row?.accionImpulsar || '').trim();
+      const original = String(accion?.valorOriginal || '').trim();
+      if (!etiqueta) return '\u2014';
+      return (
+        <div>
+          <span>{etiqueta}</span>
+          {accion?.homologada === false && original && normalize(original) !== normalize(etiqueta) && (
+            <small style={{ display: 'block', color: '#8a5a00', marginTop: '0.25rem' }}>
+              Valor original no homologado: {original}
+            </small>
+          )}
+        </div>
+      );
     }
     if (col === '__departamentoReclusion__') return displayOrDash(getDepartamentoPrivacionValue(row));
     if (col === '__municipioReclusion__') return displayOrDash(getMunicipioPrivacionValue(row));
@@ -882,7 +976,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
               <DropdownField
                 label="Defensor"
                 value={filtrosDraft.defensor}
-                onChange={(value) => setFiltroDraft('defensor', value)}
+                onChange={setDefensorDraft}
                 options={defensoresOrdenados}
                 searchable
                 listId="filtro-defensor"
@@ -899,10 +993,17 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
               />
 
               <DropdownField
-                label="ESTADO / ACCIÓN A IMPULSAR"
-                value={filtrosDraft.estado}
-                onChange={(value) => setFiltroDraft('estado', value)}
+                label="Estado del caso"
+                value={filtrosDraft.estadoCodigo}
+                onChange={(value) => setFiltroDraft('estadoCodigo', value)}
                 options={estadosDisponibles}
+              />
+
+              <DropdownField
+                label="Acción pendiente"
+                value={filtrosDraft.accionCodigo}
+                onChange={(value) => setFiltroDraft('accionCodigo', value)}
+                options={accionesDisponibles}
               />
 
               <DropdownField
@@ -930,12 +1031,23 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                 <InputField
                   label="Nombre del lugar de privación de la libertad"
                   value={filtrosDraft.lugar}
-                  onChange={(value) => setFiltroDraft('lugar', value)}
+                  onChange={setCentroDraft}
                   options={lugaresDisponibles}
                   listId="filtro-lugar"
                   placeholder="Ingrese lugar"
                 />
               )}
+              {filtroAdicionalSeleccionado === 'lugar' && centroSeleccionado?.homologado === false && (
+                <p className="hint-text" style={{ color: '#8a5a00' }}>
+                  Este es un valor histórico no homologado. Se buscará usando su identidad normalizada sin ocultarlo.
+                </p>
+              )}
+              {filtroAdicionalSeleccionado === 'lugar' &&
+                Number(opcionesFiltro.meta?.homologacionCentros?.noHomologados || 0) > 0 && (
+                  <p className="hint-text">
+                    Valores de centros pendientes de homologación: {opcionesFiltro.meta.homologacionCentros.noHomologados}.
+                  </p>
+                )}
 
               {filtroAdicionalSeleccionado === 'departamento' && (
                 <InputField
@@ -1000,6 +1112,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
                 <tbody>
                   {rowsPaginaActual.map((r, idx) => {
+                    const situacionActiva = isSituacionActiva(pickActiveCaseData(r));
                     const rawKey =
                       (documentoKey && pickActiveCaseData(r)?.[documentoKey]) ||
                       getNumeroIdentificacionValue(r) ||
@@ -1011,7 +1124,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                       <tr
                         key={String(key)}
                         onClick={() => handleRowClick(r)}
-                        className="clickable-row"
+                        className={`clickable-row${situacionActiva ? '' : ' row-fuera-prision'}`}
+                        title={situacionActiva ? undefined : 'Fuera de prisión. Registro histórico disponible solo para consulta.'}
                       >
                         {orderedColumns.map((c) => (
                           <td key={c}>

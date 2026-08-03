@@ -511,6 +511,7 @@ bind(
 function toLegacyRecord(raw = {}) {
   const numero = coalesce(raw.P_NUMERO, '');
   const numeroText = numero === '' ? '' : String(numero);
+  const situacionActiva = Number(raw.S_ACTIVO) === 1;
 
   const record = {
     Nombre: String(raw.P_NOMBRE ?? ''),
@@ -521,6 +522,7 @@ function toLegacyRecord(raw = {}) {
     numeroIdentificacion: numeroText,
     'Situación Jurídica': String(raw.S_SITUACION ?? ''),
     situacion: String(raw.S_SITUACION ?? ''),
+    'Estado de reclusión': situacionActiva ? 'EN PRISIÓN' : 'FUERA DE PRISIÓN',
     'Género': String(raw.P_GENERO ?? ''),
     'Enfoque Étnico/Racial/Cultural': String(raw.S_ENFOQUE ?? ''),
     Nacionalidad: String(raw.P_NACIONALIDAD ?? ''),
@@ -570,7 +572,9 @@ function toLegacyRecord(raw = {}) {
     Defensor: String(raw.G_DEFENSOR ?? ''),
     defensorAsignado: String(raw.G_DEFENSOR ?? ''),
 
-    'Acción a realizar': String(raw.G_ACCION_REALIZAR ?? ''),
+    'Acción a realizar': situacionActiva
+      ? String(raw.G_ACCION_REALIZAR ?? '')
+      : 'Persona fuera de prisión — caso cerrado',
     'Fecha de análisis jurídico del caso': toIsoDate(raw.G_FECHA_ANALISIS),
     'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS': String(raw.G_ACTUACION_ADELANTAR ?? raw.G_VENCIMIENTO_TERMINOS ?? ''),
     'Procedencia de utilidad pública (solo para mujeres)': String(raw.G_UTILIDAD_PUBLICA ?? ''),
@@ -616,14 +620,16 @@ function toLegacyRecord(raw = {}) {
     'Cierre del caso por imposibilidad de avanzar (si aplica)': String(raw.G_CIERRE_CASO ?? ''),
     'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública': String(raw.G_CIERRE_CASO ?? ''),
     'Sentido de la decisión que resuelve la solicitud': String(raw.G_SENTIDO_DECISION_RESUELVE_RECURSO ?? ''),
-    'Estado del caso': '',
-    'Estado del trámite': '',
+    'Estado del caso': situacionActiva ? '' : 'Caso cerrado',
+    'Estado del trámite': situacionActiva ? '' : 'Persona fuera de prisión — caso cerrado',
     posibleActuacionJudicial: String(raw.G_ACTUACION_ADELANTAR ?? ''),
 
     __oracleIdPersona: raw.P_ID_PERSONA == null ? null : Number(raw.P_ID_PERSONA),
     __oracleIdSituacion: raw.S_ID_SITUACION == null ? null : Number(raw.S_ID_SITUACION),
     __oracleIdGestion: raw.G_ID_GESTION == null ? null : Number(raw.G_ID_GESTION),
     __oracleCedulaDefensor: raw.G_CEDULA_DEFENSOR == null ? null : String(raw.G_CEDULA_DEFENSOR),
+    __situacionActiva: situacionActiva,
+    __activoSituacion: raw.S_ACTIVO == null ? null : Number(raw.S_ACTIVO),
   };
 
   return record;
@@ -806,6 +812,15 @@ async function getActuacionesByDocumento(documento) {
 function hasMeaningfulUpdates(grouped) {
   return Object.keys(grouped.PERSONA).length > 0 || Object.keys(grouped.SITUACION).length > 0 || Object.keys(grouped.GESTION).length > 0;
 }
+
+function assertSituacionEditable(context) {
+  if (!Object.prototype.hasOwnProperty.call(context || {}, 'S_ACTIVO') || Number(context?.S_ACTIVO) === 1) return;
+  const err = new Error('La persona figura fuera de prisión. El registro es histórico y está disponible solo para consulta.');
+  err.code = 'PPL_SITUACION_INACTIVA';
+  err.status = 409;
+  throw err;
+}
+
 async function createActuacionByDocumento(documento, payload) {
   const doc = normalizeDocumento(documento);
   if (!doc) return null;
@@ -814,6 +829,7 @@ async function createActuacionByDocumento(documento, payload) {
     scopeDepartamentos: SCOPE_DEPARTAMENTOS,
   });
   if (!context?.S_ID_SITUACION) return null;
+  assertSituacionEditable(context);
 
   const updates = splitUpdatesByTable(payload);
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
@@ -869,6 +885,7 @@ async function updateByDocumento(documento, payload) {
     scopeDepartamentos: SCOPE_DEPARTAMENTOS,
   });
   if (!context?.S_ID_SITUACION) return null;
+  assertSituacionEditable(context);
 
   const updates = splitUpdatesByTable(payload);
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
@@ -978,6 +995,7 @@ async function assignDefensor(documentos, defensor, options = {}) {
       scopeDepartamentos: SCOPE_DEPARTAMENTOS,
     });
     if (!context?.S_ID_SITUACION) continue;
+    if (Object.prototype.hasOwnProperty.call(context, 'S_ACTIVO') && Number(context.S_ACTIVO) !== 1) continue;
 
     const affected = await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
       defensorNombre,

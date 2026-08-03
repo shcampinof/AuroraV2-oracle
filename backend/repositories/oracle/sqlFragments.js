@@ -1,7 +1,36 @@
 const DEFAULT_SCOPE_DEPARTAMENTOS = [];
 
+const COMMON_MOJIBAKE_SQL_REPLACEMENTS = [
+  ['\\00C3\\0081', 'A'],
+  ['\\00C3\\00A1', 'A'],
+  ['\\00C3\\2030', 'E'],
+  ['\\00C3\\00A9', 'E'],
+  ['\\00C3\\008D', 'I'],
+  ['\\00C3\\00AD', 'I'],
+  ['\\00C3\\201C', 'O'],
+  ['\\00C3\\00B3', 'O'],
+  ['\\00C3\\0161', 'U'],
+  ['\\00C3\\00BA', 'U'],
+  ['\\00C3\\2018', 'N'],
+  ['\\00C3\\00B1', 'N'],
+];
+
+function repairCommonMojibakeSqlExpr(columnRef) {
+  return COMMON_MOJIBAKE_SQL_REPLACEMENTS.reduce(
+    (expression, [sequence, replacement]) =>
+      `REPLACE(${expression}, UNISTR('${sequence}'), '${replacement}')`,
+    columnRef
+  );
+}
+
 function normalizedSqlExpr(columnRef) {
   return `TRANSLATE(UPPER(TRIM(NVL(${columnRef}, ''))), 'ÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÑ', 'AEIOUAEIOUAEIOUN')`;
+}
+
+function normalizedMojibakeSqlExpr(columnRef) {
+  const repaired = repairCommonMojibakeSqlExpr(columnRef);
+  const whitespaceNormalized = `REGEXP_REPLACE(REPLACE(${repaired}, UNISTR('\\00A0'), ' '), '[[:space:]]+', ' ')`;
+  return `TRANSLATE(UPPER(TRIM(NVL(${whitespaceNormalized}, ''))), 'ÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÑ', 'AEIOUAEIOUAEIOUN')`;
 }
 
 function buildScopeWhereClause(columnRef = 's.DEPARTAMENTO', bindPrefix = 'dep', values = DEFAULT_SCOPE_DEPARTAMENTOS) {
@@ -44,7 +73,9 @@ function buildActiveSituacionCte() {
 
 module.exports = {
   DEFAULT_SCOPE_DEPARTAMENTOS,
+  repairCommonMojibakeSqlExpr,
   normalizedSqlExpr,
+  normalizedMojibakeSqlExpr,
   buildScopeWhereClause,
   buildActiveSituacionCte,
 };

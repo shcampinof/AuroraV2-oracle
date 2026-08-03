@@ -53,6 +53,7 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
   personaRepo.findActiveContextByDocumento = async () => ({
     P_ID_PERSONA: 10,
     S_ID_SITUACION: 20,
+    S_ACTIVO: 1,
     G_DEFENSOR: 'DEFENSOR ACTUAL',
   });
   personaRepo.listRowsWithActiveSituacionAndGestiones = async () => [
@@ -104,9 +105,38 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
   }
 }
 
+async function testInactivePrisonRecordRejectsUpdates() {
+  const personaRepo = require('../repositories/oracle/personaRepository');
+  const servicePath = require.resolve('../services/pplService');
+  const originalFindContext = personaRepo.findActiveContextByDocumento;
+
+  personaRepo.findActiveContextByDocumento = async () => ({
+    P_ID_PERSONA: 10,
+    S_ID_SITUACION: 20,
+    S_ACTIVO: 0,
+  });
+  delete require.cache[servicePath];
+
+  try {
+    const service = require(servicePath);
+    await assert.rejects(
+      () => service.updateByDocumento('123', { data: {} }),
+      (error) => error?.code === 'PPL_SITUACION_INACTIVA' && error?.status === 409
+    );
+    await assert.rejects(
+      () => service.createActuacionByDocumento('123', { data: {} }),
+      (error) => error?.code === 'PPL_SITUACION_INACTIVA' && error?.status === 409
+    );
+  } finally {
+    personaRepo.findActiveContextByDocumento = originalFindContext;
+    delete require.cache[servicePath];
+  }
+}
+
 (async () => {
   await testRepositoryUsesDatabaseClock();
   await testGenericDefenderChangeCreatesFreshAssignment();
+  await testInactivePrisonRecordRejectsUpdates();
   console.log('OK asignacion-safety.test');
 })().catch((error) => {
   console.error(error);

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const { listFormatos, getFormatoById } = require('../data/formatos.mock');
+const { listFormatos, getFormatoById } = require('../data/formatos');
 
 function getConfiguredDownloadUrl(id) {
   const formato = getFormatoById(id);

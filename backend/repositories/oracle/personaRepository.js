@@ -1,7 +1,24 @@
 const { execute } = require('../../db/oraclePool');
-const { buildActiveSituacionCte, buildScopeWhereClause, DEFAULT_SCOPE_DEPARTAMENTOS, normalizedSqlExpr } = require('./sqlFragments');
+const {
+  buildActiveSituacionCte,
+  buildScopeWhereClause,
+  DEFAULT_SCOPE_DEPARTAMENTOS,
+  normalizedSqlExpr,
+  normalizedMojibakeSqlExpr,
+} = require('./sqlFragments');
+const { resolveEstadoCodigo } = require('../../domain/estadoCaso');
+const {
+  getAccionByCodigo,
+  getCentroById,
+  getCentroNormalizedAliases,
+  resolveAccionCodigo,
+} = require('../../domain/catalogosHomologacion');
+const { normalizeSearchText } = require('../../utils/textNormalization');
 
-const DEFENSOR_ACTIVO_EXPR = 'COALESCE(TO_NCHAR(a.NOMBRE_DEFENSOR), TO_NCHAR(d.NOMBRE))';
+// La cédula vincula la asignación con el catálogo canónico. Se prioriza ese
+// nombre para que un snapshot histórico con mojibake no oculte al defensor.
+// NOMBRE_DEFENSOR sigue siendo respaldo para asignaciones antiguas sin cédula.
+const DEFENSOR_ACTIVO_EXPR = 'COALESCE(TO_NCHAR(d.NOMBRE), TO_NCHAR(a.NOMBRE_DEFENSOR))';
 
 const BASE_SELECT_COLUMNS = [
   'p.ID_PERSONA AS P_ID_PERSONA',
@@ -186,43 +203,219 @@ function buildTipoFilter(tipo) {
   return 'TRIM(s.SITUACION) IS NOT NULL';
 }
 
-function normalizeSearchText(value) {
-  return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toUpperCase();
-}
-
-function buildCanonicalEstadoCase(columnRef) {
-  const normalized = normalizedSqlExpr(columnRef);
+function buildCanonicalEstadoCodeCase(columnRef) {
+  const normalized = normalizedMojibakeSqlExpr(columnRef);
   return `
     CASE
-      WHEN ${normalized} LIKE '%ANALIZAR EL CASO%' THEN 'Analizar el caso'
-      WHEN ${normalized} LIKE '%ENTREVISTAR AL USUARIO%' THEN 'Entrevistar al usuario'
-      WHEN ${normalized} LIKE '%PENDIENTE AUDIENCIA%' THEN 'Pendiente audiencia'
-      WHEN ${normalized} LIKE '%PENDIENTE DECISION DE AUDIENCIA%' THEN 'Pendiente decisión de audiencia'
-      WHEN ${normalized} LIKE '%PRESENTAR SOLICITUD%' THEN 'Presentar solicitud'
-      WHEN ${normalized} LIKE '%PRESENTAR RECURSO%' THEN 'Presentar recurso'
-      WHEN ${normalized} LIKE '%PENDIENTE DECISION%' THEN 'Pendiente decisión'
-      WHEN ${normalized} LIKE '%CASO CERRADO%' OR ${normalized} = 'CERRADO' THEN 'Caso cerrado'
+      WHEN ${normalized} LIKE '%ANALIZAR EL CASO%' THEN 'ANALIZAR_CASO'
+      WHEN ${normalized} LIKE '%ENTREVISTAR AL USUARIO%' THEN 'ENTREVISTAR_USUARIO'
+      WHEN ${normalized} LIKE '%PENDIENTE DECISION DE AUDIENCIA%' THEN 'PENDIENTE_DECISION_AUDIENCIA'
+      WHEN ${normalized} LIKE '%PENDIENTE AUDIENCIA%' THEN 'PENDIENTE_AUDIENCIA'
+      WHEN ${normalized} LIKE '%PRESENTAR SOLICITUD%' THEN 'PRESENTAR_SOLICITUD'
+      WHEN ${normalized} LIKE '%PRESENTAR RECURSO%' THEN 'PRESENTAR_RECURSO'
+      WHEN ${normalized} LIKE '%PENDIENTE DECISION%' THEN 'PENDIENTE_DECISION'
+      WHEN ${normalized} LIKE '%CASO CERRADO%' OR ${normalized} = 'CERRADO' THEN 'CASO_CERRADO'
       ELSE NULL
     END
   `;
 }
 
-const ESTADO_LABEL_EXPR = `
+const EXPLICIT_ESTADO_CODIGO_EXPR = `
   COALESCE(
-    ${buildCanonicalEstadoCase('g.ACCION_REALIZAR')},
-    ${buildCanonicalEstadoCase('g.ACTUACION_ADELANTAR')},
+    ${buildCanonicalEstadoCodeCase('g.ACCION_REALIZAR')},
+    ${buildCanonicalEstadoCodeCase('g.ACTUACION_ADELANTAR')},
     ''
   )
 `;
+const ANALIZAR_CON_FALLBACK_EXPR = `COALESCE(NULLIF((${EXPLICIT_ESTADO_CODIGO_EXPR}), ''), 'ANALIZAR_CASO')`;
+
+function sqlFilled(columnRef) {
+  return `${columnRef} IS NOT NULL AND TRIM(TO_CHAR(${columnRef})) NOT IN ('-', '--')`;
+}
+
+// La etiqueta visible no depende solamente de ACCION_REALIZAR. La interfaz
+// deriva los estados iniciales a partir de los hitos diligenciados del flujo;
+// la búsqueda debe usar esos mismos hitos para no ocultar filas que sí muestra
+// como "Entrevistar al usuario", "Presentar solicitud", etc.
+const HAS_ANALISIS_COMPLETO_EXPR = `(
+  ${sqlFilled('g.FECHA_ANALISIS')}
+  AND ${sqlFilled('g.RESUMEN_ANALISIS_CASO')}
+)`;
+const HAS_ENTREVISTA_Y_ACTUACION_EXPR = `(
+  ${sqlFilled('g.FECHA_ENTREVISTA')}
+  AND ${sqlFilled('g.ACTUACION_ADELANTAR')}
+)`;
+const FECHA_RADICACION_EXPR = `COALESCE(
+  g.FECHA_RADICACION_UTILIDAD,
+  g.FECHA_PRESENTACION_SOLICITUD_AUTORIDAD
+)`;
+
+function sqlAnyFilled(columnRefs) {
+  return `(${columnRefs.map((columnRef) => `(${sqlFilled(columnRef)})`).join(' OR ')})`;
+}
+
+const ACTUACION_NORMALIZADA_EXPR = normalizedMojibakeSqlExpr('g.ACTUACION_ADELANTAR');
+const DECISION_NORMALIZADA_EXPR = normalizedMojibakeSqlExpr('g.SENTIDO_DECISION');
+const RECURSO_NORMALIZADO_EXPR = normalizedMojibakeSqlExpr('g.SE_PRESENTA_RECURSO');
+const DECISION_USUARIO_NORMALIZADA_EXPR = normalizedMojibakeSqlExpr('g.DECISION_USUARIO');
+const HAS_DECISION_RECURSO_EXPR = sqlAnyFilled([
+  'g.FECHA_DECISION_RECURSO',
+  'g.SENTIDO_DECISION_RESUELVE_RECURSO',
+]);
+const IS_UTILIDAD_PUBLICA_EXPR = `(${ACTUACION_NORMALIZADA_EXPR} LIKE '%UTILIDAD PUBLICA%')`;
+const IS_RECURSO_PRESENTADO_EXPR = `(${RECURSO_NORMALIZADO_EXPR} IN ('SI', 'S?'))`;
+const IS_DECISION_NEGATIVA_EXPR = `(
+  (NOT ${IS_UTILIDAD_PUBLICA_EXPR} AND (
+    ${DECISION_NORMALIZADA_EXPR} = 'NO CONCEDE LA SOLICITUD'
+    OR ${DECISION_NORMALIZADA_EXPR} = 'NO CONCEDE SUBROGADO PENAL'
+  ))
+  OR (${IS_UTILIDAD_PUBLICA_EXPR} AND ${DECISION_NORMALIZADA_EXPR} = 'NIEGA UTILIDAD PUBLICA')
+)`;
+const HAS_BLOQUE5_DATA_EXPR = sqlAnyFilled([
+  'g.FECHA_ENTREVISTA_PSICOSOCIAL',
+  'g.CUMPLE_REQUISITO_MARGINALIDAD',
+  'g.CUMPLE_REQUISITO_JEFATURA_HOGAR',
+  'g.REQUIERE_MISION_TRABAJO',
+  'g.FECHA_SOLICITUD_MISION_TRABAJO',
+  'g.FECHA_ASIGNACION_INVESTIGADOR',
+  'g.FECHA_RECEPCION_TODAS_PRUEBAS',
+  'g.FECHA_RECEPCION_PRUEBAS_USUARIO',
+  'g.FECHA_SOLICITUD_DOCS_INPEC',
+  'g.FECHA_RADICACION_UTILIDAD',
+  'g.FECHA_PRESENTACION_SOLICITUD_AUTORIDAD',
+  'g.FECHA_DECISION_AUTORIDAD',
+  'g.SENTIDO_DECISION',
+  'g.MOTIVO_DECISION_NEGATIVA',
+  'g.SE_PRESENTA_RECURSO',
+  'g.FECHA_RECURSO_DESFAVORABLE',
+  'g.FECHA_DECISION_RECURSO',
+  'g.SENTIDO_DECISION_RESUELVE_RECURSO',
+]);
+function sqlNegativeProcedencia(columnRef) {
+  const normalized = normalizedMojibakeSqlExpr(columnRef);
+  return `(${normalized} = 'NO' OR ${normalized} LIKE 'NO APLICA%' OR ${normalized} LIKE 'NO CUMPLE%')`;
+}
+const ALL_PROCEDENCIAS_NEGATIVAS_EXPR = `(
+  ${[
+    'g.LIBERTAD_CONDICIONAL',
+    'g.PRISION_DOMICILIARIA_MITAD_PENA',
+    'g.UTILIDAD_PUBLICA',
+    'g.PROCEDENCIA_PENA_CUMPLIDA',
+    'g.PROCEDENCIA_ACUMULACION_PENAS',
+  ].map(sqlNegativeProcedencia).join(' AND ')}
+)`;
+const OTRAS_SOLICITUDES_NORMALIZADA_EXPR = normalizedMojibakeSqlExpr('g.OTRAS_SOLICITUDES_TRAMITAR');
+const WITHOUT_POSITIVE_OTRAS_SOLICITUDES_EXPR = `(
+  ${OTRAS_SOLICITUDES_NORMALIZADA_EXPR} IN (
+    '',
+    'NINGUNA',
+    'MAS DE UNA OPCION',
+    'MAS DE UNA OPCION (VER RESUMEN ANALISIS DEL CASO)'
+  )
+)`;
+
+const AURORA_DERIVED_ESTADO_CODIGO_EXPR = `
+  CASE
+    WHEN (${ALL_PROCEDENCIAS_NEGATIVAS_EXPR} AND ${WITHOUT_POSITIVE_OTRAS_SOLICITUDES_EXPR})
+      OR ${sqlFilled('g.CIERRE_CASO')}
+      OR ${HAS_DECISION_RECURSO_EXPR}
+      OR (${sqlFilled('g.DECISION_USUARIO')} AND NOT (
+        ${DECISION_USUARIO_NORMALIZADA_EXPR} LIKE '%DESEA QUE EL DEFENSOR%'
+        AND ${DECISION_USUARIO_NORMALIZADA_EXPR} LIKE '%AVANCE CON LA SOLICITUD%'
+      ))
+      OR ${ACTUACION_NORMALIZADA_EXPR} LIKE '%NINGUNA%'
+      OR ${ACTUACION_NORMALIZADA_EXPR} LIKE '%NO PROCEDE NADA%'
+      OR ${normalizedMojibakeSqlExpr('g.CUMPLE_REQUISITO_MARGINALIDAD')} = 'NO'
+      OR ${normalizedMojibakeSqlExpr('g.CUMPLE_REQUISITO_JEFATURA_HOGAR')} = 'NO'
+      OR (${IS_DECISION_NEGATIVA_EXPR} AND (
+        NOT ${IS_RECURSO_PRESENTADO_EXPR} OR ${HAS_DECISION_RECURSO_EXPR}
+      ))
+      OR (NOT ${IS_UTILIDAD_PUBLICA_EXPR}
+        AND ${sqlFilled('g.SENTIDO_DECISION')}
+        AND NOT (${DECISION_NORMALIZADA_EXPR} IN ('NO CONCEDE LA SOLICITUD', 'NO CONCEDE SUBROGADO PENAL')))
+      OR (${IS_UTILIDAD_PUBLICA_EXPR}
+        AND ${sqlFilled('g.SENTIDO_DECISION')}
+        AND ${DECISION_NORMALIZADA_EXPR} <> 'NIEGA UTILIDAD PUBLICA')
+      THEN 'CASO_CERRADO'
+    WHEN ${IS_DECISION_NEGATIVA_EXPR}
+      AND ${IS_RECURSO_PRESENTADO_EXPR}
+      AND NOT (${HAS_DECISION_RECURSO_EXPR})
+      THEN 'PENDIENTE_DECISION'
+    WHEN ${sqlFilled('g.FECHA_DECISION_AUTORIDAD')}
+      AND NOT (${sqlFilled('g.SENTIDO_DECISION')})
+      THEN 'PENDIENTE_DECISION'
+    WHEN ${sqlFilled(FECHA_RADICACION_EXPR)}
+      AND NOT (${sqlFilled('g.FECHA_DECISION_AUTORIDAD')})
+      THEN 'PENDIENTE_DECISION'
+    WHEN ${HAS_BLOQUE5_DATA_EXPR}
+      AND NOT (${sqlFilled(FECHA_RADICACION_EXPR)})
+      THEN 'PRESENTAR_SOLICITUD'
+    WHEN ${HAS_ANALISIS_COMPLETO_EXPR}
+      AND ${HAS_ENTREVISTA_Y_ACTUACION_EXPR}
+      AND NOT (${sqlFilled(FECHA_RADICACION_EXPR)})
+      THEN 'PRESENTAR_SOLICITUD'
+    WHEN ${HAS_ANALISIS_COMPLETO_EXPR}
+      AND NOT (${HAS_ENTREVISTA_Y_ACTUACION_EXPR})
+      THEN 'ENTREVISTAR_USUARIO'
+    ELSE ${ANALIZAR_CON_FALLBACK_EXPR}
+  END
+`;
+
+const CELESTE_HAS_ANALISIS_COMPLETO_EXPR = `(
+  TRIM(NVL(${DEFENSOR_ACTIVO_EXPR}, '')) IS NOT NULL
+  AND ${sqlFilled('g.FECHA_ANALISIS')}
+  AND ${sqlFilled('g.ACTUACION_ADELANTAR')}
+  AND ${sqlFilled('g.RESUMEN_ANALISIS_CASO')}
+)`;
+const CELESTE_DERIVED_ESTADO_CODIGO_EXPR = `
+  CASE
+    WHEN ${ACTUACION_NORMALIZADA_EXPR} LIKE 'NO SE AVANZARA%'
+      THEN 'CASO_CERRADO'
+    WHEN ${sqlFilled('g.FECHA_DECISION_RECURSO')}
+      OR ${sqlFilled('g.SENTIDO_DECISION_RESUELVE_RECURSO')}
+      OR ${DECISION_NORMALIZADA_EXPR} LIKE '%REVOCA MEDIDA%'
+      OR ${DECISION_NORMALIZADA_EXPR} LIKE '%SUSTITUYE MEDIDA%'
+      THEN 'CASO_CERRADO'
+    WHEN ${DECISION_NORMALIZADA_EXPR} LIKE '%NIEGA LA SOLICITUD%'
+      THEN CASE WHEN ${IS_RECURSO_PRESENTADO_EXPR} THEN 'PENDIENTE_DECISION' ELSE 'CASO_CERRADO' END
+    WHEN ${sqlFilled('g.FECHA_PRESENTACION_RECURSO')} OR ${IS_RECURSO_PRESENTADO_EXPR}
+      THEN 'PENDIENTE_DECISION'
+    WHEN ${sqlFilled('g.FECHA_REALIZACION_AUDIENCIA')} AND NOT (${sqlFilled('g.SENTIDO_DECISION')})
+      THEN 'PENDIENTE_DECISION_AUDIENCIA'
+    WHEN ${sqlFilled('g.FECHA_SOLICITUD_AUDIENCIA_CONTROL')}
+      AND NOT (${sqlFilled('g.FECHA_REALIZACION_AUDIENCIA')})
+      THEN 'PENDIENTE_AUDIENCIA'
+    WHEN ${sqlAnyFilled([
+      'g.FECHA_SOLICITUD_AUDIENCIA_CONTROL',
+      'g.FECHA_REALIZACION_AUDIENCIA',
+      'g.SENTIDO_DECISION',
+      'g.SE_PRESENTA_RECURSO',
+    ])}
+      THEN 'PRESENTAR_SOLICITUD'
+    WHEN NOT (${CELESTE_HAS_ANALISIS_COMPLETO_EXPR})
+      OR ${ACTUACION_NORMALIZADA_EXPR} NOT LIKE 'SE AVANZARA%'
+      THEN ${ANALIZAR_CON_FALLBACK_EXPR}
+    WHEN NOT (${sqlFilled('g.FECHA_ENTREVISTA')})
+      THEN 'ENTREVISTAR_USUARIO'
+    ELSE 'PRESENTAR_SOLICITUD'
+  END
+`;
+
+const DERIVED_ESTADO_CODIGO_EXPR = `
+  CASE
+    WHEN NVL(s.ACTIVO, 0) <> 1 THEN 'CASO_CERRADO'
+    WHEN ${normalizedMojibakeSqlExpr('s.SITUACION_JURIDICA_ACTUALIZADA')} LIKE '%SINDICAD%'
+      OR ${normalizedMojibakeSqlExpr('s.SITUACION')} LIKE '%SINDICAD%'
+      THEN (${CELESTE_DERIVED_ESTADO_CODIGO_EXPR})
+    ELSE (${AURORA_DERIVED_ESTADO_CODIGO_EXPR})
+  END
+`;
+
+const ESTADO_CODIGO_EXPR = DERIVED_ESTADO_CODIGO_EXPR;
 
 const ESTADO_ACCION_EXPR = `
   TRIM(
-    NVL(${ESTADO_LABEL_EXPR}, '') || ' ' ||
+    NVL(${ESTADO_CODIGO_EXPR}, '') || ' ' ||
     NVL(g.ACCION_REALIZAR, '') || ' ' ||
     NVL(g.ACTUACION_ADELANTAR, '')
   )
@@ -268,16 +461,44 @@ function buildCondenadosSummaryWhereClause({
     return { clause: clauses.join('\n      AND '), binds };
   }
 
-  const documento = String(filters?.documento || '').replace(/\D+/g, '');
+  const rawDocumento = String(filters?.documento || '').trim();
+  const documento = rawDocumento.replace(/\D+/g, '');
   if (documento) {
     binds.documentoPrefix = `${documento}%`;
     clauses.push('TO_CHAR(p.NUMERO) LIKE :documentoPrefix');
+  } else if (rawDocumento) {
+    clauses.push('1=0');
+  }
+
+  const rawDefensorId = String(filters?.defensorId || '').trim();
+  const defensorId = rawDefensorId.replace(/\D+/g, '');
+  if (defensorId) {
+    binds.defensorId = defensorId;
+    clauses.push('TO_CHAR(a.CEDULA_DEFENSOR) = :defensorId');
+  } else if (rawDefensorId && !String(filters?.defensor || '').trim()) {
+    clauses.push('1=0');
+  }
+
+  const centroId = String(filters?.centroId || '').trim();
+  const centroCatalogado = getCentroById(centroId);
+  if (centroCatalogado) {
+    const aliases = getCentroNormalizedAliases(centroCatalogado.id);
+    const placeholders = aliases.map((alias, index) => {
+      const bindKey = `centroAlias${index}`;
+      binds[bindKey] = alias;
+      return `:${bindKey}`;
+    });
+    if (placeholders.length) {
+      clauses.push(`${normalizedMojibakeSqlExpr('s.ESTABLECIMIENTO')} IN (${placeholders.join(', ')})`);
+    }
+  } else if (centroId && !String(filters?.lugar || '').trim()) {
+    clauses.push('1=0');
   }
 
   const textFilters = [
     ['nombre', 'p.NOMBRE', 'contains'],
-    ['defensor', DEFENSOR_ACTIVO_EXPR, 'prefix'],
-    ['lugar', 's.ESTABLECIMIENTO', 'prefix'],
+    ...(defensorId ? [] : [['defensor', DEFENSOR_ACTIVO_EXPR, 'prefix']]),
+    ...(centroCatalogado ? [] : [['lugar', 's.ESTABLECIMIENTO', 'prefix']]),
     ['departamento', 's.DEPARTAMENTO', 'prefix'],
     ['municipio', 's.MUNICIPIO', 'prefix'],
     ['estadoAccion', `(${ESTADO_ACCION_EXPR})`, 'contains'],
@@ -288,28 +509,9 @@ function buildCondenadosSummaryWhereClause({
     if (!value) return;
     const bindKey = `${key}Filter`;
     binds[bindKey] = mode === 'contains' ? `%${value}%` : `${value}%`;
-    clauses.push(`${normalizedSqlExpr(columnRef)} LIKE :${bindKey}`);
+    const normalizedColumn = normalizedMojibakeSqlExpr(columnRef);
+    clauses.push(`${normalizedColumn} LIKE :${bindKey}`);
   });
-
-  const estado = normalizeSearchText(filters?.estado);
-  if (estado) {
-    const canonicalMap = new Map([
-      ['ANALIZAR EL CASO', 'Analizar el caso'],
-      ['ENTREVISTAR AL USUARIO', 'Entrevistar al usuario'],
-      ['PENDIENTE AUDIENCIA', 'Pendiente audiencia'],
-      ['PENDIENTE DECISION DE AUDIENCIA', 'Pendiente decisión de audiencia'],
-      ['PRESENTAR SOLICITUD', 'Presentar solicitud'],
-      ['PRESENTAR RECURSO', 'Presentar recurso'],
-      ['PENDIENTE DECISION', 'Pendiente decisión'],
-      ['CASO CERRADO', 'Caso cerrado'],
-      ['CERRADO', 'Caso cerrado'],
-    ]);
-    const canonical = canonicalMap.get(estado) || '';
-    if (canonical) {
-      binds.estadoCanonico = canonical;
-      clauses.push(`${ESTADO_LABEL_EXPR} = :estadoCanonico`);
-    }
-  }
 
   const potencial = String(filters?.potencialSubrogado || '').trim().toLowerCase();
   if (potencial) {
@@ -326,6 +528,8 @@ function buildCondenadosSummaryWhereClause({
     ) {
       binds.potencialSubrogado = potencial;
       clauses.push(`${POTENCIAL_SUBROGADO_EXPR} = :potencialSubrogado`);
+    } else {
+      clauses.push('1=0');
     }
   }
 
@@ -378,6 +582,22 @@ async function listCondenadosSummary({
 } = {}) {
   const safeLimit = Math.max(1, Number.parseInt(String(limit || '1000'), 10) || 1000);
   const fetchLimit = includeExactCounts ? safeLimit : safeLimit + 1;
+  const rawEstadoCodigo = String(filters?.estadoCodigo || '').trim();
+  const rawEstadoLegado = String(filters?.estado || '').trim();
+  const estadoCodigo = resolveEstadoCodigo(rawEstadoCodigo) || resolveEstadoCodigo(rawEstadoLegado);
+  const hasEstadoFilter = Boolean(rawEstadoCodigo || rawEstadoLegado);
+  const rawAccionCodigo = String(filters?.accionCodigo || '').trim();
+  const rawAccionLegada = String(filters?.accion || '').trim();
+  const accionCodigo = resolveAccionCodigo(rawAccionCodigo) || resolveAccionCodigo(rawAccionLegada);
+  const hasAccionFilter = Boolean(rawAccionCodigo || rawAccionLegada);
+  const accionCatalogada = getAccionByCodigo(accionCodigo);
+  const repositoryFilters = {
+    ...(filters && typeof filters === 'object' ? filters : {}),
+    estadoCodigo: '',
+    estado: '',
+    accionCodigo: '',
+    accion: '',
+  };
   const activeSituacionCte = buildActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
   const cte = `
     ${activeSituacionCte},
@@ -404,7 +624,7 @@ async function listCondenadosSummary({
 
   const { fromAndWhere, binds } = buildCondenadosSummaryFromAndWhere({
     tipo,
-    filters,
+    filters: repositoryFilters,
     scopeDepartamentos,
     includeUserFilters: true,
   });
@@ -427,10 +647,12 @@ async function listCondenadosSummary({
         s.PROCESO AS "Proceso",
         s.SITUACION AS "Situacion Juridica",
         s.SITUACION AS "situacion",
+        s.ACTIVO AS S_ACTIVO,
         s.SITUACION_JURIDICA_ACTUALIZADA AS "Situacion Juridica actualizada (de conformidad con la rama judicial)",
         ${DEFENSOR_ACTIVO_EXPR} AS "Defensor(a) Publico(a) Asignado para tramitar la solicitud",
         ${DEFENSOR_ACTIVO_EXPR} AS "Defensor(a) Público(a) Asignado para tramitar la solicitud",
         ${DEFENSOR_ACTIVO_EXPR} AS "Defensor",
+        TO_CHAR(a.CEDULA_DEFENSOR) AS DEFENSOR_ID,
         s.PENA_DIAS AS "Pena dias",
         s.TIEMPO_EFECTIVO AS "Tiempo efectivo",
         s.PORCENTAJE AS "Porcentaje",
@@ -490,34 +712,55 @@ async function listCondenadosSummary({
         g.ACCION_REALIZAR AS "Accion a realizar",
         CAST(NULL AS VARCHAR2(4000)) AS "posibleActuacionJudicial",
         ${POTENCIAL_SUBROGADO_EXPR} AS CATEGORIA_POTENCIAL_SUBROGADO,
-        ${ESTADO_LABEL_EXPR} AS ESTADO_DERIVADO
-        ${includeExactCounts ? ',\n        COUNT(*) OVER() AS TOTAL_MATCHED' : ''}
+        ${ESTADO_CODIGO_EXPR} AS ESTADO_CODIGO
       ${fromAndWhere}
   `;
 
-  const rowsSql = includeExactCounts
-    ? `
+  const outerPredicates = [];
+  const outerBinds = {};
+  if (estadoCodigo) {
+    outerPredicates.push('ESTADO_CODIGO = :estadoCodigo');
+    outerBinds.estadoCodigo = estadoCodigo;
+  } else if (hasEstadoFilter) {
+    outerPredicates.push('1=0');
+  }
+  if (accionCatalogada?.estadoCodigos?.length) {
+    const placeholders = accionCatalogada.estadoCodigos.map((codigo, index) => {
+      const bindKey = `accionEstado${index}`;
+      outerBinds[bindKey] = codigo;
+      return `:${bindKey}`;
+    });
+    outerPredicates.push(`ESTADO_CODIGO IN (${placeholders.join(', ')})`);
+  } else if (hasAccionFilter) {
+    outerPredicates.push('1=0');
+  }
+  const estadoPredicate = outerPredicates.length ? outerPredicates.join(' AND ') : '1=1';
+  const filteredSelectSql = `
+    SELECT
+      filtered_rows.*
+      ${includeExactCounts ? ', COUNT(*) OVER() AS TOTAL_MATCHED' : ''}
+    FROM (
+      ${baseSelectSql}
+    ) filtered_rows
+    WHERE ${estadoPredicate}
+  `;
+
+  const rowsSql = `
     WITH
     ${cte}
     SELECT *
     FROM (
-      ${baseSelectSql}
-      ORDER BY TO_CHAR(p.NUMERO) ASC
-    )
-    WHERE ROWNUM <= :limit
-  `
-    : `
-    WITH
-    ${cte}
-    SELECT *
-    FROM (
-      ${baseSelectSql}
-      ORDER BY TO_CHAR(p.NUMERO) ASC
+      ${filteredSelectSql}
+      ORDER BY "Numero de identificacion" ASC
     )
     WHERE ROWNUM <= :limit
   `;
 
-  const result = await execute(rowsSql, { ...binds, limit: fetchLimit }, { operation: 'persona.listCondenadosSummary.rows' });
+  const result = await execute(
+    rowsSql,
+    { ...binds, ...outerBinds, limit: fetchLimit },
+    { operation: 'persona.listCondenadosSummary.rows' }
+  );
   const fetchedRows = Array.isArray(result?.rows) ? result.rows : [];
   const truncated = !includeExactCounts && fetchedRows.length > safeLimit;
   const rows = truncated ? fetchedRows.slice(0, safeLimit) : fetchedRows;
@@ -624,11 +867,44 @@ async function listDistinctCondenadosFilterOptions({
       .filter(Boolean);
   }
 
+  async function queryDefensorOptions() {
+    const { fromAndWhere, binds } = buildCondenadosSummaryFromAndWhere({
+      tipo,
+      filters: {},
+      scopeDepartamentos,
+      includeUserFilters: true,
+    });
+    const sql = `
+      WITH
+      ${cte}
+      SELECT DEFENSOR_ID, DEFENSOR
+      FROM (
+        SELECT DISTINCT
+          TRIM(TO_CHAR(a.CEDULA_DEFENSOR)) AS DEFENSOR_ID,
+          TRIM(${DEFENSOR_ACTIVO_EXPR}) AS DEFENSOR
+        ${fromAndWhere}
+          AND TRIM(${DEFENSOR_ACTIVO_EXPR}) IS NOT NULL
+        ORDER BY DEFENSOR ASC
+      )
+      WHERE ROWNUM <= :maxRows
+    `;
+    const result = await execute(
+      sql,
+      { ...binds, maxRows: safeMax },
+      { operation: 'persona.listFilterOptions.DEFENSOR_OPTIONS' }
+    );
+    return (Array.isArray(result?.rows) ? result.rows : [])
+      .map((row) => ({
+        id: String(row?.DEFENSOR_ID || '').trim(),
+        label: String(row?.DEFENSOR || '').trim(),
+      }))
+      .filter((item) => item.label);
+  }
+
   const departamento = String(filters?.departamento || '').trim();
   const municipio = String(filters?.municipio || '').trim();
-  const defensor = String(filters?.defensor || '').trim();
 
-  const [departamentos, municipios, lugares, defensores] = await Promise.all([
+  const [departamentos, municipios, lugares, defensorOptions] = await Promise.all([
     queryDistinct({
       columnRef: 's.DEPARTAMENTO',
       alias: 'DEPARTAMENTO',
@@ -644,18 +920,102 @@ async function listDistinctCondenadosFilterOptions({
       alias: 'LUGAR',
       fieldFilters: { departamento, municipio },
     }),
-    queryDistinct({
-      columnRef: DEFENSOR_ACTIVO_EXPR,
-      alias: 'DEFENSOR',
-      fieldFilters: { defensor },
-    }),
+    queryDefensorOptions(),
   ]);
+
+  const defensores = defensorOptions.map((item) => item.label);
 
   return {
     departamentos,
     municipios,
     lugares,
     defensores,
+    defensorOptions,
+  };
+}
+
+async function listCondenadosHomologationValues({
+  tipo = 'all',
+  scopeDepartamentos = DEFAULT_SCOPE_DEPARTAMENTOS,
+  maxPerField = 5000,
+} = {}) {
+  const safeMax = Math.max(1, Math.min(5000, Number.parseInt(String(maxPerField || '5000'), 10) || 5000));
+  const activeSituacionCte = buildActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
+  const cte = `
+    ${activeSituacionCte},
+    latest_gestion AS (
+      SELECT
+        g.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY g.ID_SITUACION
+          ORDER BY ${GESTION_MEANINGFUL_ORDER_EXPR}, g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
+        ) AS RN
+      FROM DNDP.GESTION_JURIDICA g
+    ),
+    active_asignacion AS (
+      SELECT
+        a.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY a.ID_PERSONA
+          ORDER BY a.FECHA_ASIGNACION DESC NULLS LAST, a.ID_ASIGNACION DESC
+        ) AS RN
+      FROM DNDP.ASIGNACION a
+      WHERE a.FECHA_FIN IS NULL
+    )
+  `;
+  const { fromAndWhere, binds } = buildCondenadosSummaryFromAndWhere({
+    tipo,
+    filters: {},
+    scopeDepartamentos,
+    includeUserFilters: false,
+  });
+
+  const centersSql = `
+    WITH
+    ${cte}
+    SELECT LUGAR, TOTAL
+    FROM (
+      SELECT
+        TRIM(s.ESTABLECIMIENTO) AS LUGAR,
+        COUNT(*) AS TOTAL
+      ${fromAndWhere}
+        AND TRIM(s.ESTABLECIMIENTO) IS NOT NULL
+      GROUP BY TRIM(s.ESTABLECIMIENTO)
+      ORDER BY TOTAL DESC, LUGAR ASC
+    )
+    WHERE ROWNUM <= :maxRows
+  `;
+  const actionsSql = `
+    WITH
+    ${cte}
+    SELECT ESTADO_CODIGO, ACCION_ORIGINAL, TOTAL
+    FROM (
+      SELECT
+        ${ESTADO_CODIGO_EXPR} AS ESTADO_CODIGO,
+        TRIM(g.ACCION_REALIZAR) AS ACCION_ORIGINAL,
+        COUNT(*) AS TOTAL
+      ${fromAndWhere}
+      GROUP BY ${ESTADO_CODIGO_EXPR}, TRIM(g.ACCION_REALIZAR)
+      ORDER BY TOTAL DESC, ESTADO_CODIGO ASC, ACCION_ORIGINAL ASC
+    )
+    WHERE ROWNUM <= :maxRows
+  `;
+
+  const [centersResult, actionsResult] = await Promise.all([
+    execute(centersSql, { ...binds, maxRows: safeMax }, { operation: 'persona.listHomologationValues.CENTERS' }),
+    execute(actionsSql, { ...binds, maxRows: safeMax }, { operation: 'persona.listHomologationValues.ACTIONS' }),
+  ]);
+
+  return {
+    centros: (Array.isArray(centersResult?.rows) ? centersResult.rows : []).map((row) => ({
+      valor: String(row?.LUGAR || '').trim(),
+      cantidad: Number(row?.TOTAL || 0),
+    })),
+    acciones: (Array.isArray(actionsResult?.rows) ? actionsResult.rows : []).map((row) => ({
+      estadoCodigo: String(row?.ESTADO_CODIGO || '').trim(),
+      valorOriginal: String(row?.ACCION_ORIGINAL || '').trim(),
+      cantidad: Number(row?.TOTAL || 0),
+    })),
   };
 }
 
@@ -782,6 +1142,7 @@ async function updatePersonaById(idPersona, fields = {}) {
 module.exports = {
   listRowsWithActiveSituacionAndGestiones,
   listCondenadosSummary,
+  listCondenadosHomologationValues,
   listDistinctCondenadosFilterOptions,
   findActiveContextByDocumento,
   listDistinctDefensores,

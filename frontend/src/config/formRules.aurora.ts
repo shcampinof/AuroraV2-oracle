@@ -634,7 +634,7 @@ export const dependencyRules: DependencyRule[] = [
     },
   },
   // Regla: AURORA.B5B.DEPENDENCIA.3
-  // TODO(matriz): confirmar nomenclatura Q47/Q52 para el campo "Sentido de la decision" en 5B.
+  // En 5B el formulario muestra Q47; FIELD.q52 es la clave compartida de persistencia.
   {
     id: 'dep_q52_no_concede_subrogado_habilita_q53_q54_en_5b',
     source: { key: FIELD.q52, label: '47 Sentido de la decisión' },

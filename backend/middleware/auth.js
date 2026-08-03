@@ -22,7 +22,7 @@ function requireAuth(req, res, next) {
     });
   }
 
-  const isInstitutionalProvider = claims.provider === 'azure-ad';
+  const isInstitutionalProvider = claims.provider === 'azure-ad' || claims.provider === 'ldap';
   const isAllowedProvider = isInstitutionalProvider || (isLocalAdminEnabled() && claims.provider === 'local');
 
   if (!isAllowedProvider) {

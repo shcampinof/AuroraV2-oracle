@@ -38,6 +38,8 @@ function isNombreDefensorValido(value) {
 }
 
 function getAccionImpulsarDisplay(row) {
+  const accionApi = String(row?.accionPendiente?.etiqueta || '').trim();
+  if (accionApi) return accionApi;
   const estadoInfo = getEstadoDisplayInfo(row);
   return String(estadoInfo?.label || row?.accionImpulsar || '').trim();
 }
@@ -213,6 +215,20 @@ function AsignacionDefensores({ isAdmin = false }) {
 
   useEffect(() => {
     cargarDefensoresActuales();
+  }, [cargarDefensoresActuales]);
+
+  useEffect(() => {
+    const refrescarDefensores = () => cargarDefensoresActuales();
+    const refrescarSiVisible = () => {
+      if (document.visibilityState === 'visible') refrescarDefensores();
+    };
+
+    window.addEventListener('focus', refrescarDefensores);
+    document.addEventListener('visibilitychange', refrescarSiVisible);
+    return () => {
+      window.removeEventListener('focus', refrescarDefensores);
+      document.removeEventListener('visibilitychange', refrescarSiVisible);
+    };
   }, [cargarDefensoresActuales]);
 
   useEffect(() => {
@@ -584,17 +600,21 @@ function AsignacionDefensores({ isAdmin = false }) {
       const data = await createDefensor({ cedula, nombre });
       const creado = normalizeDefensorNombre(data?.defensor || nombre);
       const opcionCreada = data?.opcion;
+      const opcionNormalizada = {
+        id: String(opcionCreada?.id || cedula),
+        nombre: String(opcionCreada?.nombre || creado),
+      };
 
-      if (opcionCreada?.id) {
-        setNuevoDefensorId(String(opcionCreada.id));
-        setNuevoDefensorInput(String(opcionCreada?.nombre || creado));
-      } else {
-        const hit = defensores.find((item) => normalizeDefensorNombre(item?.nombre) === creado);
-        if (hit?.id) {
-          setNuevoDefensorId(String(hit.id));
-          setNuevoDefensorInput(String(hit.nombre || creado));
-        }
-      }
+      setDefensores((prev) => {
+        const sinDuplicado = prev.filter(
+          (item) =>
+            String(item?.id || '') !== opcionNormalizada.id &&
+            normalizeDefensorNombre(item?.nombre) !== normalizeDefensorNombre(opcionNormalizada.nombre)
+        );
+        return [...sinDuplicado, opcionNormalizada];
+      });
+      setNuevoDefensorId(opcionNormalizada.id);
+      setNuevoDefensorInput(opcionNormalizada.nombre);
       setCrearDefensorCedula('');
       setCrearDefensorNombre('');
       setCrearDefensorSuccess(
@@ -604,6 +624,10 @@ function AsignacionDefensores({ isAdmin = false }) {
       );
       if (!isQueuedResponse(data)) {
         await cargarDefensoresActuales();
+        setDefensores((prev) => {
+          if (prev.some((item) => String(item?.id || '') === opcionNormalizada.id)) return prev;
+          return [...prev, opcionNormalizada];
+        });
         window.dispatchEvent(new CustomEvent('aurora:defensores-updated'));
       }
     } catch (e) {
@@ -625,6 +649,10 @@ function AsignacionDefensores({ isAdmin = false }) {
     setNuevoDefensorInput('');
 
     if (nextTab === 'usuariosPag') return;
+
+    if (nextTab === 'asignacion' || nextTab === 'reasignacion') {
+      cargarDefensoresActuales();
+    }
 
     if (nextTab === 'asignacion') {
       setFDefensorActual('');

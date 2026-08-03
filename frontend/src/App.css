@@ -2368,6 +2368,15 @@ input[list]{
   background-color: var(--primary-blue-soft);
 }
 
+.row-fuera-prision{
+  background-color: #fff5f5;
+  color: #6f2730;
+}
+
+.row-fuera-prision:hover{
+  background-color: #ffe8e8;
+}
+
 /* =========================================================
    TABLA USUARIOS ASIGNADOS
 ========================================================= */
@@ -2756,6 +2765,39 @@ input[list]{
   background: #e8f7ec;
   border-color: #9fd9ae;
   color: #115b26;
+}
+
+.estado--en-prision{
+  background: #e8f7ec;
+  border-color: #9fd9ae;
+  color: #115b26;
+}
+
+.estado--fuera-prision{
+  background: #fdebec;
+  border-color: #e8a3aa;
+  color: #8b1e2d;
+}
+
+.ppl-inactive-alert{
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border: 2px solid #b42335;
+  border-radius: 8px;
+  background: #fdebec;
+  color: #711927;
+  font-weight: 800;
+}
+
+.readonly-form-fieldset{
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.readonly-form-fieldset:disabled{
+  opacity: 0.78;
 }
 
 .estado--amarillo{

@@ -16,6 +16,7 @@ import { AURORA_FIELD_IDS } from '../config/auroraFieldIds.ts';
 import { reportError } from '../utils/reportError.js';
 import { getLabelAccionCaso } from '../utils/actuacionesLabels.js';
 import { shouldBlockNuevaActuacion } from '../utils/actuacionesValidation.js';
+import { isSituacionActiva } from '../utils/pplStatus.js';
 
 const OPCIONES_TIPO_IDENTIFICACION = ['CC', 'CE', 'PASAPORTE', 'OTRA'];
 const OPCIONES_SI_NO = ['Sí', 'No'];
@@ -1670,6 +1671,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   }, [defensoresCatalogo]);
 
   const flow = useMemo(() => (registro ? computeFlow(registro, tipoRegistro) : null), [registro, tipoRegistro]);
+  const personaFueraPrision = useMemo(() => Boolean(registro) && !isSituacionActiva(registro), [registro]);
   const tieneInfoDesdePregunta29 = useCallback((source) => {
     if (!source || typeof source !== 'object') return false;
     return CAMPOS_AURORA_DESDE_P29.some((alias) =>
@@ -1809,6 +1811,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   }
 
   function handleChange(name, value) {
+    if (personaFueraPrision) return;
     setRegistro((prev) => {
       const base = { ...unwrapRegistro(prev) };
       if (isDefensorFieldName(name)) {
@@ -1912,7 +1915,11 @@ export default function FormularioAtencion({ numeroInicial }) {
     triggerFormularioAutoScroll();
   }
 
-  function handleIniciarPrimeraActuacion() {
+  function handleIniciarPrimeraActuacion(options = {}) {
+    if (personaFueraPrision && !options?.soloConsulta) {
+      setError('La persona figura fuera de prisión. El registro está disponible solo para consulta.');
+      return;
+    }
     if (!registro || !getDocumentoActual(registro)) {
       setError('Debe cargar un usuario antes de actualizar la actuacion.');
       return;
@@ -1927,6 +1934,10 @@ export default function FormularioAtencion({ numeroInicial }) {
   }
 
   async function handleCrearNuevaActuacion(options = {}) {
+    if (personaFueraPrision) {
+      setError('La persona figura fuera de prisión. No se pueden crear nuevas actuaciones.');
+      return;
+    }
     if (!registro) {
       setError('Debe cargar un usuario antes de crear una nueva actuacion.');
       return;
@@ -3186,6 +3197,10 @@ export default function FormularioAtencion({ numeroInicial }) {
   }
 
   async function handleGuardar() {
+    if (personaFueraPrision) {
+      setError('La persona figura fuera de prisión. El registro histórico no se puede editar.');
+      return;
+    }
     const doc = getDocumentoActual(registro);
     if (!doc) {
       setError('Debe cargar un usuario antes de guardar.');
@@ -3500,6 +3515,11 @@ export default function FormularioAtencion({ numeroInicial }) {
 
       {!cargando && registro && (
         <>
+          {personaFueraPrision && (
+            <div className="ppl-inactive-alert" role="alert" style={{ marginTop: '1rem' }}>
+              FUERA DE PRISIÓN — registro histórico disponible solo para consulta. No se permiten modificaciones ni nuevas actuaciones.
+            </div>
+          )}
           <div className="card" style={{ marginTop: '1rem' }}>
             <HistorialActuacionesPPL
               registro={registro}
@@ -3510,6 +3530,7 @@ export default function FormularioAtencion({ numeroInicial }) {
               refreshToken={historialRefreshToken}
               actuacionActivaId={actuacionActivaId}
               creandoActuacion={creandoActuacion}
+              soloLectura={personaFueraPrision}
               onActionLabelChange={handleActionLabelChange}
             />
           </div>
@@ -3522,6 +3543,12 @@ export default function FormularioAtencion({ numeroInicial }) {
 
           {mostrarFormularioDetalle && (
           <div ref={formularioDetalleRef} className="card" style={{ marginTop: '1rem' }}>
+            {personaFueraPrision && (
+              <div className="ppl-inactive-alert" role="status">
+                Estado de reclusión: FUERA DE PRISIÓN. Esta información no se puede editar.
+              </div>
+            )}
+            <fieldset className="readonly-form-fieldset" disabled={personaFueraPrision}>
             <h3 className="block-title">{displayText('BLOQUE 1. Información de la persona privada de la libertad')}</h3>
 
           <div className="grid-2">
@@ -4585,12 +4612,14 @@ export default function FormularioAtencion({ numeroInicial }) {
             </div>
           )}
 
+          </fieldset>
+
           <div className="actions-center"> 
-            <button className="save-button" type="button" onClick={handleGuardar}>
-              GUARDAR ENTREVISTA
+            <button className="save-button" type="button" onClick={handleGuardar} disabled={personaFueraPrision}>
+              {personaFueraPrision ? 'SOLO LECTURA' : 'GUARDAR ENTREVISTA'}
             </button>
 
-            {guardadoOk && (
+            {(guardadoOk || personaFueraPrision) && (
               <button className="save-button" type="button" onClick={handleConsultarOtro}>
                 CONSULTAR OTRO PPL
               </button>

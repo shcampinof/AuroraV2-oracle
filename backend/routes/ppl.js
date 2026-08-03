@@ -3,6 +3,15 @@ const consolidado = require('../db/oracleConsolidado.repo');
 const pagRepo = require('../repositories/oracle/pagRepository');
 const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const personaRepo = require('../repositories/oracle/personaRepository');
+const { ESTADOS_CASO, getEstadoEtiqueta, resolveEstadoCodigo } = require('../domain/estadoCaso');
+const {
+  catalogVersions,
+  listAcciones,
+  resolveAccionPendiente,
+  resolveCentro,
+} = require('../domain/catalogosHomologacion');
+const { normalizeComparisonText } = require('../utils/textNormalization');
+const { buildHomologationAudit } = require('../services/homologationAuditService');
 
 const router = express.Router();
 const { requirePag } = require('../middleware/roles');
@@ -13,6 +22,7 @@ const DEFAULT_CONDENADOS_LIMIT = 1000;
 const DEFAULT_CONDENADOS_FILTERED_LIMIT = 200;
 const MAX_CONDENADOS_FILTERED_LIMIT = 200;
 const CONDENADOS_COLUMNS = [
+  'estadoReclusion',
   'numeroIdentificacion',
   'nombreUsuario',
   'lugarReclusion',
@@ -30,6 +40,7 @@ const pplListCache = new Map();
 const condenadosListCache = new Map();
 const condenadosListInFlight = new Map();
 const condenadosFilterOptionsCache = new Map();
+const homologationAuditCache = new Map();
 
 function boundedCacheSet(map, key, value, maxEntries = MAX_ROUTE_CACHE_VARIANTS) {
   if (map.size >= maxEntries && !map.has(key)) {
@@ -60,14 +71,7 @@ function parseFilteredLimit(rawLimit, fallback = DEFAULT_CONDENADOS_FILTERED_LIM
   return Math.min(parsed, MAX_CONDENADOS_FILTERED_LIMIT);
 }
 
-function normalizeText(value) {
-  return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-}
+const normalizeText = normalizeComparisonText;
 
 function normalizeDocumento(value) {
   return String(value ?? '').replace(/\D+/g, '');
@@ -463,18 +467,39 @@ function compactFilledFields(source) {
 }
 
 function mapCondenadoRow(row) {
+  const situacionActiva = Number(row?.S_ACTIVO) === 1;
+  const accionFueraPrision = 'Persona fuera de prisión — caso cerrado';
+  const estadoCodigoCalculado = situacionActiva
+    ? resolveEstadoCodigo(row?.ESTADO_CODIGO || resolveEstadoLabelFromRawRow(row)) || 'ANALIZAR_CASO'
+    : 'CASO_CERRADO';
+  const estadoEtiquetaCalculada = getEstadoEtiqueta(estadoCodigoCalculado) || 'Analizar el caso';
+  const lugarOriginal = getValueWithFallback(
+    row,
+    'Nombre del lugar de privacion de la libertad',
+    'ESTABLECIMIENTO',
+    ''
+  );
+  const centroReclusion = resolveCentro(lugarOriginal);
+  const accionOriginal = situacionActiva
+    ? getValueWithFallback(row, 'Acción a realizar', 'Accion a realizar', '')
+    : '';
+  const accionPendiente = resolveAccionPendiente({
+    estadoCodigo: estadoCodigoCalculado,
+    valorOriginal: accionOriginal,
+  });
   const categoriaPotencialSubrogado =
     String(row?.CATEGORIA_POTENCIAL_SUBROGADO || '').trim() || computeCategoriaPotencialSubrogado(row);
   const esPotencialSubrogado = categoriaPotencialSubrogado !== POTENCIAL_SUBROGADO_CATEGORY.NO_REUNE;
   return {
+    situacionActiva,
+    estadoReclusion: situacionActiva ? 'EN PRISIÓN' : 'FUERA DE PRISIÓN',
     numeroIdentificacion: getValueWithFallback(row, 'Numero de identificacion', 'numero', ''),
     nombreUsuario: getValueWithFallback(row, 'Nombre', 'Nombre usuario', ''),
-    lugarReclusion: getValueWithFallback(
-      row,
-      'Nombre del lugar de privacion de la libertad',
-      'ESTABLECIMIENTO',
-      ''
-    ),
+    lugarReclusion: centroReclusion?.label || lugarOriginal,
+    lugarReclusionOriginal: lugarOriginal,
+    centroId: centroReclusion?.id || '',
+    centroHomologado: centroReclusion?.homologado === true,
+    centroReclusion,
     departamentoLugarReclusion: getValueWithFallback(
       row,
       'Departamento del lugar de privacion de la libertad',
@@ -503,26 +528,44 @@ function mapCondenadoRow(row) {
       'Defensor',
       ''
     ),
-    accionImpulsar: getValueWithFallback(row, 'Acción a realizar', 'Accion a realizar', ''),
+    defensorId: String(row?.DEFENSOR_ID || '').trim(),
+    estadoCodigo: estadoCodigoCalculado,
+    estadoEtiqueta: estadoEtiquetaCalculada,
+    accionImpulsar: accionPendiente?.etiqueta || accionOriginal,
+    accionPendiente,
     categoriaPotencialSubrogado,
     esPotencialSubrogado,
     // Los campos vacios no aportan a las reglas de estado y aumentaban
     // considerablemente el JSON enviado por cada fila.
-    estadoSource: compactFilledFields(buildEstadoSource(row)),
-    'Estado del caso': resolveEstadoLabelFromRawRow(row),
+    estadoSource: compactFilledFields({
+      ...buildEstadoSource(row),
+      'Estado del caso': estadoEtiquetaCalculada,
+      ...(situacionActiva
+        ? {}
+        : {
+            'Estado del trámite': accionFueraPrision,
+            'Acción a realizar': accionFueraPrision,
+          }),
+    }),
+    'Estado del caso': estadoEtiquetaCalculada,
   };
 }
 
 function getCondenadosFiltersFromQuery(query) {
   return {
     defensor: String(query?.defensor ?? '').trim(),
+    defensorId: String(query?.defensorId ?? '').trim(),
     nombre: String(query?.nombre ?? '').trim(),
     documento: String(query?.documento ?? '').trim(),
     lugar: String(query?.lugar ?? '').trim(),
+    centroId: String(query?.centroId ?? '').trim(),
     departamento: String(query?.departamento ?? '').trim(),
     municipio: String(query?.municipio ?? '').trim(),
     estadoAccion: String(query?.estadoAccion ?? '').trim(),
+    estadoCodigo: String(query?.estadoCodigo ?? '').trim(),
     estado: String(query?.estado ?? '').trim(),
+    accionCodigo: String(query?.accionCodigo ?? '').trim(),
+    accion: String(query?.accion ?? '').trim(),
     potencialSubrogado: String(query?.potencialSubrogado ?? '').trim(),
   };
 }
@@ -733,6 +776,8 @@ router.get('/condenados/filter-options', async (req, res) => {
     departamento: filters.departamento,
     municipio: filters.municipio,
     defensor: filters.defensor,
+    defensorId: filters.defensorId,
+    centroId: filters.centroId,
   })}`;
   const cached = getTimedCache(condenadosFilterOptionsCache, cacheKey);
   if (cached) return res.json(cached);
@@ -743,11 +788,39 @@ router.get('/condenados/filter-options', async (req, res) => {
       filters,
       maxPerField: 2000,
     });
+    const centrosById = new Map();
+    for (const rawValue of options.lugares || []) {
+      const centro = resolveCentro(rawValue);
+      if (!centro) continue;
+      const previous = centrosById.get(centro.id);
+      if (previous) {
+        previous.valoresOriginales.push(centro.valorOriginal);
+        continue;
+      }
+      centrosById.set(centro.id, {
+        id: centro.id,
+        label: centro.label,
+        homologado: centro.homologado,
+        valoresOriginales: [centro.valorOriginal],
+      });
+    }
+    const centros = Array.from(centrosById.values()).sort((a, b) => a.label.localeCompare(b.label));
+    const centrosHomologados = centros.filter((item) => item.homologado).length;
+    const centrosNoHomologados = centros.length - centrosHomologados;
     const payload = {
       ...options,
+      estados: ESTADOS_CASO,
+      acciones: listAcciones(),
+      centros,
       meta: {
         tipo,
         cacheTtlMs: FILTER_OPTIONS_CACHE_TTL_MS,
+        catalogVersions,
+        homologacionCentros: {
+          total: centros.length,
+          homologados: centrosHomologados,
+          noHomologados: centrosNoHomologados,
+        },
       },
     };
     boundedCacheSet(condenadosFilterOptionsCache, cacheKey, {
@@ -758,6 +831,37 @@ router.get('/condenados/filter-options', async (req, res) => {
   } catch (err) {
     console.error('[ppl:condenados:filter-options] Error Oracle:', err?.message || err);
     return res.status(500).json({ message: 'Error consultando opciones de filtros.' });
+  }
+});
+
+router.get('/condenados/homologation-audit', requirePag, async (req, res) => {
+  const requestedTipo = String(req.query.tipo || 'all').trim().toLowerCase();
+  const tipo = ['all', 'condenado', 'sindicado'].includes(requestedTipo) ? requestedTipo : 'all';
+  const pendingLimit = Math.max(1, Math.min(1000, Number.parseInt(String(req.query.limit || '100'), 10) || 100));
+  const version = Number(consolidado.getDataVersion?.() || 0);
+  const cacheKey = `${version}|${tipo}|${pendingLimit}|${JSON.stringify(catalogVersions)}`;
+  const cached = getTimedCache(homologationAuditCache, cacheKey);
+  if (cached) {
+    res.setHeader('X-Aurora-Cache', 'HIT');
+    return res.json(cached);
+  }
+
+  try {
+    const values = await personaRepo.listCondenadosHomologationValues({ tipo, maxPerField: 5000 });
+    const report = buildHomologationAudit({
+      centerRows: values.centros,
+      actionRows: values.acciones,
+      pendingLimit,
+    });
+    boundedCacheSet(homologationAuditCache, cacheKey, {
+      createdAt: Date.now(),
+      value: report,
+    });
+    res.setHeader('X-Aurora-Cache', 'MISS');
+    return res.json(report);
+  } catch (err) {
+    console.error('[ppl:condenados:homologation-audit] Error Oracle:', err?.message || err);
+    return res.status(500).json({ message: 'Error generando auditoría de homologación.' });
   }
 });
 
@@ -811,6 +915,11 @@ router.get('/condenados', async (req, res) => {
             totalMatched: Number(summary?.totalMatched || 0),
             totalMatchedExact: summary?.totalMatchedExact !== false,
             returned: rows.length,
+            homologacion: {
+              centrosNoHomologados: rows.filter((row) => row?.centroReclusion?.homologado === false).length,
+              accionesNoHomologadas: rows.filter((row) => row?.accionPendiente?.homologada === false).length,
+              catalogVersions,
+            },
             limitApplied: effectiveLimit,
             truncated:
               typeof summary?.truncated === 'boolean'
@@ -961,6 +1070,9 @@ router.post('/:documento/actuaciones', async (req, res) => {
     });
   } catch (err) {
     console.error('[ppl:actuaciones:create] Error Oracle:', err?.message || err);
+    if (err?.code === 'PPL_SITUACION_INACTIVA') {
+      return res.status(409).json({ code: err.code, message: err.message });
+    }
     return res.status(500).json({ message: 'Error creando actuación.' });
   }
 });
@@ -999,6 +1111,9 @@ router.put('/:documento', async (req, res) => {
     return res.status(404).json({ message: 'No encontrado' });
   } catch (err) {
     console.error('[ppl:update] Error Oracle:', err?.message || err);
+    if (err?.code === 'PPL_SITUACION_INACTIVA') {
+      return res.status(409).json({ code: err.code, message: err.message });
+    }
     return res.status(500).json({ message: 'Error actualizando registro.' });
   }
 });
@@ -1034,5 +1149,12 @@ async function warmupCondenadosIndex() {
 }
 
 router.warmupCondenadosIndex = warmupCondenadosIndex;
+router.condenadosContract = Object.freeze({
+  columns: [...CONDENADOS_COLUMNS],
+  hasFilters: hasCondenadosFilters,
+  mapRow: mapCondenadoRow,
+  matchesFilters: matchesCondenadoFilters,
+  parseFilters: getCondenadosFiltersFromQuery,
+});
 
 module.exports = router;

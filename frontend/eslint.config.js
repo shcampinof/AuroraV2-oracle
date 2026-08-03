@@ -24,6 +24,11 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Aurora no usa React Compiler. Estos diagnósticos nuevos de Hooks 7
+      // marcan sincronizaciones y cachés locales deliberadas del código actual.
+      'react-hooks/immutability': 'off',
+      'react-hooks/refs': 'off',
+      'react-hooks/set-state-in-effect': 'off',
     },
   },
 ])

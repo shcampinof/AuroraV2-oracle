@@ -221,7 +221,7 @@ export async function getPplByDocumento(documento) {
   return readJsonOrThrow(res, 'Registro no encontrado'); // { tipo, registro }
 }
 
-// UPDATE (mock unificado)
+// ACTUALIZACIÓN UNIFICADA
 // PUT /api/ppl/:documento
 export async function updatePpl(documento, payload) {
   const res = await fetchJson(`${API_BASE}/ppl/${encodeURIComponent(documento)}`, {
@@ -284,7 +284,7 @@ export async function getFormatoDownloadTarget(id) {
 // =====================
 // Asignacion de defensores (condenados)
 // =====================
-function getCondenadosRequest(options = 1000) {
+export function getCondenadosRequest(options = 1000) {
   const isLegacyNumeric = typeof options === 'number' || typeof options === 'string';
   const source = isLegacyNumeric ? { limit: options } : options && typeof options === 'object' ? options : {};
   const rawTipo = String(source?.tipo || '').trim().toLowerCase();
@@ -305,13 +305,18 @@ function getCondenadosRequest(options = 1000) {
 
   const filterKeys = [
     'defensor',
+    'defensorId',
     'nombre',
     'documento',
     'lugar',
+    'centroId',
     'departamento',
     'municipio',
     'estadoAccion',
+    'estadoCodigo',
     'estado',
+    'accionCodigo',
+    'accion',
     'potencialSubrogado',
   ];
   let hasFilters = false;
@@ -351,7 +356,7 @@ export async function getCondenados(options = 1000) {
   );
 }
 
-function getCondenadosFilterOptionsRequest(options = {}) {
+export function getCondenadosFilterOptionsRequest(options = {}) {
   const source = options && typeof options === 'object' ? options : {};
   const rawTipo = String(source?.tipo || '').trim().toLowerCase();
   const safeTipo =
@@ -361,7 +366,7 @@ function getCondenadosFilterOptionsRequest(options = {}) {
   const params = new URLSearchParams();
   params.set('tipo', safeTipo);
 
-  ['departamento', 'municipio', 'defensor'].forEach((key) => {
+  ['departamento', 'municipio', 'defensor', 'defensorId', 'centroId'].forEach((key) => {
     const value = String(filters?.[key] ?? '').trim();
     if (value) params.set(key, value);
   });
