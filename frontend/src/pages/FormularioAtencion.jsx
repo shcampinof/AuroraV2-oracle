@@ -67,6 +67,7 @@ const OPCIONES_ENFOQUE_ETNICO = [
   'Palenquero',
   'Gitano (a) o Rrom',
   'Indígena',
+  'Población LGTBI',
 ];
 const OPCIONES_LUGAR_PRIVACION = ['CDT', 'ERON'];
 const OPCIONES_FASE_TRATAMIENTO = [
@@ -305,7 +306,7 @@ const EXPORT_FIELDS_BLOQUE_1 = [
   { label: '3. Número de identificación', key: 'Número de identificación', aliases: ['Numero de identificacion'] },
   { label: '4. Situación Jurídica', key: 'Situación Jurídica' },
   { label: '5. Género', key: 'Género' },
-  { label: '6. Enfoque Étnico/Racial/Cultural', key: 'Enfoque Étnico/Racial/Cultural' },
+  { label: '6. Enfoque diferencial', key: 'Enfoque Étnico/Racial/Cultural' },
   { label: '7. Nacionalidad', key: 'Nacionalidad' },
   { label: '8. Fecha de nacimiento', key: 'Fecha de nacimiento', isDate: true },
   { label: '9. Edad', key: 'Edad' },
@@ -3639,7 +3640,7 @@ export default function FormularioAtencion({ numeroInicial }) {
             />
 
             <Campo
-              label="6. Enfoque Étnico/Racial/Cultural"
+              label="6. Enfoque diferencial"
               name="Enfoque Étnico/Racial/Cultural"
               type="select"
               value={registro['Enfoque Étnico/Racial/Cultural']}
