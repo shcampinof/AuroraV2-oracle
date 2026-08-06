@@ -1,10 +1,29 @@
 const assert = require('assert');
 const {
+  homologateIdentityOptions,
+  homologateTextOptions,
   normalizeComparisonText,
   normalizeSearchText,
   normalizeWhitespace,
   repairKnownMojibake,
 } = require('../utils/textNormalization');
+
+assert.deepStrictEqual(
+  homologateTextOptions(['ATLANTICO', ' ATLÁNTICO ', 'BOLIVAR', 'BOLÍVAR']),
+  ['ATLÁNTICO', 'BOLÍVAR']
+);
+
+assert.deepStrictEqual(
+  homologateIdentityOptions([
+    { id: '123', label: 'JOSE PEREZ' },
+    { id: '123', label: 'JOSÉ PÉREZ' },
+    { id: '456', label: 'JOSÉ PÉREZ' },
+  ]),
+  [
+    { id: '123', label: 'JOSÉ PÉREZ' },
+    { id: '456', label: 'JOSÉ PÉREZ' },
+  ]
+);
 const { getEstadoEtiqueta, resolveEstadoCodigo } = require('../domain/estadoCaso');
 
 assert.strictEqual(normalizeSearchText('  Cpams\u00a0 El   Barné '), 'CPAMS EL BARNE');

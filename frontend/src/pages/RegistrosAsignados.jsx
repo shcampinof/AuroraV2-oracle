@@ -176,7 +176,7 @@ function distinctSorted(rows, getter) {
   (rows || []).forEach((row) => {
     const val = String(getter(row) || '').trim();
     if (!val) return;
-    const key = val.toLowerCase();
+    const key = normalize(val);
     if (!map.has(key)) map.set(key, val);
   });
   return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
@@ -538,7 +538,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
         [...(Array.isArray(prev) ? prev : []), ...next.defensores].forEach((value) => {
           const text = String(value || '').trim();
           if (!text) return;
-          const key = text.toLowerCase();
+          const key = normalize(text);
           if (!merged.has(key)) merged.set(key, text);
         });
         return Array.from(merged.values()).sort((a, b) => a.localeCompare(b));
@@ -559,13 +559,13 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   useEffect(() => {
     setDefensores((prev) => {
       const base = Array.isArray(prev) ? prev : [];
-      const set = new Set(base.map((d) => String(d || '').trim()).filter(Boolean).map((d) => d.toLowerCase()));
+      const set = new Set(base.map((d) => normalize(d)).filter(Boolean));
       const merged = [...base];
 
       rows.forEach((r) => {
         const val = String(getDefensorValue(r) || '').trim();
         if (!val) return;
-        const key = val.toLowerCase();
+        const key = normalize(val);
         if (set.has(key)) return;
         set.add(key);
         merged.push(val);

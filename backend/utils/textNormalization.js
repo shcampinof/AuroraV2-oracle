@@ -40,7 +40,65 @@ function normalizeComparisonText(value) {
   return normalizeSearchText(value).toLowerCase();
 }
 
+function displayTextScore(value) {
+  const text = normalizeWhitespace(value);
+  const repaired = repairKnownMojibake(text);
+  const hasMojibake = text !== repaired;
+  const diacritics = (repaired.normalize('NFD').match(/[\u0300-\u036f]/g) || []).length;
+  return (hasMojibake ? -1000 : 0) + diacritics;
+}
+
+function choosePreferredDisplayText(current, candidate) {
+  const currentText = normalizeWhitespace(repairKnownMojibake(current));
+  const candidateText = normalizeWhitespace(repairKnownMojibake(candidate));
+  if (!currentText) return candidateText;
+  if (!candidateText) return currentText;
+
+  const scoreDifference = displayTextScore(candidate) - displayTextScore(current);
+  if (scoreDifference !== 0) return scoreDifference > 0 ? candidateText : currentText;
+  return candidateText.localeCompare(currentText, 'es', { sensitivity: 'variant' }) < 0
+    ? candidateText
+    : currentText;
+}
+
+function homologateTextOptions(values) {
+  const byNormalizedValue = new Map();
+  for (const rawValue of Array.isArray(values) ? values : []) {
+    const displayValue = normalizeWhitespace(repairKnownMojibake(rawValue));
+    const key = normalizeSearchText(displayValue);
+    if (!key) continue;
+    byNormalizedValue.set(
+      key,
+      choosePreferredDisplayText(byNormalizedValue.get(key), displayValue)
+    );
+  }
+  return Array.from(byNormalizedValue.values()).sort((a, b) =>
+    a.localeCompare(b, 'es', { sensitivity: 'base' })
+  );
+}
+
+function homologateIdentityOptions(options) {
+  const byIdentity = new Map();
+  for (const rawOption of Array.isArray(options) ? options : []) {
+    const id = normalizeWhitespace(rawOption?.id);
+    const label = normalizeWhitespace(repairKnownMojibake(rawOption?.label));
+    if (!label) continue;
+    const identityKey = id || `LABEL:${normalizeSearchText(label)}`;
+    const previous = byIdentity.get(identityKey);
+    byIdentity.set(identityKey, {
+      id,
+      label: choosePreferredDisplayText(previous?.label, label),
+    });
+  }
+  return Array.from(byIdentity.values()).sort((a, b) =>
+    a.label.localeCompare(b.label, 'es', { sensitivity: 'base' })
+  );
+}
+
 module.exports = {
+  choosePreferredDisplayText,
+  homologateIdentityOptions,
+  homologateTextOptions,
   normalizeComparisonText,
   normalizeSearchText,
   normalizeWhitespace,

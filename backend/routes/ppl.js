@@ -10,7 +10,11 @@ const {
   resolveAccionPendiente,
   resolveCentro,
 } = require('../domain/catalogosHomologacion');
-const { normalizeComparisonText } = require('../utils/textNormalization');
+const {
+  homologateIdentityOptions,
+  homologateTextOptions,
+  normalizeComparisonText,
+} = require('../utils/textNormalization');
 const { buildHomologationAudit } = require('../services/homologationAuditService');
 
 const router = express.Router();
@@ -818,8 +822,21 @@ router.get('/condenados/filter-options', async (req, res) => {
       filters,
       maxPerField: 2000,
     });
+    const defensorOptions = homologateIdentityOptions(options.defensorOptions);
+    const departamentos = homologateTextOptions(options.departamentos);
+    const municipios = homologateTextOptions(options.municipios);
+    const lugares = homologateTextOptions(options.lugares);
+    const defensores = homologateTextOptions(defensorOptions.map((item) => item.label));
+    const homologatedOptions = {
+      ...options,
+      departamentos,
+      municipios,
+      lugares,
+      defensorOptions,
+      defensores,
+    };
     const centrosById = new Map();
-    for (const rawValue of options.lugares || []) {
+    for (const rawValue of lugares) {
       const centro = resolveCentro(rawValue);
       if (!centro) continue;
       const previous = centrosById.get(centro.id);
@@ -838,7 +855,7 @@ router.get('/condenados/filter-options', async (req, res) => {
     const centrosHomologados = centros.filter((item) => item.homologado).length;
     const centrosNoHomologados = centros.length - centrosHomologados;
     const payload = {
-      ...options,
+      ...homologatedOptions,
       estados: ESTADOS_CASO,
       acciones: listAcciones(),
       centros,
@@ -850,6 +867,12 @@ router.get('/condenados/filter-options', async (req, res) => {
           total: centros.length,
           homologados: centrosHomologados,
           noHomologados: centrosNoHomologados,
+        },
+        homologacionFiltros: {
+          departamentos: { originales: options.departamentos.length, visibles: departamentos.length },
+          municipios: { originales: options.municipios.length, visibles: municipios.length },
+          lugares: { originales: options.lugares.length, visibles: centros.length },
+          defensores: { originales: options.defensorOptions.length, visibles: defensores.length },
         },
       },
     };
