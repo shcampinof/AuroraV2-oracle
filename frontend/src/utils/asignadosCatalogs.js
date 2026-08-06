@@ -9,6 +9,31 @@ export const ESTADOS_TRAMITE_OPTIONS = [
   { value: 'CASO_CERRADO', label: 'Caso cerrado' },
 ];
 
+// Catálogo visible del filtro. Los códigos de estado siguen siendo internos:
+// aquí se expresa la tarea que debe impulsar el equipo jurídico.
+export const ACCIONES_IMPULSAR_OPTIONS = [
+  { value: 'ANALIZAR_CASO', label: 'Analizar el caso', estadoCodigos: ['ANALIZAR_CASO'] },
+  { value: 'REALIZAR_ENTREVISTA', label: 'Entrevistar al usuario', estadoCodigos: ['ENTREVISTAR_USUARIO'] },
+  { value: 'PRESENTAR_SOLICITUD', label: 'Presentar solicitud', estadoCodigos: ['PRESENTAR_SOLICITUD'] },
+  {
+    value: 'HACER_SEGUIMIENTO_AUDIENCIA',
+    label: 'Hacer seguimiento a la audiencia',
+    estadoCodigos: ['PENDIENTE_AUDIENCIA'],
+  },
+  {
+    value: 'HACER_SEGUIMIENTO_DECISION_AUDIENCIA',
+    label: 'Hacer seguimiento a la decisión de audiencia',
+    estadoCodigos: ['PENDIENTE_DECISION_AUDIENCIA'],
+  },
+  {
+    value: 'HACER_SEGUIMIENTO_DECISION',
+    label: 'Hacer seguimiento a la decisión',
+    estadoCodigos: ['PENDIENTE_DECISION'],
+  },
+  { value: 'PRESENTAR_RECURSO', label: 'Presentar recurso', estadoCodigos: ['PRESENTAR_RECURSO'] },
+  { value: 'SIN_ACCION_PENDIENTE', label: 'Sin acción pendiente', estadoCodigos: ['CASO_CERRADO'] },
+];
+
 function normalizeCatalogText(value) {
   return String(value ?? '')
     .normalize('NFD')
@@ -56,7 +81,7 @@ export function normalizeFilterOptions(data) {
         }))
         .filter((item) => item.value && item.label)
     : ESTADOS_TRAMITE_OPTIONS;
-  const acciones = Array.isArray(data?.acciones)
+  const accionesNormalizadas = Array.isArray(data?.acciones)
     ? data.acciones
         .map((item) => ({
           value: String(item?.codigo ?? item?.value ?? '').trim(),
@@ -67,6 +92,7 @@ export function normalizeFilterOptions(data) {
         }))
         .filter((item) => item.value && item.label)
     : [];
+  const acciones = accionesNormalizadas.length ? accionesNormalizadas : ACCIONES_IMPULSAR_OPTIONS;
   const centros = Array.isArray(data?.centros)
     ? data.centros
         .map((item) => ({

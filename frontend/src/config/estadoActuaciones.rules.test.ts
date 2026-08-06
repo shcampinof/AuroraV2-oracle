@@ -52,6 +52,16 @@ describe('estadoActuaciones.rules', () => {
     expect(estado.etiqueta).toBe('Entrevistar al usuario');
   });
 
+  it('ESTADO.FLUJO.1 - la situación jurídica actualizada prevalece sobre la situación histórica', () => {
+    const estado = obtenerEstadoActuacion({
+      'Situación Jurídica': 'Sindicado',
+      'Situación Jurídica actualizada (de conformidad con la rama judicial)': 'Condenado',
+      ...buildBloque3Base(),
+    });
+
+    expect(estado.etiqueta).toBe('Entrevistar al usuario');
+  });
+
   it('ESTADO.SOLICITUD.1 - etiqueta Presentar solicitud cuando bloque base esta completo y falta radicacion', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),

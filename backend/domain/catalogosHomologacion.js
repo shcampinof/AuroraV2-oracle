@@ -3,6 +3,8 @@ const centrosCatalog = require('../catalogs/centros-reclusion.v1.json');
 const accionesCatalog = require('../catalogs/acciones-pendientes.v1.json');
 const { normalizeSearchText, normalizeWhitespace } = require('../utils/textNormalization');
 
+const OTROS_LUGARES_ACTIVOS_ID = 'CATEGORIA_OTROS_LUGARES_ACTIVOS';
+
 function validateCatalog(catalog, name) {
   if (Number(catalog?.schemaVersion) !== 1 || !Array.isArray(catalog?.items)) {
     throw new Error(`Catálogo inválido: ${name}`);
@@ -99,6 +101,12 @@ function getCentroNormalizedAliases(id) {
   return item ? Array.from(new Set(item.aliases.map(normalizeSearchText))) : [];
 }
 
+function getAllCentroNormalizedAliases() {
+  return Array.from(new Set(
+    Array.from(centrosIndex.byId.values()).flatMap((item) => item.aliases.map(normalizeSearchText))
+  ));
+}
+
 function getAccionByCodigo(id) {
   return accionesIndex.byId.get(String(id || '').trim()) || null;
 }
@@ -174,10 +182,12 @@ module.exports = {
   },
   getAccionByCodigo,
   getCentroById,
+  getAllCentroNormalizedAliases,
   getCentroNormalizedAliases,
   listAcciones,
   listCentros,
   resolveAccionPendiente,
   resolveAccionCodigo,
   resolveCentro,
+  OTROS_LUGARES_ACTIVOS_ID,
 };

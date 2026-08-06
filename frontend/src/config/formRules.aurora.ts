@@ -377,7 +377,9 @@ function hasBloque5Data(record: FormRecord): boolean {
 function decisionUsuarioPermiteContinuar(value: unknown): boolean {
   const v = normalize(value);
   if (!v) return false;
-  return v.includes('desea que el defensor') && v.includes('avance con la solicitud');
+  // Las dos opciones afirmativas del formulario permiten continuar: tanto la
+  // solicitud impulsada directamente por el defensor como la suscrita por la PPL.
+  return v.startsWith('si');
 }
 
 function isNoConcedeSubrogadoPenal(value: unknown): boolean {
@@ -508,7 +510,7 @@ export const mandatoryByBlock: MandatoryByBlock = {
     },
   ],
   bloque4: [
-    { key: FIELD.q38, label: '38 Fecha de la entrevista', optional: true },
+    { key: FIELD.q38, label: '38 Fecha de la entrevista' },
     { key: FIELD.q39, label: '39 Decisión del usuario' },
     { key: FIELD.q40, label: '40 Actuación a adelantar' },
     { key: 'Requiere pruebas', label: '41 Requiere pruebas', optional: true },

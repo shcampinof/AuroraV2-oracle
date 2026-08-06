@@ -184,11 +184,30 @@ async function testNewActuacionAlwaysPersistsCanonicalAction() {
   }
 }
 
+function testUpdatedLegalSituationHasPriority() {
+  const service = require('../services/pplService');
+  assert.strictEqual(
+    service.computeTipo({
+      'Situación Jurídica': 'Sindicado',
+      'Situación Jurídica actualizada (de conformidad con la rama judicial)': 'Condenado',
+    }),
+    'condenado'
+  );
+  assert.strictEqual(
+    service.computeTipo({
+      'Situación Jurídica': 'Condenado',
+      'Situación Jurídica actualizada (de conformidad con la rama judicial)': 'Sindicado',
+    }),
+    'sindicado'
+  );
+}
+
 (async () => {
   await testRepositoryUsesDatabaseClock();
   await testGenericDefenderChangeCreatesFreshAssignment();
   await testInactivePrisonRecordRejectsUpdates();
   await testNewActuacionAlwaysPersistsCanonicalAction();
+  testUpdatedLegalSituationHasPriority();
   console.log('OK asignacion-safety.test');
 })().catch((error) => {
   console.error(error);

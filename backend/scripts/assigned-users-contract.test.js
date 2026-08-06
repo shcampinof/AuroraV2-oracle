@@ -40,7 +40,7 @@ function testEveryColumnHasMappedDataContract() {
   assert.equal(mapped.nombreUsuario, 'USUARIO PRUEBA');
   assert.equal(mapped.lugarReclusion, 'CPAMS EL BARNE');
   assert.equal(mapped.lugarReclusionOriginal, 'CPAMS EL BARNÉ');
-  assert.equal(mapped.centroId, 'CENTRO_CPAMS_EL_BARNE');
+  assert.equal(mapped.centroId, 'INPEC_150');
   assert.equal(mapped.centroHomologado, true);
   assert.equal(mapped.departamentoLugarReclusion, 'BOYACÁ');
   assert.equal(mapped.municipioLugarReclusion, 'CÓMBITA');
@@ -118,8 +118,20 @@ function testLegacyInMemoryFiltersRemainNormalized() {
   );
 }
 
+function testCenterCatalogPolicyDependsOnBusinessFlow() {
+  const rawPlaces = ['CPAMS EL BARNE', 'CPAMS EL BARNÉ', 'CDT MUNICIPAL DE PRUEBA'];
+  const condenados = contract.buildCentrosFiltro(rawPlaces, 'condenado');
+  const assignedUsers = contract.buildCentrosFiltro(rawPlaces, 'all');
+
+  assert.deepEqual(condenados.map((item) => item.id), ['INPEC_150']);
+  assert.equal(condenados[0].valoresOriginales.length, 2);
+  assert.equal(assignedUsers.length, 2);
+  assert(assignedUsers.some((item) => item.id.startsWith('LEGACY_CENTRO_')));
+}
+
 testEveryColumnHasMappedDataContract();
 testInactiveRowsCloseStateAndAction();
 testAllApiFiltersAreParsedAndTrimmed();
 testLegacyInMemoryFiltersRemainNormalized();
+testCenterCatalogPolicyDependsOnBusinessFlow();
 console.log('OK assigned-users-contract.test');

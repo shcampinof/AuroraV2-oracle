@@ -321,7 +321,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
-  it('AURORA.CIERRE.REGLA2.1 - cierra el caso cuando Q39 es distinta a "Desea que el defensor(a) público(a) avance con la solicitud"', () => {
+  it('AURORA.AVANCE.REGLA2.1 - la segunda opción afirmativa de Q39 también permite presentar la solicitud', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -330,7 +330,19 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Caso cerrado');
+    expect(result.derivedStatus).toBe('Presentar solicitud');
+  });
+
+  it('AURORA.B5.VISIBILIDAD.1 - no abre bloque 5 ni cambia prematuramente de etapa sin fecha de entrevista', () => {
+    const answers = {
+      ...buildBloque3Base(),
+      ...buildBloque4Base(),
+      [AURORA_FIELD_CATALOG.q38]: '',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.visibleBlocks).not.toContain('bloque5TramiteNormal');
+    expect(result.derivedStatus).toBe('Entrevistar al usuario');
   });
 
   it('AURORA.CIERRE.REGLA6.TRAMITE.1 - en trámite normal cierra el caso cuando Q52 está diligenciada', () => {

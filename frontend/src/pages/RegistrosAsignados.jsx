@@ -274,7 +274,7 @@ function InputField({
       if (opt && typeof opt === 'object') {
         return {
           value: String(opt.label ?? opt.value ?? '').trim(),
-          label: String(opt.homologado === false ? `${opt.label} (no homologado)` : opt.label ?? opt.value ?? '').trim(),
+          label: String(opt.label ?? opt.value ?? '').trim(),
           key: String(opt.id ?? opt.value ?? opt.label ?? '').trim(),
         };
       }
@@ -584,8 +584,10 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
   const lugaresDisponibles = useMemo(() => {
     if (filtroAdicionalSeleccionado !== 'lugar') return [];
-    return opcionesFiltro.centros.length ? opcionesFiltro.centros : distinctSorted(rows, getLugarPrivacionValue);
-  }, [opcionesFiltro.centros, rows, filtroAdicionalSeleccionado]);
+    // No reconstruir este catálogo desde las filas de resultados: estas pueden
+    // contener casos históricos/inactivos. El backend garantiza ACTIVO = 1.
+    return opcionesFiltro.centros;
+  }, [opcionesFiltro.centros, filtroAdicionalSeleccionado]);
   const departamentosDisponibles = useMemo(() => {
     if (filtroAdicionalSeleccionado !== 'departamento' && filtroAdicionalSeleccionado !== 'municipio') return [];
     return opcionesFiltro.departamentos.length
@@ -598,11 +600,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     [opcionesFiltro.estados]
   );
   const accionesDisponibles = useMemo(() => opcionesFiltro.acciones || [], [opcionesFiltro.acciones]);
-  const centroSeleccionado = useMemo(
-    () => resolveCentroByLabel(filtrosDraft.lugar, opcionesFiltro.centros),
-    [filtrosDraft.lugar, opcionesFiltro.centros]
-  );
-
   const municipiosDisponiblesDraft = useMemo(() => {
     if (filtroAdicionalSeleccionado !== 'municipio') return [];
     const depNeedle = normalize(filtrosDraft.departamento);
@@ -890,21 +887,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     if (col === '__numeroIdentificacion__') return displayOrDash(getNumeroIdentificacionValue(row));
     if (col === '__nombreUsuario__') return displayOrDash(getNombreUsuarioValue(row));
     if (col === '__defensor__') return displayOrDash(getDefensorValue(row));
-    if (col === '__lugarPrivacion__') {
-      const lugar = displayOrDash(getLugarPrivacionValue(row));
-      if (row?.centroReclusion?.homologado !== false) return lugar;
-      return (
-        <div>
-          <span>{lugar}</span>
-          <small
-            title="El nombre de la fuente aún no tiene equivalencia en el catálogo institucional de centros."
-            style={{ display: 'block', color: '#8a5a00', marginTop: '0.25rem' }}
-          >
-            Centro pendiente de homologación
-          </small>
-        </div>
-      );
-    }
+    if (col === '__lugarPrivacion__') return displayOrDash(getLugarPrivacionValue(row));
     if (col === '__accionPendiente__') {
       const accion = row?.accionPendiente;
       const etiqueta = String(accion?.etiqueta || row?.accionImpulsar || '').trim();
@@ -937,6 +920,11 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
               style={{ display: 'block', color: '#6b4f00', marginTop: '0.25rem' }}
             >
               Cambio de situación registrado
+              {row?.fechaCorte && (
+                <span style={{ marginLeft: '0.35rem', fontSize: '0.85em', whiteSpace: 'nowrap' }}>
+                  · {row.fechaCorte}
+                </span>
+              )}
             </small>
           )}
         </div>
@@ -1013,9 +1001,15 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
               <DropdownField
                 label="Acción a Impulsar / estado"
-                value={filtrosDraft.accionCodigo}
-                onChange={(value) => setFiltroDraft('accionCodigo', value)}
-                options={accionesDisponibles}
+                value={filtrosDraft.estadoCodigo}
+                onChange={(value) => {
+                  setFiltrosDraft((prev) => ({
+                    ...prev,
+                    estadoCodigo: value,
+                    accionCodigo: '',
+                  }));
+                }}
+                options={estadosDisponibles}
               />
 
               <DropdownField
@@ -1049,18 +1043,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                   placeholder="Ingrese lugar"
                 />
               )}
-              {filtroAdicionalSeleccionado === 'lugar' && centroSeleccionado?.homologado === false && (
-                <p className="hint-text" style={{ color: '#8a5a00' }}>
-                  Este es un valor histórico no homologado. Se buscará usando su identidad normalizada sin ocultarlo.
-                </p>
-              )}
-              {filtroAdicionalSeleccionado === 'lugar' &&
-                Number(opcionesFiltro.meta?.homologacionCentros?.noHomologados || 0) > 0 && (
-                  <p className="hint-text">
-                    Valores de centros pendientes de homologación: {opcionesFiltro.meta.homologacionCentros.noHomologados}.
-                  </p>
-                )}
-
               {filtroAdicionalSeleccionado === 'departamento' && (
                 <InputField
                   label="Departamento del lugar de privación de la libertad"

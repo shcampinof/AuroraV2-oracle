@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ACCIONES_IMPULSAR_OPTIONS,
   ASSIGNED_USERS_FILTER_KEYS,
   buildAssignedUsersFilters,
   normalizeFilterOptions,
@@ -32,6 +33,39 @@ describe('catálogos de filtros de usuarios asignados', () => {
     expect(options.acciones[0].estadoCodigos).toEqual(['ENTREVISTAR_USUARIO']);
     expect(options.meta.homologacionCentros.noHomologados).toBe(3);
     expect(resolveCentroByLabel('Centro histórico', options.centros)?.id).toBe('CENTRO_1');
+  });
+
+  it('mantiene las etiquetas operativas de acción aunque la API no entregue el catálogo', () => {
+    const options = normalizeFilterOptions({ acciones: [] });
+
+    expect(options.acciones).toEqual(ACCIONES_IMPULSAR_OPTIONS);
+    expect(options.acciones.map((item) => item.label)).toEqual([
+      'Analizar el caso',
+      'Entrevistar al usuario',
+      'Presentar solicitud',
+      'Hacer seguimiento a la audiencia',
+      'Hacer seguimiento a la decisión de audiencia',
+      'Hacer seguimiento a la decisión',
+      'Presentar recurso',
+      'Sin acción pendiente',
+    ]);
+    expect(options.acciones.map((item) => item.label)).not.toContain('Pendiente audiencia');
+    expect(options.acciones.map((item) => item.label)).not.toContain('Caso cerrado');
+  });
+
+  it('mantiene completos los ocho estados que alimentan el filtro visible', () => {
+    const options = normalizeFilterOptions({});
+
+    expect(options.estados.map((item) => item.label)).toEqual([
+      'Analizar el caso',
+      'Entrevistar al usuario',
+      'Presentar solicitud',
+      'Pendiente audiencia',
+      'Pendiente decisión de audiencia',
+      'Pendiente decisión',
+      'Presentar recurso',
+      'Caso cerrado',
+    ]);
   });
 
   it('no selecciona automáticamente identidades ambiguas', () => {

@@ -26,7 +26,7 @@ function testAuditPrioritizesWithoutAutomaticallyMerging() {
   assert.strictEqual(report.centers.summary.pendingOccurrences, 10);
   assert.strictEqual(report.centers.summary.occurrenceCoveragePercent, 60);
   assert.strictEqual(report.centers.pending[0].label, 'CPAMS EL BARNEE');
-  assert.strictEqual(report.centers.pending[0].suggestion.id, 'CENTRO_CPAMS_EL_BARNE');
+  assert.strictEqual(report.centers.pending[0].suggestion.id, 'INPEC_150');
   assert.strictEqual(report.centers.pending[0].suggestion.requiresApproval, true);
   assert.strictEqual(report.actions.summary.homologatedOccurrences, 8);
   assert.strictEqual(report.actions.summary.pendingOccurrences, 3);

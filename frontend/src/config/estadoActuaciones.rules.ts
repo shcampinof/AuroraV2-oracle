@@ -232,12 +232,12 @@ function resolveTipoFromText(value: unknown): 'condenado' | 'sindicado' | '' {
 }
 
 function resolveFlow(record: AnyRecord, data: AnyRecord): 'condenado' | 'sindicado' {
-  const fromSituacion = resolveTipoFromText(pickFirstValue(data, ['Situación Jurídica']));
-  if (fromSituacion) return fromSituacion;
   const fromSituacionActualizada = resolveTipoFromText(
     pickFirstValue(data, ['Situación Jurídica actualizada (de conformidad con la rama judicial)'])
   );
   if (fromSituacionActualizada) return fromSituacionActualizada;
+  const fromSituacion = resolveTipoFromText(pickFirstValue(data, ['Situación Jurídica']));
+  if (fromSituacion) return fromSituacion;
 
   const fromHints =
     resolveTipoFromText(record?.tipo) ||

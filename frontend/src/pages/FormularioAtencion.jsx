@@ -1674,6 +1674,12 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   const flow = useMemo(() => (registro ? computeFlow(registro, tipoRegistro) : null), [registro, tipoRegistro]);
   const personaFueraPrision = useMemo(() => Boolean(registro) && !isSituacionActiva(registro), [registro]);
+  const cambioSituacionRegistrado = Boolean(
+    registro?.__historialActivoInactivo ?? registro?.tieneHistorialActivoInactivo
+  );
+  const fechaCambioSituacion = formatDateForExport(
+    registro?.['Fecha de corte'] ?? registro?.fechaCorte ?? ''
+  );
   const tieneInfoDesdePregunta29 = useCallback((source) => {
     if (!source || typeof source !== 'object') return false;
     return CAMPOS_AURORA_DESDE_P29.some((alias) =>
@@ -3549,6 +3555,14 @@ export default function FormularioAtencion({ numeroInicial }) {
 
       {!cargando && registro && (
         <>
+          {cambioSituacionRegistrado && (
+            <div className="ppl-situation-change-alert" role="status">
+              <span>Cambio de situación registrado</span>
+              {fechaCambioSituacion && (
+                <small>Fecha de corte: {fechaCambioSituacion}</small>
+              )}
+            </div>
+          )}
           {personaFueraPrision && (
             <div className="ppl-inactive-alert" role="alert" style={{ marginTop: '1rem' }}>
               FUERA DE PRISIÓN — registro histórico disponible solo para consulta. No se permiten modificaciones ni nuevas actuaciones.

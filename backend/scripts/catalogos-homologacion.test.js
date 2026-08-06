@@ -2,6 +2,7 @@ const assert = require('assert');
 const {
   getAccionByCodigo,
   getCentroNormalizedAliases,
+  listCentros,
   listAcciones,
   resolveAccionCodigo,
   resolveAccionPendiente,
@@ -12,11 +13,17 @@ const { buildActiveSituacionCte, buildStrictActiveSituacionCte } = require('../r
 function testCentroAliasesShareCanonicalIdentity() {
   const canonical = resolveCentro('CPAMS EL BARNE');
   const variant = resolveCentro('  Cpams\u00a0 El   Barné ');
-  assert.strictEqual(canonical.id, 'CENTRO_CPAMS_EL_BARNE');
+  assert.strictEqual(canonical.id, 'INPEC_150');
   assert.strictEqual(variant.id, canonical.id);
   assert.strictEqual(variant.label, 'CPAMS EL BARNE');
   assert.strictEqual(variant.homologado, true);
   assert(getCentroNormalizedAliases(canonical.id).includes('CPAMS EL BARNE'));
+}
+
+function testOfficialCenterDirectoryIsLoaded() {
+  const centers = listCentros();
+  assert(centers.length >= 100);
+  assert(centers.every((center) => /^INPEC_\d+$/.test(center.id)));
 }
 
 function testUnknownCentersRemainVisibleAndStable() {
@@ -44,7 +51,8 @@ function testActionsAreSeparatedFromStateAndKeepOriginalValue() {
 
 function testFilterCatalogsRequireActivePrisonStatus() {
   const sql = buildStrictActiveSituacionCte();
-  assert.match(sql, /WHERE\s+NVL\(s\.ACTIVO,\s*0\)\s*=\s*1/i);
+  assert.match(sql, /WHERE\s+s\.RN\s*=\s*1\s+AND\s+NVL\(s\.ACTIVO,\s*0\)\s*=\s*1/i);
+  assert.match(sql, /FROM\s+DNDP\.SITUACION_CARCELARIA\s+source_s/i);
   assert.doesNotMatch(sql, /CASE\s+WHEN\s+NVL\(s\.ACTIVO/i);
 }
 
@@ -58,6 +66,7 @@ function testCurrentSituationPrioritizesLatestCutoff() {
 }
 
 testCentroAliasesShareCanonicalIdentity();
+testOfficialCenterDirectoryIsLoaded();
 testUnknownCentersRemainVisibleAndStable();
 testActionsAreSeparatedFromStateAndKeepOriginalValue();
 testFilterCatalogsRequireActivePrisonStatus();

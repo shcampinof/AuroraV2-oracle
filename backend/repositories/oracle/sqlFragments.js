@@ -75,24 +75,28 @@ function buildActiveSituacionCte() {
   `;
 }
 
-// Los catálogos de filtros solo deben reflejar ubicaciones vigentes. A
-// diferencia de buildActiveSituacionCte, esta variante no usa una situación
-// inactiva como respaldo cuando la persona no tiene una fila ACTIVO=1.
+// Los catálogos de filtros solo deben reflejar la situación más reciente si
+// esta continúa activa. Filtrar ACTIVO antes de ordenar resucitaría una fila
+// histórica de alguien cuya situación posterior ya fue cerrada.
 function buildStrictActiveSituacionCte() {
   return `
     WITH ranked_situacion AS (
-      SELECT
-        s.*,
-        ROW_NUMBER() OVER (
-          PARTITION BY s.ID_PERSONA
-          ORDER BY
-            COALESCE(s.FECHA_CORTE, CAST(s.FECHA_REGISTRO AS DATE), s.FECHA_CAPTURA) DESC NULLS LAST,
-            s.FECHA_REGISTRO DESC NULLS LAST,
-            s.FECHA_CAPTURA DESC NULLS LAST,
-            s.ID_SITUACION DESC
-        ) AS RN
-      FROM DNDP.SITUACION_CARCELARIA s
-      WHERE NVL(s.ACTIVO, 0) = 1
+      SELECT s.*
+      FROM (
+        SELECT
+          source_s.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY source_s.ID_PERSONA
+            ORDER BY
+              COALESCE(source_s.FECHA_CORTE, CAST(source_s.FECHA_REGISTRO AS DATE), source_s.FECHA_CAPTURA) DESC NULLS LAST,
+              source_s.FECHA_REGISTRO DESC NULLS LAST,
+              source_s.FECHA_CAPTURA DESC NULLS LAST,
+              source_s.ID_SITUACION DESC
+          ) AS RN
+        FROM DNDP.SITUACION_CARCELARIA source_s
+      ) s
+      WHERE s.RN = 1
+        AND NVL(s.ACTIVO, 0) = 1
     )
   `;
 }

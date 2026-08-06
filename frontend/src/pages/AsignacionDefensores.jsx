@@ -33,6 +33,29 @@ function normalizeDefensorNombre(value) {
     .trim();
 }
 
+function normalizeLugar(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+function resolveCentroId(value, options) {
+  const key = normalizeLugar(value);
+  if (!key) return '';
+  const ids = new Set();
+  (Array.isArray(options) ? options : []).forEach((option) => {
+    const labels = [option?.label, ...(Array.isArray(option?.valoresOriginales) ? option.valoresOriginales : [])];
+    if (labels.some((label) => normalizeLugar(label) === key)) {
+      const id = String(option?.id || '').trim();
+      if (id) ids.add(id);
+    }
+  });
+  return ids.size === 1 ? Array.from(ids)[0] : '';
+}
+
 function isNombreDefensorValido(value) {
   return /^[\p{L}\s]+$/u.test(value);
 }
@@ -91,10 +114,12 @@ function AsignacionDefensores({ isAdmin = false }) {
     departamentos: [],
     municipios: [],
     lugares: [],
+    centros: [],
   });
   const [opcionesFiltroDependientes, setOpcionesFiltroDependientes] = useState({
     municipios: [],
     lugares: [],
+    centros: [],
   });
   const [defensoresError, setDefensoresError] = useState('');
   const [nuevoDefensorId, setNuevoDefensorId] = useState('');
@@ -119,6 +144,7 @@ function AsignacionDefensores({ isAdmin = false }) {
     departamento: '',
     municipio: '',
     lugar: '',
+    centroId: '',
     potencialSubrogado: '',
     defensorActual: '',
   });
@@ -132,6 +158,7 @@ function AsignacionDefensores({ isAdmin = false }) {
       departamento: String(safe.departamento || '').trim(),
       municipio: String(safe.municipio || '').trim(),
       lugar: String(safe.lugar || '').trim(),
+      centroId: String(safe.centroId || '').trim(),
       potencialSubrogado: String(safe.potencialSubrogado || '').trim(),
       defensor: currentTab === 'reasignacion' ? String(safe.defensorActual || '').trim() : '',
     };
@@ -239,6 +266,7 @@ function AsignacionDefensores({ isAdmin = false }) {
         departamentos: Array.isArray(data?.departamentos) ? data.departamentos : [],
         municipios: Array.isArray(data?.municipios) ? data.municipios : [],
         lugares: Array.isArray(data?.lugares) ? data.lugares : [],
+        centros: Array.isArray(data?.centros) ? data.centros : [],
       });
     });
     return () => {
@@ -251,6 +279,7 @@ function AsignacionDefensores({ isAdmin = false }) {
     setOpcionesFiltroDependientes({
       municipios: [],
       lugares: [],
+      centros: [],
     });
 
     const timeoutId = setTimeout(() => {
@@ -266,6 +295,7 @@ function AsignacionDefensores({ isAdmin = false }) {
         setOpcionesFiltroDependientes({
           municipios: Array.isArray(data?.municipios) ? data.municipios : [],
           lugares: Array.isArray(data?.lugares) ? data.lugares : [],
+          centros: Array.isArray(data?.centros) ? data.centros : [],
         });
       });
     }, 250);
@@ -376,14 +406,17 @@ function AsignacionDefensores({ isAdmin = false }) {
     if (String(fDepartamento || '').trim() || String(fMunicipio || '').trim()) {
       return opcionesFiltroDependientes.lugares;
     }
-    if (opcionesFiltro.lugares.length) return opcionesFiltro.lugares;
-    const set = new Set();
-    rows.forEach((r) => {
-      const val = String(r?.lugarReclusion || '').trim();
-      if (val) set.add(val);
-    });
-    return Array.from(set).sort();
-  }, [fDepartamento, fMunicipio, opcionesFiltroDependientes.lugares, opcionesFiltro.lugares, rows]);
+    // El catálogo del backend está limitado a situaciones ACTIVO = 1. Evitar
+    // un fallback con filas históricas que vuelva a mostrar centros inactivos.
+    return opcionesFiltro.lugares;
+  }, [fDepartamento, fMunicipio, opcionesFiltroDependientes.lugares, opcionesFiltro.lugares]);
+
+  const centrosDisponibles = useMemo(() => {
+    if (String(fDepartamento || '').trim() || String(fMunicipio || '').trim()) {
+      return opcionesFiltroDependientes.centros;
+    }
+    return opcionesFiltro.centros;
+  }, [fDepartamento, fMunicipio, opcionesFiltroDependientes.centros, opcionesFiltro.centros]);
 
   const rowsTab = useMemo(() => {
     if (tab === 'asignacion') return rows.filter((r) => !tieneDefensor(r?.defensorAsignado));
@@ -435,11 +468,13 @@ function AsignacionDefensores({ isAdmin = false }) {
   }, []);
 
   async function aplicarFiltros() {
+    const centroId = resolveCentroId(fLugar, centrosDisponibles);
     const nextFiltros = {
       documento: String(fDocumento || '').trim(),
       departamento: String(fDepartamento || '').trim(),
       municipio: String(fMunicipio || '').trim(),
       lugar: String(fLugar || '').trim(),
+      centroId,
       potencialSubrogado: String(fPotencialSubrogado || '').trim(),
       defensorActual: tab === 'reasignacion' ? String(fDefensorActual || '').trim() : '',
     };
@@ -457,6 +492,7 @@ function AsignacionDefensores({ isAdmin = false }) {
       departamento: '',
       municipio: '',
       lugar: '',
+      centroId: '',
       potencialSubrogado: '',
       defensorActual: '',
     };

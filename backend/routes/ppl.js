@@ -7,6 +7,7 @@ const { ESTADOS_CASO, getEstadoEtiqueta, resolveEstadoCodigo } = require('../dom
 const {
   catalogVersions,
   listAcciones,
+  OTROS_LUGARES_ACTIVOS_ID,
   resolveAccionPendiente,
   resolveCentro,
 } = require('../domain/catalogosHomologacion');
@@ -191,6 +192,12 @@ function resolveEstadoLabelFromRawRow(row) {
 function buildEstadoSource(row) {
   return {
     'Situación Jurídica': getValueWithFallback(row, 'Situacion Juridica', 'situacion', ''),
+    'Situación Jurídica actualizada (de conformidad con la rama judicial)': getValueWithFallback(
+      row,
+      'Situacion Juridica actualizada (de conformidad con la rama judicial)',
+      'Situacion Juridica actualizada',
+      ''
+    ),
     'Defensor(a) Público(a) Asignado para tramitar la solicitud': getValueWithFallback(
       row,
       'Defensor(a) Público(a) Asignado para tramitar la solicitud',
@@ -608,6 +615,27 @@ function hasCondenadosFilters(filters) {
   return Object.values(filters || {}).some((value) => String(value || '').trim() !== '');
 }
 
+function buildCentrosFiltro(lugares, tipo = 'all') {
+  const centrosById = new Map();
+  for (const rawValue of Array.isArray(lugares) ? lugares : []) {
+    const centro = resolveCentro(rawValue);
+    if (!centro) continue;
+    if (tipo === 'condenado' && !centro.homologado) continue;
+    const previous = centrosById.get(centro.id);
+    if (previous) {
+      previous.valoresOriginales.push(centro.valorOriginal);
+      continue;
+    }
+    centrosById.set(centro.id, {
+      id: centro.id,
+      label: centro.label,
+      homologado: centro.homologado,
+      valoresOriginales: [centro.valorOriginal],
+    });
+  }
+  return Array.from(centrosById.values()).sort((a, b) => a.label.localeCompare(b.label));
+}
+
 function matchesPrefix(value, filterValue) {
   const needle = normalizeText(filterValue);
   if (!needle) return true;
@@ -835,30 +863,33 @@ router.get('/condenados/filter-options', async (req, res) => {
       defensorOptions,
       defensores,
     };
-    const centrosById = new Map();
-    for (const rawValue of lugares) {
-      const centro = resolveCentro(rawValue);
-      if (!centro) continue;
-      const previous = centrosById.get(centro.id);
-      if (previous) {
-        previous.valoresOriginales.push(centro.valorOriginal);
-        continue;
-      }
-      centrosById.set(centro.id, {
-        id: centro.id,
-        label: centro.label,
-        homologado: centro.homologado,
-        valoresOriginales: [centro.valorOriginal],
-      });
-    }
-    const centros = Array.from(centrosById.values()).sort((a, b) => a.label.localeCompare(b.label));
+    // PAG/condenados usa la lista blanca de ERON oficiales; tipo=all conserva
+    // además CDT y otros lugares activos reportados por SISIPEC.
+    const centros = buildCentrosFiltro(lugares, tipo);
+    const lugaresNoOficiales = tipo === 'condenado'
+      ? buildCentrosFiltro(lugares, 'all').filter((item) => !item.homologado)
+      : [];
+    const opcionOtrosLugares = lugaresNoOficiales.length
+      ? {
+          id: OTROS_LUGARES_ACTIVOS_ID,
+          label: 'OTROS LUGARES ACTIVOS (CDT, URI, ESTACIONES Y OTROS)',
+          homologado: true,
+          categoria: true,
+          valoresOriginales: lugaresNoOficiales.flatMap((item) => item.valoresOriginales),
+        }
+      : null;
+    const centrosVisibles = opcionOtrosLugares ? [...centros, opcionOtrosLugares] : centros;
     const centrosHomologados = centros.filter((item) => item.homologado).length;
     const centrosNoHomologados = centros.length - centrosHomologados;
+    const lugaresVisibles = tipo === 'condenado'
+      ? centrosVisibles.map((item) => item.label)
+      : lugares;
     const payload = {
       ...homologatedOptions,
+      lugares: lugaresVisibles,
       estados: ESTADOS_CASO,
       acciones: listAcciones(),
-      centros,
+      centros: centrosVisibles,
       meta: {
         tipo,
         cacheTtlMs: FILTER_OPTIONS_CACHE_TTL_MS,
@@ -871,9 +902,11 @@ router.get('/condenados/filter-options', async (req, res) => {
         homologacionFiltros: {
           departamentos: { originales: options.departamentos.length, visibles: departamentos.length },
           municipios: { originales: options.municipios.length, visibles: municipios.length },
-          lugares: { originales: options.lugares.length, visibles: centros.length },
+          lugares: { originales: options.lugares.length, visibles: lugaresVisibles.length },
           defensores: { originales: options.defensorOptions.length, visibles: defensores.length },
         },
+        politicaLugares: tipo === 'condenado' ? 'eron_oficiales' : 'todos_los_lugares_activos',
+        otrosLugaresActivos: lugaresNoOficiales.length,
       },
     };
     boundedCacheSet(condenadosFilterOptionsCache, cacheKey, {
@@ -1208,6 +1241,7 @@ router.condenadosContract = Object.freeze({
   mapRow: mapCondenadoRow,
   matchesFilters: matchesCondenadoFilters,
   parseFilters: getCondenadosFiltersFromQuery,
+  buildCentrosFiltro,
 });
 
 module.exports = router;

@@ -1,6 +1,6 @@
 const assert = require('assert');
 
-async function captureStateSearch(filters) {
+async function captureStateSearch(filters, tipo = 'all') {
   const oraclePoolPath = require.resolve('../db/oraclePool');
   const repositoryPath = require.resolve('../repositories/oracle/personaRepository');
   const oraclePool = require(oraclePoolPath);
@@ -16,7 +16,7 @@ async function captureStateSearch(filters) {
   try {
     const repository = require(repositoryPath);
     await repository.listCondenadosSummary({
-      tipo: 'all',
+      tipo,
       filters,
       limit: 10,
       includeExactCounts: false,
@@ -87,6 +87,41 @@ async function testFilterOptionsExposeDefenderIdentity() {
   }
 }
 
+async function testFilterOptionsOnlyUseActivePrisonSituations() {
+  const oraclePoolPath = require.resolve('../db/oraclePool');
+  const repositoryPath = require.resolve('../repositories/oracle/personaRepository');
+  const oraclePool = require(oraclePoolPath);
+  const originalExecute = oraclePool.execute;
+  const capturedSql = [];
+
+  oraclePool.execute = async (sql) => {
+    capturedSql.push(sql);
+    return { rows: [] };
+  };
+  delete require.cache[repositoryPath];
+
+  try {
+    const repository = require(repositoryPath);
+    await repository.listDistinctCondenadosFilterOptions({ tipo: 'all' });
+    assert.strictEqual(capturedSql.length, 4);
+    capturedSql.forEach((sql) => {
+      assert.match(sql, /WHERE\s+s\.RN\s*=\s*1\s+AND\s+NVL\(s\.ACTIVO,\s*0\)\s*=\s*1/i);
+      assert.match(sql, /s\.RN\s*=\s*1/i);
+    });
+
+    capturedSql.length = 0;
+    await repository.listCondenadosHomologationValues({ tipo: 'all' });
+    assert.strictEqual(capturedSql.length, 2);
+    capturedSql.forEach((sql) => {
+      assert.match(sql, /WHERE\s+s\.RN\s*=\s*1\s+AND\s+NVL\(s\.ACTIVO,\s*0\)\s*=\s*1/i);
+      assert.match(sql, /s\.RN\s*=\s*1/i);
+    });
+  } finally {
+    oraclePool.execute = originalExecute;
+    delete require.cache[repositoryPath];
+  }
+}
+
 async function testLugarKeepsPrefixFilterAlongsideEstado() {
   const captured = await captureStateSearch({
     defensor: 'PEDRO PABLO DIAZ CRISTANCHO',
@@ -98,6 +133,7 @@ async function testLugarKeepsPrefixFilterAlongsideEstado() {
   assert.match(captured.sql, /s\.ESTABLECIMIENTO/);
   assert.match(captured.sql, /REGEXP_REPLACE/);
   assert.match(captured.sql, /UNISTR\('\\00A0'\)/);
+  assert.match(captured.sql, /NVL\(s\.ACTIVO, 0\) = 1/);
 }
 
 async function testUnknownStateNeverFallsBackToUnfilteredResults() {
@@ -116,18 +152,60 @@ async function testQueryContainsBothBusinessFlows() {
 
 async function testCanonicalCenterUsesControlledAliases() {
   const captured = await captureStateSearch({
-    centroId: 'CENTRO_CPAMS_EL_BARNE',
+    centroId: 'INPEC_150',
     lugar: 'Texto que no debe gobernar la consulta',
   });
   assert.strictEqual(captured.binds.centroAlias0, 'CPAMS EL BARNE');
   assert(!Object.prototype.hasOwnProperty.call(captured.binds, 'lugarFilter'));
   assert.match(captured.sql, /s\.ESTABLECIMIENTO/);
+  assert.match(captured.sql, /NVL\(s\.ACTIVO, 0\) = 1/);
+}
+
+async function testOtherActiveLocationsExcludeOfficialAliases() {
+  const captured = await captureStateSearch({ centroId: 'CATEGORIA_OTROS_LUGARES_ACTIVOS' });
+  assert.strictEqual(captured.binds.centroOficial0, 'EPMSC LETICIA');
+  assert(!Object.prototype.hasOwnProperty.call(captured.binds, 'lugarFilter'));
+  assert.match(captured.sql, /NOT IN \(:centroOficial0/);
+  assert.match(captured.sql, /NVL\(s\.ACTIVO, 0\) = 1/);
 }
 
 async function testActionCodeFiltersThroughCanonicalStateIdentity() {
   const captured = await captureStateSearch({ accionCodigo: 'REALIZAR_ENTREVISTA' });
   assert.strictEqual(captured.binds.accionEstado0, 'ENTREVISTAR_USUARIO');
   assert.match(captured.sql, /ESTADO_CODIGO IN \(:accionEstado0\)/);
+}
+
+async function testEveryActionFiltersThroughItsCanonicalStates() {
+  const { listAcciones } = require('../domain/catalogosHomologacion');
+  for (const action of listAcciones()) {
+    const captured = await captureStateSearch({ accionCodigo: action.codigo });
+    assert(captured, `La acción ${action.codigo} debe ejecutar SQL.`);
+    action.estadoCodigos.forEach((estadoCodigo, index) => {
+      assert.strictEqual(captured.binds[`accionEstado${index}`], estadoCodigo);
+    });
+    assert.match(captured.sql, /ESTADO_CODIGO IN \(:accionEstado0/);
+  }
+}
+
+async function testUpdatedLegalSituationGovernsFlowAndTypeFilter() {
+  const condenado = await captureStateSearch({}, 'condenado');
+  const sindicado = await captureStateSearch({}, 'sindicado');
+
+  [condenado, sindicado].forEach((captured) => {
+    assert.match(
+      captured.sql,
+      /COALESCE\(\s*NULLIF\(TRIM\(TO_CHAR\(s\.SITUACION_JURIDICA_ACTUALIZADA\)\), ''\),\s*TO_CHAR\(s\.SITUACION\)\s*\)/
+    );
+  });
+  assert.match(condenado.sql, /LIKE '%condenad%'/);
+  assert.match(sindicado.sql, /LIKE '%sindicad%'/);
+}
+
+async function testAuroraFilterUsesTheRadicationDateForTheSelectedFlow() {
+  const captured = await captureStateSearch({ estadoCodigo: 'PENDIENTE_DECISION' });
+  assert.match(captured.sql, /WHEN .*ACTUACION_ADELANTAR.*LIKE '%UTILIDAD PUBLICA%'.*THEN g\.FECHA_RADICACION_UTILIDAD/s);
+  assert.match(captured.sql, /ELSE g\.FECHA_PRESENTACION_SOLICITUD_AUTORIDAD/);
+  assert.match(captured.sql, /DECISION_USUARIO.*LIKE 'SI%'/s);
 }
 
 async function testEverySupportedFilterBuildsAnEffectivePredicate() {
@@ -168,10 +246,15 @@ async function testInvalidIdentityFiltersFailClosed() {
   await testLugarKeepsPrefixFilterAlongsideEstado();
   await testCanonicalCodesAndDefenderIdsAvoidTextMatching();
   await testFilterOptionsExposeDefenderIdentity();
+  await testFilterOptionsOnlyUseActivePrisonSituations();
   await testUnknownStateNeverFallsBackToUnfilteredResults();
   await testQueryContainsBothBusinessFlows();
   await testCanonicalCenterUsesControlledAliases();
+  await testOtherActiveLocationsExcludeOfficialAliases();
   await testActionCodeFiltersThroughCanonicalStateIdentity();
+  await testEveryActionFiltersThroughItsCanonicalStates();
+  await testUpdatedLegalSituationGovernsFlowAndTypeFilter();
+  await testAuroraFilterUsesTheRadicationDateForTheSelectedFlow();
   await testEverySupportedFilterBuildsAnEffectivePredicate();
   await testInvalidIdentityFiltersFailClosed();
   console.log('OK condenados-filter-state.test');

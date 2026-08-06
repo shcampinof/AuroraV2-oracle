@@ -10,6 +10,7 @@
     "dev": "nodemon index.js",
     "smoke:oracle": "node scripts/oracle-smoke.js",
     "audit:homologation": "node scripts/homologation-audit.js",
+    "sync:centros": "node scripts/sync-centros-catalog.js",
     "test:oracle:homologation": "node scripts/oracle-homologation.integration.js",
     "test:oracle:assigned-users": "node scripts/oracle-assigned-users-filters.integration.js",
     "test:api": "node scripts/api-regression.js",

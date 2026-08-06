@@ -653,7 +653,9 @@ function toLegacyRecord(raw = {}) {
 function computeTipo(record) {
   const updated = normalizeText(record?.['Situación Jurídica actualizada (de conformidad con la rama judicial)']);
   const base = normalizeText(record?.['Situación Jurídica']);
-  if (updated.includes('condenad') || base.includes('condenad')) return 'condenado';
+  if (updated.includes('condenad')) return 'condenado';
+  if (updated.includes('sindicad')) return 'sindicado';
+  if (base.includes('condenad')) return 'condenado';
   return 'sindicado';
 }
 

@@ -10,9 +10,11 @@ const {
 const { resolveEstadoCodigo } = require('../../domain/estadoCaso');
 const {
   getAccionByCodigo,
+  getAllCentroNormalizedAliases,
   getCentroById,
   getCentroNormalizedAliases,
   resolveAccionCodigo,
+  OTROS_LUGARES_ACTIVOS_ID,
 } = require('../../domain/catalogosHomologacion');
 const { normalizeSearchText } = require('../../utils/textNormalization');
 
@@ -20,6 +22,10 @@ const { normalizeSearchText } = require('../../utils/textNormalization');
 // nombre para que un snapshot histórico con mojibake no oculte al defensor.
 // NOMBRE_DEFENSOR sigue siendo respaldo para asignaciones antiguas sin cédula.
 const DEFENSOR_ACTIVO_EXPR = 'COALESCE(TO_NCHAR(d.NOMBRE), TO_NCHAR(a.NOMBRE_DEFENSOR))';
+const SITUACION_JURIDICA_EFECTIVA_EXPR = `COALESCE(
+  NULLIF(TRIM(TO_CHAR(s.SITUACION_JURIDICA_ACTUALIZADA)), ''),
+  TO_CHAR(s.SITUACION)
+)`;
 
 const BASE_SELECT_COLUMNS = [
   'p.ID_PERSONA AS P_ID_PERSONA',
@@ -201,10 +207,10 @@ const GESTION_MEANINGFUL_ORDER_EXPR = `
 function buildTipoFilter(tipo) {
   const safeTipo = String(tipo || '').trim().toLowerCase();
   if (safeTipo === 'condenado') {
-    return "(LOWER(NVL(s.SITUACION_JURIDICA_ACTUALIZADA, '')) LIKE '%condenad%' OR LOWER(NVL(s.SITUACION, '')) LIKE '%condenad%')";
+    return `LOWER(NVL(${SITUACION_JURIDICA_EFECTIVA_EXPR}, '')) LIKE '%condenad%'`;
   }
   if (safeTipo === 'sindicado') {
-    return "(LOWER(NVL(s.SITUACION_JURIDICA_ACTUALIZADA, '')) LIKE '%sindicad%' OR LOWER(NVL(s.SITUACION, '')) LIKE '%sindicad%')";
+    return `LOWER(NVL(${SITUACION_JURIDICA_EFECTIVA_EXPR}, '')) LIKE '%sindicad%'`;
   }
   return 'TRIM(s.SITUACION) IS NOT NULL';
 }
@@ -251,11 +257,6 @@ const HAS_ENTREVISTA_Y_ACTUACION_EXPR = `(
   ${sqlFilled('g.FECHA_ENTREVISTA')}
   AND ${sqlFilled('g.ACTUACION_ADELANTAR')}
 )`;
-const FECHA_RADICACION_EXPR = `COALESCE(
-  g.FECHA_RADICACION_UTILIDAD,
-  g.FECHA_PRESENTACION_SOLICITUD_AUTORIDAD
-)`;
-
 function sqlAnyFilled(columnRefs) {
   return `(${columnRefs.map((columnRef) => `(${sqlFilled(columnRef)})`).join(' OR ')})`;
 }
@@ -269,6 +270,10 @@ const HAS_DECISION_RECURSO_EXPR = sqlAnyFilled([
   'g.SENTIDO_DECISION_RESUELVE_RECURSO',
 ]);
 const IS_UTILIDAD_PUBLICA_EXPR = `(${ACTUACION_NORMALIZADA_EXPR} LIKE '%UTILIDAD PUBLICA%')`;
+const FECHA_RADICACION_EXPR = `(CASE
+  WHEN ${IS_UTILIDAD_PUBLICA_EXPR} THEN g.FECHA_RADICACION_UTILIDAD
+  ELSE g.FECHA_PRESENTACION_SOLICITUD_AUTORIDAD
+END)`;
 const IS_RECURSO_PRESENTADO_EXPR = `(${RECURSO_NORMALIZADO_EXPR} IN ('SI', 'S?'))`;
 const IS_RECURSO_NO_PRESENTADO_EXPR = `(${RECURSO_NORMALIZADO_EXPR} = 'NO')`;
 const IS_DECISION_NEGATIVA_EXPR = `(
@@ -330,8 +335,7 @@ const AURORA_DERIVED_ESTADO_CODIGO_EXPR = `
       OR ${sqlFilled('g.CIERRE_CASO')}
       OR ${HAS_DECISION_RECURSO_EXPR}
       OR (${sqlFilled('g.DECISION_USUARIO')} AND NOT (
-        ${DECISION_USUARIO_NORMALIZADA_EXPR} LIKE '%DESEA QUE EL DEFENSOR%'
-        AND ${DECISION_USUARIO_NORMALIZADA_EXPR} LIKE '%AVANCE CON LA SOLICITUD%'
+        ${DECISION_USUARIO_NORMALIZADA_EXPR} LIKE 'SI%'
       ))
       OR ${ACTUACION_NORMALIZADA_EXPR} LIKE '%NINGUNA%'
       OR ${ACTUACION_NORMALIZADA_EXPR} LIKE '%NO PROCEDE NADA%'
@@ -423,8 +427,7 @@ const CELESTE_DERIVED_ESTADO_CODIGO_EXPR = `
 const DERIVED_ESTADO_CODIGO_EXPR = `
   CASE
     WHEN NVL(s.ACTIVO, 0) <> 1 THEN 'CASO_CERRADO'
-    WHEN ${normalizedMojibakeSqlExpr('s.SITUACION_JURIDICA_ACTUALIZADA')} LIKE '%SINDICAD%'
-      OR ${normalizedMojibakeSqlExpr('s.SITUACION')} LIKE '%SINDICAD%'
+    WHEN ${normalizedMojibakeSqlExpr(SITUACION_JURIDICA_EFECTIVA_EXPR)} LIKE '%SINDICAD%'
       THEN (${CELESTE_DERIVED_ESTADO_CODIGO_EXPR})
     ELSE (${AURORA_DERIVED_ESTADO_CODIGO_EXPR})
   END
@@ -489,6 +492,10 @@ function buildCondenadosSummaryWhereClause({
     clauses.push('1=0');
   }
 
+  const hasLocationFilter = ['lugar', 'centroId', 'departamento', 'municipio']
+    .some((key) => String(filters?.[key] || '').trim());
+  if (hasLocationFilter) clauses.push('NVL(s.ACTIVO, 0) = 1');
+
   const rawDefensorId = String(filters?.defensorId || '').trim();
   const defensorId = rawDefensorId.replace(/\D+/g, '');
   if (defensorId) {
@@ -500,7 +507,18 @@ function buildCondenadosSummaryWhereClause({
 
   const centroId = String(filters?.centroId || '').trim();
   const centroCatalogado = getCentroById(centroId);
-  if (centroCatalogado) {
+  if (centroId === OTROS_LUGARES_ACTIVOS_ID) {
+    const aliases = getAllCentroNormalizedAliases();
+    const placeholders = aliases.map((alias, index) => {
+      const bindKey = `centroOficial${index}`;
+      binds[bindKey] = alias;
+      return `:${bindKey}`;
+    });
+    const normalizedCentro = normalizedMojibakeSqlExpr('s.ESTABLECIMIENTO');
+    // Oracle trata '' como NULL; comparar <> '' descartaría todas las filas.
+    clauses.push('TRIM(s.ESTABLECIMIENTO) IS NOT NULL');
+    if (placeholders.length) clauses.push(`${normalizedCentro} NOT IN (${placeholders.join(', ')})`);
+  } else if (centroCatalogado) {
     const aliases = getCentroNormalizedAliases(centroCatalogado.id);
     const placeholders = aliases.map((alias, index) => {
       const bindKey = `centroAlias${index}`;
@@ -517,7 +535,9 @@ function buildCondenadosSummaryWhereClause({
   const textFilters = [
     ['nombre', 'p.NOMBRE', 'contains'],
     ...(defensorId ? [] : [['defensor', DEFENSOR_ACTIVO_EXPR, 'prefix']]),
-    ...(centroCatalogado ? [] : [['lugar', 's.ESTABLECIMIENTO', 'prefix']]),
+    ...(centroCatalogado || centroId === OTROS_LUGARES_ACTIVOS_ID
+      ? []
+      : [['lugar', 's.ESTABLECIMIENTO', 'prefix']]),
     ['departamento', 's.DEPARTAMENTO', 'prefix'],
     ['municipio', 's.MUNICIPIO', 'prefix'],
     ['estadoAccion', `(${ESTADO_ACCION_EXPR})`, 'contains'],
@@ -964,7 +984,9 @@ async function listCondenadosHomologationValues({
   maxPerField = 5000,
 } = {}) {
   const safeMax = Math.max(1, Math.min(5000, Number.parseInt(String(maxPerField || '5000'), 10) || 5000));
-  const activeSituacionCte = buildActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
+  // La auditoría que alimenta la homologación debe usar el mismo universo del
+  // filtro visible: únicamente personas cuya situación vigente sigue activa.
+  const activeSituacionCte = buildStrictActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
   const cte = `
     ${activeSituacionCte},
     latest_gestion AS (
