@@ -176,13 +176,17 @@ En desarrollo, Vite usa proxy para /api. En producción con el backend como serv
 
 ### Estados e historial de actuaciones
 
-- frontend/src/config/estadoActuaciones.rules.ts es el punto común para derivar etiquetas de estado.
+- frontend/src/config/estadoActuaciones.rules.ts es el punto común para derivar la Acción a impulsar.
 
-- FormularioAtencion.jsx sincroniza Estado del trámite y Estado del caso al guardar.
+- FormularioAtencion.jsx sincroniza la Acción a impulsar al guardar. El backend la persiste en `DNDP.GESTION_JURIDICA.ACCION_REALIZAR`; los nombres Estado del trámite y Estado del caso se conservan únicamente como compatibilidad interna con datos legados.
 
 - HistorialActuacionesPPL.jsx recalcula la fila activa con el registro vivo del formulario, por lo que la UI puede mostrar cambios de estado antes de guardar o recargar.
 
 - AsignacionDefensores.jsx usa el mismo derivador para Acción a impulsar.
+
+- RegistrosAsignados.jsx no presenta un campo separado de Estado de reclusión. Una situación vigente inactiva se expresa como `Caso cerrado - Fuera de prisión` en Acción a impulsar.
+
+- La procedencia de utilidad pública es opcional y su ausencia no bloquea el guardado ni el cálculo de la acción. Ante una decisión negativa con la respuesta de recurso aún vacía, la acción es `Presentar recurso`; solo una respuesta explícita `No` cierra el caso.
 
 ### PWA y operacion offline
 

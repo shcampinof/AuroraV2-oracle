@@ -57,16 +57,42 @@ function buildActiveSituacionCte() {
     WITH ranked_situacion AS (
       SELECT
         s.*,
+        COUNT(*) OVER (PARTITION BY s.ID_PERSONA) AS TOTAL_SITUACIONES,
+        MIN(NVL(s.ACTIVO, 0)) OVER (PARTITION BY s.ID_PERSONA) AS MIN_ACTIVO_HISTORICO,
+        MAX(NVL(s.ACTIVO, 0)) OVER (PARTITION BY s.ID_PERSONA) AS MAX_ACTIVO_HISTORICO,
         ROW_NUMBER() OVER (
           PARTITION BY s.ID_PERSONA
           ORDER BY
+            COALESCE(s.FECHA_CORTE, CAST(s.FECHA_REGISTRO AS DATE), s.FECHA_CAPTURA) DESC NULLS LAST,
             CASE WHEN NVL(s.ACTIVO, 0) = 1 THEN 0 ELSE 1 END,
+            s.FECHA_REGISTRO DESC NULLS LAST,
             s.FECHA_CAPTURA DESC NULLS LAST,
             LENGTH(REGEXP_REPLACE(NVL(s.PROCESO, ''), '[^0-9]', '')) DESC,
-            s.FECHA_REGISTRO DESC NULLS LAST,
             s.ID_SITUACION DESC
         ) AS RN
       FROM DNDP.SITUACION_CARCELARIA s
+    )
+  `;
+}
+
+// Los catálogos de filtros solo deben reflejar ubicaciones vigentes. A
+// diferencia de buildActiveSituacionCte, esta variante no usa una situación
+// inactiva como respaldo cuando la persona no tiene una fila ACTIVO=1.
+function buildStrictActiveSituacionCte() {
+  return `
+    WITH ranked_situacion AS (
+      SELECT
+        s.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY s.ID_PERSONA
+          ORDER BY
+            COALESCE(s.FECHA_CORTE, CAST(s.FECHA_REGISTRO AS DATE), s.FECHA_CAPTURA) DESC NULLS LAST,
+            s.FECHA_REGISTRO DESC NULLS LAST,
+            s.FECHA_CAPTURA DESC NULLS LAST,
+            s.ID_SITUACION DESC
+        ) AS RN
+      FROM DNDP.SITUACION_CARCELARIA s
+      WHERE NVL(s.ACTIVO, 0) = 1
     )
   `;
 }
@@ -78,4 +104,5 @@ module.exports = {
   normalizedMojibakeSqlExpr,
   buildScopeWhereClause,
   buildActiveSituacionCte,
+  buildStrictActiveSituacionCte,
 };

@@ -21,8 +21,8 @@ const MAX_LIST_LIMIT = 10000;
 const DEFAULT_CONDENADOS_LIMIT = 1000;
 const DEFAULT_CONDENADOS_FILTERED_LIMIT = 200;
 const MAX_CONDENADOS_FILTERED_LIMIT = 200;
+const ACCION_FUERA_PRISION = 'Caso cerrado - Fuera de prisión';
 const CONDENADOS_COLUMNS = [
-  'estadoReclusion',
   'numeroIdentificacion',
   'nombreUsuario',
   'lugarReclusion',
@@ -33,6 +33,8 @@ const CONDENADOS_COLUMNS = [
   'situacionJuridica',
   'defensorAsignado',
   'accionImpulsar',
+  'fuenteInformacion',
+  'fechaCorte',
 ];
 const MAX_ROUTE_CACHE_VARIANTS = 12;
 const FILTER_OPTIONS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -140,6 +142,13 @@ function firstFilled(...values) {
   return '';
 }
 
+function toIsoDate(value) {
+  if (!value) return '';
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value ?? '').trim();
+  return parsed.toISOString().slice(0, 10);
+}
+
 function getValueWithFallback(row, primary, secondary = '', fallback = '') {
   return consolidado.getValue(row, primary, consolidado.getValue(row, secondary, fallback));
 }
@@ -161,12 +170,14 @@ function canonicalEstadoLabel(value) {
 function resolveEstadoLabelFromRawRow(row) {
   const estadoCaso = getValueWithFallback(row, 'Estado del caso', '', '');
   const estadoTramite = getValueWithFallback(row, 'Estado del trámite', 'Estado del tramite', '');
+  const accionImpulsar = getValueWithFallback(row, 'Acción a impulsar', 'Accion a impulsar', '');
   const accion = getValueWithFallback(row, 'Acción a realizar', 'Accion a realizar', '');
   const actuacion = getValueWithFallback(row, 'Actuación a adelantar', 'Actuacion a adelantar', '');
   const posible = getValueWithFallback(row, 'posibleActuacionJudicial', '', '');
   return firstFilled(
     canonicalEstadoLabel(estadoCaso),
     canonicalEstadoLabel(estadoTramite),
+    canonicalEstadoLabel(accionImpulsar),
     canonicalEstadoLabel(accion),
     canonicalEstadoLabel(actuacion),
     canonicalEstadoLabel(posible)
@@ -452,6 +463,7 @@ function buildEstadoSource(row) {
     ),
     'Estado del caso': getValueWithFallback(row, 'Estado del caso', '', ''),
     'Estado del trámite': getValueWithFallback(row, 'Estado del trámite', 'Estado del tramite', ''),
+    'Acción a impulsar': getValueWithFallback(row, 'Acción a impulsar', 'Accion a impulsar', ''),
     'Acción a realizar': getValueWithFallback(row, 'Acción a realizar', 'Accion a realizar', ''),
     'posibleActuacionJudicial': getValueWithFallback(row, 'posibleActuacionJudicial', '', ''),
   };
@@ -468,11 +480,12 @@ function compactFilledFields(source) {
 
 function mapCondenadoRow(row) {
   const situacionActiva = Number(row?.S_ACTIVO) === 1;
-  const accionFueraPrision = 'Persona fuera de prisión — caso cerrado';
   const estadoCodigoCalculado = situacionActiva
     ? resolveEstadoCodigo(row?.ESTADO_CODIGO || resolveEstadoLabelFromRawRow(row)) || 'ANALIZAR_CASO'
     : 'CASO_CERRADO';
-  const estadoEtiquetaCalculada = getEstadoEtiqueta(estadoCodigoCalculado) || 'Analizar el caso';
+  const estadoEtiquetaCalculada = situacionActiva
+    ? getEstadoEtiqueta(estadoCodigoCalculado) || 'Analizar el caso'
+    : ACCION_FUERA_PRISION;
   const lugarOriginal = getValueWithFallback(
     row,
     'Nombre del lugar de privacion de la libertad',
@@ -481,18 +494,28 @@ function mapCondenadoRow(row) {
   );
   const centroReclusion = resolveCentro(lugarOriginal);
   const accionOriginal = situacionActiva
-    ? getValueWithFallback(row, 'Acción a realizar', 'Accion a realizar', '')
+    ? firstFilled(
+        getValueWithFallback(row, 'Acción a impulsar', 'Accion a impulsar', ''),
+        getValueWithFallback(row, 'Acción a realizar', 'Accion a realizar', '')
+      )
     : '';
-  const accionPendiente = resolveAccionPendiente({
+  const accionPendienteBase = resolveAccionPendiente({
     estadoCodigo: estadoCodigoCalculado,
     valorOriginal: accionOriginal,
   });
+  const accionPendiente = situacionActiva
+    ? accionPendienteBase
+    : {
+        ...(accionPendienteBase || {}),
+        etiqueta: ACCION_FUERA_PRISION,
+        homologada: true,
+        fuente: 'situacion_inactiva',
+      };
   const categoriaPotencialSubrogado =
     String(row?.CATEGORIA_POTENCIAL_SUBROGADO || '').trim() || computeCategoriaPotencialSubrogado(row);
   const esPotencialSubrogado = categoriaPotencialSubrogado !== POTENCIAL_SUBROGADO_CATEGORY.NO_REUNE;
   return {
     situacionActiva,
-    estadoReclusion: situacionActiva ? 'EN PRISIÓN' : 'FUERA DE PRISIÓN',
     numeroIdentificacion: getValueWithFallback(row, 'Numero de identificacion', 'numero', ''),
     nombreUsuario: getValueWithFallback(row, 'Nombre', 'Nombre usuario', ''),
     lugarReclusion: centroReclusion?.label || lugarOriginal,
@@ -529,9 +552,15 @@ function mapCondenadoRow(row) {
       ''
     ),
     defensorId: String(row?.DEFENSOR_ID || '').trim(),
+    fuenteInformacion: String(row?.FUENTE_SITUACION || '').trim(),
+    fechaCorte: toIsoDate(row?.FECHA_CORTE_SITUACION),
+    totalSituaciones: Number(row?.TOTAL_SITUACIONES || 0),
+    tieneHistorialActivoInactivo:
+      Number(row?.MIN_ACTIVO_HISTORICO) === 0 && Number(row?.MAX_ACTIVO_HISTORICO) === 1,
     estadoCodigo: estadoCodigoCalculado,
     estadoEtiqueta: estadoEtiquetaCalculada,
     accionImpulsar: accionPendiente?.etiqueta || accionOriginal,
+    'Acción a impulsar': accionPendiente?.etiqueta || accionOriginal,
     accionPendiente,
     categoriaPotencialSubrogado,
     esPotencialSubrogado,
@@ -543,8 +572,9 @@ function mapCondenadoRow(row) {
       ...(situacionActiva
         ? {}
         : {
-            'Estado del trámite': accionFueraPrision,
-            'Acción a realizar': accionFueraPrision,
+            'Estado del trámite': ACCION_FUERA_PRISION,
+            'Acción a impulsar': ACCION_FUERA_PRISION,
+            'Acción a realizar': ACCION_FUERA_PRISION,
           }),
     }),
     'Estado del caso': estadoEtiquetaCalculada,

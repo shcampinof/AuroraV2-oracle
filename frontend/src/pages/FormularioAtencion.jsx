@@ -90,8 +90,6 @@ const OPCIONES_CALIFICACION_CONDUCTA = [
   'Pendiente',
   'Sin registro',
 ];
-const FECHA_CORTE_DATOS_REFERENCIA = '15/04/2026';
-
 const OPCIONES_PROCEDENCIA_LIBERTAD_CONDICIONAL = [
 
   'Sí procede solicitud de libertad condicional',
@@ -1248,6 +1246,10 @@ function buildNuevaActuacionDraft(source) {
     next[key] = '';
   });
 
+  // Toda actuación nace con una acción persistible, incluso antes de que se
+  // diligencien los hitos que permiten avanzar a la siguiente etapa.
+  next['Acción a impulsar'] = 'Analizar el caso';
+
   return next;
 }
 
@@ -2367,7 +2369,10 @@ export default function FormularioAtencion({ numeroInicial }) {
     const cierrePorQ57 =
       isCierreImposibilidadSeleccionado(cierreImposibilidadTramite) ||
       isCierreImposibilidadSeleccionado(cierreImposibilidadUtilidad);
-    const cierrePorQ52Utilidad = actuacionIncluyeUtilidadPublica && isFilled(sentidoDecisionBloque5);
+    const cierrePorQ52Utilidad =
+      actuacionIncluyeUtilidadPublica &&
+      isFilled(sentidoDecisionBloque5) &&
+      norm(sentidoDecisionBloque5) !== norm('Niega utilidad pública');
     const cierrePorQ47Tramite =
       !actuacionIncluyeUtilidadPublica &&
       isFilled(sentidoDecisionBloque5) &&
@@ -2660,7 +2665,11 @@ export default function FormularioAtencion({ numeroInicial }) {
 
     const persistirCierreAutomatico = async () => {
       try {
-        const nextRecord = { ...unwrapRegistro(registro), 'Estado del caso': 'Cerrado' };
+        const nextRecord = {
+          ...unwrapRegistro(registro),
+          'Estado del caso': 'Cerrado',
+          'Acción a impulsar': 'Caso cerrado',
+        };
         if (!String(nextRecord['Cierre del caso por imposibilidad de avanzar (si aplica)'] ?? '').trim()) {
           nextRecord['Cierre del caso por imposibilidad de avanzar (si aplica)'] = motivoCierre || 'Caso cerrado';
         }
@@ -2688,12 +2697,18 @@ export default function FormularioAtencion({ numeroInicial }) {
     const next = String(auroraRuleState?.derivedStatus || '').trim();
     if (!next) return;
     const current = String(registro['Estado del trámite'] ?? '').trim();
-    if (current === next) return;
+    const currentAction = String(registro['Acción a impulsar'] ?? '').trim();
+    if (current === next && currentAction === next) return;
     setRegistro((prev) => {
       if (!prev) return prev;
       const cur = String(prev['Estado del trámite'] ?? '').trim();
-      if (cur === next) return prev;
-      return wrapRegistroForLookup({ ...unwrapRegistro(prev), 'Estado del trámite': next });
+      const curAction = String(prev['Acción a impulsar'] ?? '').trim();
+      if (cur === next && curAction === next) return prev;
+      return wrapRegistroForLookup({
+        ...unwrapRegistro(prev),
+        'Estado del trámite': next,
+        'Acción a impulsar': next,
+      });
     });
   }, [registro, auroraActivo, auroraRuleState]);
 
@@ -2719,7 +2734,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     setRegistro((prev) => {
       if (!prev) return prev;
       const currentTramite = String(prev['Estado del trámite'] ?? '').trim();
-      const currentAccion = String(prev['Acción a realizar'] ?? '').trim();
+      const currentAccion = String(prev['Acción a impulsar'] ?? prev['Acción a realizar'] ?? '').trim();
       const nextCaso = estadoTramiteSindicado === 'Caso cerrado' ? 'Cerrado' : 'Activo';
       const currentCaso = String(prev['Estado del caso'] ?? '').trim();
       if (
@@ -2733,7 +2748,7 @@ export default function FormularioAtencion({ numeroInicial }) {
       return wrapRegistroForLookup({
         ...unwrapRegistro(prev),
         'Estado del trámite': estadoTramiteSindicado,
-        'Acción a realizar': estadoTramiteSindicado,
+        'Acción a impulsar': estadoTramiteSindicado,
         'Estado del caso': nextCaso,
       });
     });
@@ -2996,7 +3011,15 @@ export default function FormularioAtencion({ numeroInicial }) {
       if (auroraVisibleBlocks.has('bloque2Aurora')) {
         const fieldsBloque2 = [
           ...EXPORT_FIELDS_AURORA_BLOQUE_2.slice(0, 4),
-          { label: 'Fecha de actualización de los datos (corte)', value: FECHA_CORTE_DATOS_REFERENCIA, isDate: true },
+          {
+            label: 'Fuente de información',
+            value: registro?.['Fuente de información'] ?? registro?.fuenteInformacion ?? '',
+          },
+          {
+            label: 'Fecha de actualización de los datos (corte)',
+            value: registro?.['Fecha de corte'] ?? registro?.fechaCorte ?? '',
+            isDate: true,
+          },
           ...EXPORT_FIELDS_AURORA_BLOQUE_2.slice(4),
           {
             label: 'Días restantes para cumplir requisito temporal de prisión domiciliaria',
@@ -3102,8 +3125,15 @@ export default function FormularioAtencion({ numeroInicial }) {
       { label: 'Documento', value: getDocumentoActual(registro) || 'Sin dato' },
       { label: 'Nombre', value: displayText(String(registro?.['Nombre'] ?? '').trim()) || 'Sin dato' },
       { label: 'Flujo', value: flow === 'condenado' ? 'AURORA (Condenado)' : flow === 'sindicado' ? 'CELESTE (Sindicado)' : 'No definido' },
-      { label: 'Estado del caso', value: displayText(registro?.['Estado del caso'] ?? '') || 'Sin dato' },
-      { label: 'Estado del trámite', value: displayText(registro?.['Estado del trámite'] ?? '') || 'Sin dato' },
+      {
+        label: 'Acción a impulsar',
+        value: displayText(
+          registro?.['Acción a impulsar'] ??
+          registro?.['Acción a realizar'] ??
+          registro?.['Estado del trámite'] ??
+          ''
+        ) || 'Sin dato',
+      },
       { label: 'Actuación activa', value: actuacionActivaId || 'Sin dato' },
       {
         label: 'Fecha de generación',
@@ -3275,7 +3305,10 @@ export default function FormularioAtencion({ numeroInicial }) {
           });
         }
         const estadoTramiteActual = String(auroraRuleState?.derivedStatus || '').trim();
-        if (estadoTramiteActual) payloadBase['Estado del trámite'] = estadoTramiteActual;
+        if (estadoTramiteActual) {
+          payloadBase['Estado del trámite'] = estadoTramiteActual;
+          payloadBase['Acción a impulsar'] = estadoTramiteActual;
+        }
         payloadBase['Estado del caso'] = estadoTramiteActual === 'Caso cerrado' || casoCerrado ? 'Cerrado' : 'Activo';
         if (payloadBase['Estado del caso'] === 'Cerrado' && !String(payloadBase['Cierre del caso por imposibilidad de avanzar (si aplica)'] ?? '').trim()) {
           payloadBase['Cierre del caso por imposibilidad de avanzar (si aplica)'] = motivoCierre || estadoTramiteActual || 'Caso cerrado';
@@ -3291,7 +3324,7 @@ export default function FormularioAtencion({ numeroInicial }) {
         const estadoTramiteSindicado = String(celesteRuleState?.derivedStatus || '').trim();
         if (estadoTramiteSindicado) {
           payloadBase['Estado del trámite'] = estadoTramiteSindicado;
-          payloadBase['Acción a realizar'] = estadoTramiteSindicado;
+          payloadBase['Acción a impulsar'] = estadoTramiteSindicado;
         }
         payloadBase['Estado del caso'] = estadoTramiteSindicado === 'Caso cerrado' ? 'Cerrado' : 'Activo';
       }
@@ -3374,6 +3407,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     const next = {
       ...(registro || {}),
       'Situación Jurídica actualizada (de conformidad con la rama judicial)': 'CONDENADO',
+      'Acción a impulsar': String(celesteEval?.derivedStatus || 'Analizar el caso'),
       redirectedToAurora: true,
     };
 
@@ -3545,7 +3579,7 @@ export default function FormularioAtencion({ numeroInicial }) {
           <div ref={formularioDetalleRef} className="card" style={{ marginTop: '1rem' }}>
             {personaFueraPrision && (
               <div className="ppl-inactive-alert" role="status">
-                Estado de reclusión: FUERA DE PRISIÓN. Esta información no se puede editar.
+                Caso cerrado - Fuera de prisión. Este registro histórico no se puede editar.
               </div>
             )}
             <fieldset className="readonly-form-fieldset" disabled={personaFueraPrision}>
@@ -3687,9 +3721,17 @@ export default function FormularioAtencion({ numeroInicial }) {
                 />
                 <div className="question-40-highlight">
                   <Campo
+                    label="Fuente de información"
+                    name="Fuente de información"
+                    value={registro['Fuente de información'] ?? registro.fuenteInformacion ?? ''}
+                    onChange={handleChange}
+                    readOnly
+                    required={false}
+                  />
+                  <Campo
                     label="Fecha de actualización de los datos (corte)"
                     name="Fecha de actualización de los datos (corte)"
-                    value={FECHA_CORTE_DATOS_REFERENCIA}
+                    value={registro['Fecha de corte'] ?? registro.fechaCorte ?? ''}
                     onChange={handleChange}
                     readOnly
                     required={false}

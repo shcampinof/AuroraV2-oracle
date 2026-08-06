@@ -306,6 +306,21 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
+  it('AURORA.CIERRE.REGLA1.2 - utilidad pública vacía no bloquea el cierre ni el cálculo de la acción', () => {
+    const answers = {
+      ...buildBloque3Base(),
+      [AURORA_FIELD_CATALOG.q30]: 'No aplica',
+      [AURORA_FIELD_CATALOG.q31]: 'No aplica',
+      [AURORA_FIELD_CATALOG.q32]: '',
+      [AURORA_FIELD_CATALOG.q33]: 'No',
+      [AURORA_FIELD_CATALOG.q34]: 'No',
+      [AURORA_FIELD_CATALOG.q36]: 'Ninguna',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.derivedStatus).toBe('Caso cerrado');
+  });
+
   it('AURORA.CIERRE.REGLA2.1 - cierra el caso cuando Q39 es distinta a "Desea que el defensor(a) público(a) avance con la solicitud"', () => {
     const answers = {
       ...buildBloque3Base(),
@@ -353,7 +368,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
-  it('AURORA.ESTADO.RECURSO.TRAMITE.1 - si Q47 = "No concede la solicitud" y Q49 está vacía, cierra el caso', () => {
+  it('AURORA.ESTADO.RECURSO.TRAMITE.1 - si Q47 niega y Q49 está vacía, la acción es presentar recurso', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -362,7 +377,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Caso cerrado');
+    expect(result.derivedStatus).toBe('Presentar recurso');
   });
 
   it('AURORA.ESTADO.RECURSO.TRAMITE.2 - si Q47 = "No concede la solicitud" y Q49 = "Sí", pasa a "Pendiente decisión"', () => {
@@ -455,7 +470,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Pendiente decisión');
   });
 
-  it('AURORA.CIERRE.RECURSO.UTILIDAD.1 - si utilidad pública niega y Q54 está vacía, cierra el caso', () => {
+  it('AURORA.ESTADO.RECURSO.UTILIDAD.1B - si utilidad pública niega y Q54 está vacía, la acción es presentar recurso', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -465,7 +480,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Caso cerrado');
+    expect(result.derivedStatus).toBe('Presentar recurso');
   });
 
   it('AURORA.ESTADO.UTILIDAD.2 - pasa a "Pendiente decisión" cuando utilidad pública ya tiene radicación', () => {

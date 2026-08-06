@@ -7,6 +7,11 @@ assert(contract, 'La ruta PPL debe exponer su contrato interno para validación.
 function activeRawRow() {
   return {
     S_ACTIVO: 1,
+    FUENTE_SITUACION: 'SISIPEC',
+    FECHA_CORTE_SITUACION: new Date('2026-07-07T00:00:00.000Z'),
+    TOTAL_SITUACIONES: 2,
+    MIN_ACTIVO_HISTORICO: 0,
+    MAX_ACTIVO_HISTORICO: 1,
     ESTADO_CODIGO: 'ENTREVISTAR_USUARIO',
     'Numero de identificacion': '1000123456',
     Nombre: 'USUARIO PRUEBA',
@@ -31,7 +36,6 @@ function testEveryColumnHasMappedDataContract() {
     assert(Object.prototype.hasOwnProperty.call(mapped, column), `Falta campo mapeado para columna ${column}`);
   });
   assert.equal(mapped.situacionActiva, true);
-  assert.equal(mapped.estadoReclusion, 'EN PRISIÓN');
   assert.equal(mapped.numeroIdentificacion, '1000123456');
   assert.equal(mapped.nombreUsuario, 'USUARIO PRUEBA');
   assert.equal(mapped.lugarReclusion, 'CPAMS EL BARNE');
@@ -45,11 +49,16 @@ function testEveryColumnHasMappedDataContract() {
   assert.equal(mapped.situacionJuridica, 'Condenado');
   assert.equal(mapped.defensorAsignado, 'DEFENSOR PRUEBA');
   assert.equal(mapped.defensorId, '123456');
+  assert.equal(mapped.fuenteInformacion, 'SISIPEC');
+  assert.equal(mapped.fechaCorte, '2026-07-07');
+  assert.equal(mapped.totalSituaciones, 2);
+  assert.equal(mapped.tieneHistorialActivoInactivo, true);
   assert.equal(mapped.estadoCodigo, 'ENTREVISTAR_USUARIO');
   assert.equal(mapped.estadoEtiqueta, 'Entrevistar al usuario');
   assert.equal(mapped.accionPendiente.codigo, 'REALIZAR_ENTREVISTA');
   assert.equal(mapped.accionPendiente.homologada, false);
   assert.equal(mapped.accionPendiente.valorOriginal, 'Texto histórico distinto');
+  assert.equal(mapped['Acción a impulsar'], 'Entrevistar al usuario');
   assert.equal(mapped.categoriaPotencialSubrogado, 'potenciales_beneficiarios');
   assert.equal(mapped.esPotencialSubrogado, true);
   assert.equal(mapped.estadoSource['Resumen del análisis del caso'], 'Resumen cargado');
@@ -59,11 +68,12 @@ function testEveryColumnHasMappedDataContract() {
 function testInactiveRowsCloseStateAndAction() {
   const mapped = contract.mapRow({ ...activeRawRow(), S_ACTIVO: 0, ESTADO_CODIGO: 'ANALIZAR_CASO' });
   assert.equal(mapped.situacionActiva, false);
-  assert.equal(mapped.estadoReclusion, 'FUERA DE PRISIÓN');
   assert.equal(mapped.estadoCodigo, 'CASO_CERRADO');
+  assert.equal(mapped.accionImpulsar, 'Caso cerrado - Fuera de prisión');
+  assert.equal(mapped['Acción a impulsar'], 'Caso cerrado - Fuera de prisión');
   assert.equal(mapped.accionPendiente.codigo, 'SIN_ACCION_PENDIENTE');
   assert.equal(mapped.accionPendiente.homologada, true);
-  assert.equal(mapped.estadoSource['Acción a realizar'], 'Persona fuera de prisión — caso cerrado');
+  assert.equal(mapped.estadoSource['Acción a impulsar'], 'Caso cerrado - Fuera de prisión');
 }
 
 function testAllApiFiltersAreParsedAndTrimmed() {

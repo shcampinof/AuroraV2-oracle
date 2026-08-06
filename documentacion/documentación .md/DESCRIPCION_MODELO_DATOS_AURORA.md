@@ -126,9 +126,11 @@ Campos o conceptos observados:
 
 - Defensor asignado.
 
-- Acción o actuación a impulsar.
+- Acción a impulsar, persistida en `DNDP.GESTION_JURIDICA.ACCION_REALIZAR`. La etiqueta operativa también puede derivarse de los hitos de la gestión; no existe una columna independiente `ESTADO_CASO`.
 
-- Estado del caso.
+- Fuente y fecha de corte de la situación, tomadas de `DNDP.SITUACION_CARCELARIA.FUENTE` y `DNDP.SITUACION_CARCELARIA.FECHA_CORTE`.
+
+Cuando una persona tiene varias situaciones, Aurora toma primero la fila con la fecha efectiva más reciente (`FECHA_CORTE`, con respaldo en `FECHA_REGISTRO` y `FECHA_CAPTURA`). Solo si las fechas empatan prefiere `ACTIVO=1`. Así, un registro activo antiguo no prevalece sobre un reporte inactivo más reciente. La interfaz muestra la fuente, la fecha de corte y una advertencia cuando el historial contiene filas activas e inactivas.
 
 - Fechas de análisis, entrevista, solicitud y decisión.
 

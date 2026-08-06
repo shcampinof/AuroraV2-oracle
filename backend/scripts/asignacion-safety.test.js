@@ -133,10 +133,62 @@ async function testInactivePrisonRecordRejectsUpdates() {
   }
 }
 
+async function testNewActuacionAlwaysPersistsCanonicalAction() {
+  const personaRepo = require('../repositories/oracle/personaRepository');
+  const gestionRepo = require('../repositories/oracle/gestionRepository');
+  const servicePath = require.resolve('../services/pplService');
+  const originals = {
+    findActiveContextByDocumento: personaRepo.findActiveContextByDocumento,
+    listRowsWithActiveSituacionAndGestiones: personaRepo.listRowsWithActiveSituacionAndGestiones,
+    insertGestion: gestionRepo.insertGestion,
+  };
+  const writes = [];
+
+  personaRepo.findActiveContextByDocumento = async () => ({
+    P_ID_PERSONA: 10,
+    S_ID_SITUACION: 20,
+    S_ACTIVO: 1,
+  });
+  personaRepo.listRowsWithActiveSituacionAndGestiones = async () => [{
+    P_ID_PERSONA: 10,
+    P_NUMERO: '123',
+    S_ID_SITUACION: 20,
+    S_ACTIVO: 1,
+    S_SITUACION: 'Condenado',
+    G_ID_GESTION: 31,
+    G_ACCION_REALIZAR: 'Presentar solicitud',
+  }];
+  gestionRepo.insertGestion = async (idSituacion, fields) => {
+    writes.push({ idSituacion, fields });
+    return 31;
+  };
+  delete require.cache[servicePath];
+
+  try {
+    const service = require(servicePath);
+    await service.createActuacionByDocumento('123', {
+      data: {
+        'Acción a realizar': 'Valor legado que no debe prevalecer',
+        'Acción a impulsar': 'Presentar solicitud',
+      },
+    });
+    assert.strictEqual(writes[0].fields.ACCION_REALIZAR, 'Presentar solicitud');
+
+    await service.createActuacionByDocumento('123', { data: {} });
+    assert.strictEqual(writes[1].fields.ACCION_REALIZAR, 'Analizar el caso');
+  } finally {
+    personaRepo.findActiveContextByDocumento = originals.findActiveContextByDocumento;
+    personaRepo.listRowsWithActiveSituacionAndGestiones = originals.listRowsWithActiveSituacionAndGestiones;
+    gestionRepo.insertGestion = originals.insertGestion;
+    delete require.cache[servicePath];
+  }
+}
+
 (async () => {
   await testRepositoryUsesDatabaseClock();
   await testGenericDefenderChangeCreatesFreshAssignment();
   await testInactivePrisonRecordRejectsUpdates();
+  await testNewActuacionAlwaysPersistsCanonicalAction();
   console.log('OK asignacion-safety.test');
 })().catch((error) => {
   console.error(error);

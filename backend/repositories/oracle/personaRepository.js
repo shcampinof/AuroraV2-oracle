@@ -1,6 +1,7 @@
 const { execute } = require('../../db/oraclePool');
 const {
   buildActiveSituacionCte,
+  buildStrictActiveSituacionCte,
   buildScopeWhereClause,
   DEFAULT_SCOPE_DEPARTAMENTOS,
   normalizedSqlExpr,
@@ -83,6 +84,11 @@ const BASE_SELECT_COLUMNS = [
   'c.CALIFICACION_4 AS C_CALIFICACION_4',
   's.FECHA_REGISTRO AS S_FECHA_REGISTRO',
   's.ACTIVO AS S_ACTIVO',
+  's.FUENTE AS S_FUENTE',
+  's.FECHA_CORTE AS S_FECHA_CORTE',
+  's.TOTAL_SITUACIONES AS S_TOTAL_SITUACIONES',
+  's.MIN_ACTIVO_HISTORICO AS S_MIN_ACTIVO_HISTORICO',
+  's.MAX_ACTIVO_HISTORICO AS S_MAX_ACTIVO_HISTORICO',
 
   'g.ID_GESTION AS G_ID_GESTION',
   'g.ID_SITUACION AS G_ID_SITUACION',
@@ -264,6 +270,7 @@ const HAS_DECISION_RECURSO_EXPR = sqlAnyFilled([
 ]);
 const IS_UTILIDAD_PUBLICA_EXPR = `(${ACTUACION_NORMALIZADA_EXPR} LIKE '%UTILIDAD PUBLICA%')`;
 const IS_RECURSO_PRESENTADO_EXPR = `(${RECURSO_NORMALIZADO_EXPR} IN ('SI', 'S?'))`;
+const IS_RECURSO_NO_PRESENTADO_EXPR = `(${RECURSO_NORMALIZADO_EXPR} = 'NO')`;
 const IS_DECISION_NEGATIVA_EXPR = `(
   (NOT ${IS_UTILIDAD_PUBLICA_EXPR} AND (
     ${DECISION_NORMALIZADA_EXPR} = 'NO CONCEDE LA SOLICITUD'
@@ -299,10 +306,13 @@ const ALL_PROCEDENCIAS_NEGATIVAS_EXPR = `(
   ${[
     'g.LIBERTAD_CONDICIONAL',
     'g.PRISION_DOMICILIARIA_MITAD_PENA',
-    'g.UTILIDAD_PUBLICA',
     'g.PROCEDENCIA_PENA_CUMPLIDA',
     'g.PROCEDENCIA_ACUMULACION_PENAS',
   ].map(sqlNegativeProcedencia).join(' AND ')}
+  AND (
+    NOT (${sqlFilled('g.UTILIDAD_PUBLICA')})
+    OR ${sqlNegativeProcedencia('g.UTILIDAD_PUBLICA')}
+  )
 )`;
 const OTRAS_SOLICITUDES_NORMALIZADA_EXPR = normalizedMojibakeSqlExpr('g.OTRAS_SOLICITUDES_TRAMITAR');
 const WITHOUT_POSITIVE_OTRAS_SOLICITUDES_EXPR = `(
@@ -328,7 +338,8 @@ const AURORA_DERIVED_ESTADO_CODIGO_EXPR = `
       OR ${normalizedMojibakeSqlExpr('g.CUMPLE_REQUISITO_MARGINALIDAD')} = 'NO'
       OR ${normalizedMojibakeSqlExpr('g.CUMPLE_REQUISITO_JEFATURA_HOGAR')} = 'NO'
       OR (${IS_DECISION_NEGATIVA_EXPR} AND (
-        NOT ${IS_RECURSO_PRESENTADO_EXPR} OR ${HAS_DECISION_RECURSO_EXPR}
+        ${IS_RECURSO_NO_PRESENTADO_EXPR}
+        OR ${HAS_DECISION_RECURSO_EXPR}
       ))
       OR (NOT ${IS_UTILIDAD_PUBLICA_EXPR}
         AND ${sqlFilled('g.SENTIDO_DECISION')}
@@ -341,6 +352,10 @@ const AURORA_DERIVED_ESTADO_CODIGO_EXPR = `
       AND ${IS_RECURSO_PRESENTADO_EXPR}
       AND NOT (${HAS_DECISION_RECURSO_EXPR})
       THEN 'PENDIENTE_DECISION'
+    WHEN ${IS_DECISION_NEGATIVA_EXPR}
+      AND NOT (${IS_RECURSO_PRESENTADO_EXPR})
+      AND NOT (${IS_RECURSO_NO_PRESENTADO_EXPR})
+      THEN 'PRESENTAR_RECURSO'
     WHEN ${sqlFilled('g.FECHA_DECISION_AUTORIDAD')}
       AND NOT (${sqlFilled('g.SENTIDO_DECISION')})
       THEN 'PENDIENTE_DECISION'
@@ -377,7 +392,11 @@ const CELESTE_DERIVED_ESTADO_CODIGO_EXPR = `
       OR ${DECISION_NORMALIZADA_EXPR} LIKE '%SUSTITUYE MEDIDA%'
       THEN 'CASO_CERRADO'
     WHEN ${DECISION_NORMALIZADA_EXPR} LIKE '%NIEGA LA SOLICITUD%'
-      THEN CASE WHEN ${IS_RECURSO_PRESENTADO_EXPR} THEN 'PENDIENTE_DECISION' ELSE 'CASO_CERRADO' END
+      THEN CASE
+        WHEN ${IS_RECURSO_PRESENTADO_EXPR} THEN 'PENDIENTE_DECISION'
+        WHEN ${IS_RECURSO_NO_PRESENTADO_EXPR} THEN 'CASO_CERRADO'
+        ELSE 'PRESENTAR_RECURSO'
+      END
     WHEN ${sqlFilled('g.FECHA_PRESENTACION_RECURSO')} OR ${IS_RECURSO_PRESENTADO_EXPR}
       THEN 'PENDIENTE_DECISION'
     WHEN ${sqlFilled('g.FECHA_REALIZACION_AUDIENCIA')} AND NOT (${sqlFilled('g.SENTIDO_DECISION')})
@@ -648,6 +667,11 @@ async function listCondenadosSummary({
         s.SITUACION AS "Situacion Juridica",
         s.SITUACION AS "situacion",
         s.ACTIVO AS S_ACTIVO,
+        s.FUENTE AS FUENTE_SITUACION,
+        s.FECHA_CORTE AS FECHA_CORTE_SITUACION,
+        s.TOTAL_SITUACIONES AS TOTAL_SITUACIONES,
+        s.MIN_ACTIVO_HISTORICO AS MIN_ACTIVO_HISTORICO,
+        s.MAX_ACTIVO_HISTORICO AS MAX_ACTIVO_HISTORICO,
         s.SITUACION_JURIDICA_ACTUALIZADA AS "Situacion Juridica actualizada (de conformidad con la rama judicial)",
         ${DEFENSOR_ACTIVO_EXPR} AS "Defensor(a) Publico(a) Asignado para tramitar la solicitud",
         ${DEFENSOR_ACTIVO_EXPR} AS "Defensor(a) Público(a) Asignado para tramitar la solicitud",
@@ -816,7 +840,7 @@ async function listDistinctCondenadosFilterOptions({
   maxPerField = 1000,
 } = {}) {
   const safeMax = Math.max(1, Math.min(5000, Number.parseInt(String(maxPerField || '1000'), 10) || 1000));
-  const activeSituacionCte = buildActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
+  const activeSituacionCte = buildStrictActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
   const cte = `
     ${activeSituacionCte},
     latest_gestion AS (

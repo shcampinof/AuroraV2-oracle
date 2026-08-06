@@ -58,6 +58,7 @@ export type DerivedStatus =
   | 'Analizar el caso'
   | 'Entrevistar al usuario'
   | 'Presentar solicitud'
+  | 'Presentar recurso'
   | 'Pendiente decisión'
   | 'Caso cerrado';
 
@@ -270,15 +271,18 @@ function isNegativeProcedencia(value: unknown): boolean {
 }
 
 function areAllNegativeInProcedencias30a34(record: FormRecord): boolean {
-  const values = [
+  const requiredValues = [
     get(record, FIELD.q30),
     get(record, FIELD.q31),
-    get(record, FIELD.q32),
     get(record, FIELD.q33),
     get(record, FIELD.q34),
   ];
-  if (!values.every((v) => isFilled(v))) return false;
-  return values.every((v) => isNegativeProcedencia(v));
+  if (!requiredValues.every((v) => isFilled(v) && isNegativeProcedencia(v))) return false;
+
+  // Utilidad pública es opcional: si se diligencia debe ser negativa para esta
+  // regla de cierre; si queda vacía no bloquea el cálculo de la acción.
+  const utilidadPublica = get(record, FIELD.q32);
+  return !isFilled(utilidadPublica) || isNegativeProcedencia(utilidadPublica);
 }
 
 function hasPositiveP36Request(record: FormRecord): boolean {
@@ -396,6 +400,10 @@ function isRecursoPresentado(value: unknown): boolean {
   return equalsAnyInsensitive(value, ['Sí', 'Si', 'S?']);
 }
 
+function isRecursoNoPresentado(value: unknown): boolean {
+  return equalsInsensitive(value, 'No');
+}
+
 function hasDecisionRecurso(record: FormRecord): boolean {
   return (
     isFilled(get(record, FIELD.fechaDecisionRecurso)) ||
@@ -425,7 +433,7 @@ function isCasoCerrado(record: FormRecord): boolean {
   if (equalsInsensitive(q44, 'No') || equalsInsensitive(q45, 'No')) return true;
   if (isDecisionNegativa(record)) {
     if (isRecursoPresentado(q54)) return hasDecisionRecurso(record);
-    return true;
+    return isRecursoNoPresentado(q54);
   }
   if (!isUtilidad && isFilled(q52) && !isNoConcedeSubrogadoPenal(q52)) return true;
   if (isUtilidad && isFilled(q52) && !isUtilidadPublicaNiega(record)) return true;
@@ -695,6 +703,14 @@ export const derivedStatusRules: DerivedStatusRule[] = [
       if (!isDecisionNegativa(record)) return false;
       if (!isRecursoPresentado(get(record, FIELD.q54))) return false;
       return !hasDecisionRecurso(record);
+    },
+  },
+  {
+    id: 'estado_presentar_recurso',
+    status: 'Presentar recurso',
+    when: (record) => {
+      const recurso = get(record, FIELD.q54);
+      return isDecisionNegativa(record) && !isRecursoPresentado(recurso) && !isRecursoNoPresentado(recurso);
     },
   },
   {

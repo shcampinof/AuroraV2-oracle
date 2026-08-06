@@ -122,7 +122,7 @@ describe('evaluateCelesteRules - flujo sindicados', () => {
     expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
-  it('Regla 6: con Q24/Q25 diligenciadas, Q26 = niega y Q28 vacía, estado = Caso cerrado', () => {
+  it('Regla 6: con Q26 = niega y Q28 vacía, la acción es presentar recurso', () => {
     const result = evaluateCelesteRules({
       answers: {
         ...buildBaseSeAvanza(),
@@ -132,7 +132,7 @@ describe('evaluateCelesteRules - flujo sindicados', () => {
         [Q26]: Q26_NIEGA,
       },
     });
-    expect(result.derivedStatus).toBe('Caso cerrado');
+    expect(result.derivedStatus).toBe('Presentar recurso');
   });
 
   it('Regla 7: si Q28 = No, estado = Caso cerrado', () => {

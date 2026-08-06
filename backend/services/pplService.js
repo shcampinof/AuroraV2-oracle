@@ -17,6 +17,8 @@ const LEGACY_COLUMNS = [
   'Tipo de indentificación',
   'Número de identificación',
   'Situación Jurídica',
+  'Fuente de información',
+  'Fecha de corte',
   'Género',
   'Enfoque Étnico/Racial/Cultural',
   'Nacionalidad',
@@ -47,6 +49,7 @@ const LEGACY_COLUMNS = [
   'Calificación de conducta',
   'PAG',
   'Defensor(a) Público(a) Asignado para tramitar la solicitud',
+  'Acción a impulsar',
   'Acción a realizar',
   'Fecha de análisis jurídico del caso',
   'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS',
@@ -414,7 +417,11 @@ bind(['Categorización', 'Categorizacion'], 'SITUACION', 'CATEGORIZACION');
 bind(['Dias_Prision', 'Días restantes para cumplir requisito temporal de prisión domiciliaria'], 'SITUACION', 'DIAS_PRISION');
 bind(['Dias_libertad', 'Días restantes para cumplir requisito temporal de libertad condicional'], 'SITUACION', 'DIAS_LIBERTAD');
 
-bind(['Acción a realizar', 'Accion a realizar'], 'GESTION', 'ACCION_REALIZAR');
+bind(
+  ['Acción a impulsar', 'Accion a impulsar', 'Acción a realizar', 'Accion a realizar'],
+  'GESTION',
+  'ACCION_REALIZAR'
+);
 bind(['Fecha de análisis jurídico del caso', 'Fecha de analisis juridico del caso', 'Fecha analisis'], 'GESTION', 'FECHA_ANALISIS');
 bind(['Vencimiento de terminos'], 'GESTION', 'VENCIMIENTO_TERMINOS');
 bind(['Procedencia de utilidad pública (solo para mujeres)', 'Utilidad publica'], 'GESTION', 'UTILIDAD_PUBLICA');
@@ -522,7 +529,8 @@ function toLegacyRecord(raw = {}) {
     numeroIdentificacion: numeroText,
     'Situación Jurídica': String(raw.S_SITUACION ?? ''),
     situacion: String(raw.S_SITUACION ?? ''),
-    'Estado de reclusión': situacionActiva ? 'EN PRISIÓN' : 'FUERA DE PRISIÓN',
+    'Fuente de información': String(raw.S_FUENTE ?? ''),
+    'Fecha de corte': toIsoDate(raw.S_FECHA_CORTE),
     'Género': String(raw.P_GENERO ?? ''),
     'Enfoque Étnico/Racial/Cultural': String(raw.S_ENFOQUE ?? ''),
     Nacionalidad: String(raw.P_NACIONALIDAD ?? ''),
@@ -572,9 +580,13 @@ function toLegacyRecord(raw = {}) {
     Defensor: String(raw.G_DEFENSOR ?? ''),
     defensorAsignado: String(raw.G_DEFENSOR ?? ''),
 
+    'Acción a impulsar': situacionActiva
+      ? String(raw.G_ACCION_REALIZAR ?? '')
+      : 'Caso cerrado - Fuera de prisión',
+    // Alias legado para actuaciones creadas antes de unificar la terminología.
     'Acción a realizar': situacionActiva
       ? String(raw.G_ACCION_REALIZAR ?? '')
-      : 'Persona fuera de prisión — caso cerrado',
+      : 'Caso cerrado - Fuera de prisión',
     'Fecha de análisis jurídico del caso': toIsoDate(raw.G_FECHA_ANALISIS),
     'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS': String(raw.G_ACTUACION_ADELANTAR ?? raw.G_VENCIMIENTO_TERMINOS ?? ''),
     'Procedencia de utilidad pública (solo para mujeres)': String(raw.G_UTILIDAD_PUBLICA ?? ''),
@@ -621,7 +633,7 @@ function toLegacyRecord(raw = {}) {
     'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública': String(raw.G_CIERRE_CASO ?? ''),
     'Sentido de la decisión que resuelve la solicitud': String(raw.G_SENTIDO_DECISION_RESUELVE_RECURSO ?? ''),
     'Estado del caso': situacionActiva ? '' : 'Caso cerrado',
-    'Estado del trámite': situacionActiva ? '' : 'Persona fuera de prisión — caso cerrado',
+    'Estado del trámite': situacionActiva ? '' : 'Caso cerrado - Fuera de prisión',
     posibleActuacionJudicial: String(raw.G_ACTUACION_ADELANTAR ?? ''),
 
     __oracleIdPersona: raw.P_ID_PERSONA == null ? null : Number(raw.P_ID_PERSONA),
@@ -630,6 +642,9 @@ function toLegacyRecord(raw = {}) {
     __oracleCedulaDefensor: raw.G_CEDULA_DEFENSOR == null ? null : String(raw.G_CEDULA_DEFENSOR),
     __situacionActiva: situacionActiva,
     __activoSituacion: raw.S_ACTIVO == null ? null : Number(raw.S_ACTIVO),
+    __totalSituaciones: Number(raw.S_TOTAL_SITUACIONES || 0),
+    __historialActivoInactivo:
+      Number(raw.S_MIN_ACTIVO_HISTORICO) === 0 && Number(raw.S_MAX_ACTIVO_HISTORICO) === 1,
   };
 
   return record;
@@ -719,6 +734,9 @@ function normalizeCalificacionesPayload(payload) {
 function splitUpdatesByTable(payload, { allowBaseUpdates = false } = {}) {
   const clean = stripControlKeys(normalizePayload(payload));
   const grouped = { PERSONA: {}, SITUACION: {}, GESTION: {} };
+  const accionImpulsarKey = Object.keys(clean).find(
+    (key) => normalizeText(key) === normalizeText('Acción a impulsar')
+  );
 
   Object.entries(clean).forEach(([key, value]) => {
     const binding = UPDATE_BINDINGS.get(normalizeText(key));
@@ -734,6 +752,11 @@ function splitUpdatesByTable(payload, { allowBaseUpdates = false } = {}) {
     }
     grouped[binding.table][binding.column] = dbValue;
   });
+
+  // El nombre canónico prevalece si un cliente envía también el alias legado.
+  if (accionImpulsarKey) {
+    grouped.GESTION.ACCION_REALIZAR = toTypedDbValue('ACCION_REALIZAR', clean[accionImpulsarKey]);
+  }
 
   return grouped;
 }
@@ -832,6 +855,9 @@ async function createActuacionByDocumento(documento, payload) {
   assertSituacionEditable(context);
 
   const updates = splitUpdatesByTable(payload);
+  if (!String(updates.GESTION.ACCION_REALIZAR ?? '').trim()) {
+    updates.GESTION.ACCION_REALIZAR = 'Analizar el caso';
+  }
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
   const normalizedPayload = normalizePayload(payload);
   if (Object.keys(updates.PERSONA).length) {
@@ -911,6 +937,16 @@ async function updateByDocumento(documento, payload) {
   if (!targetGestionId) {
     const latest = await gestionRepo.getLatestBySituacion(context.S_ID_SITUACION);
     targetGestionId = Number(latest?.ID_GESTION || 0) || null;
+  }
+
+  if (
+    Object.keys(updates.GESTION).length > 0 &&
+    !Object.prototype.hasOwnProperty.call(updates.GESTION, 'ACCION_REALIZAR')
+  ) {
+    const currentGestion = targetGestionId ? await gestionRepo.getById(targetGestionId, context.S_ID_SITUACION) : null;
+    if (!String(currentGestion?.ACCION_REALIZAR ?? '').trim()) {
+      updates.GESTION.ACCION_REALIZAR = 'Analizar el caso';
+    }
   }
 
   if (Object.keys(updates.GESTION).length) {

@@ -15,12 +15,14 @@ import {
   resolveDefensorIdByLabel,
 } from '../utils/asignadosCatalogs.js';
 import {
-  ESTADO_RECLUSION_INACTIVO,
   SITUACION_JURIDICA_INACTIVA,
-  getEstadoReclusion,
   isSituacionActiva,
 } from '../utils/pplStatus.js';
-import { getEstadoClassByLabel, getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
+import {
+  getEstadoClassByLabel,
+  getEstadoClassForRecord,
+  getEstadoDisplayInfo,
+} from '../config/estadoActuaciones.rules.ts';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
 
 function prettifyHeader(key) {
@@ -306,14 +308,14 @@ function InputField({
 
 function getColumnWidth(col) {
   const widths = {
-    __estadoReclusion__: 135,
     __situacionJuridica__: 110,
     __numeroIdentificacion__: 130,
     __nombreUsuario__: 145,
     __defensor__: 120,
     __lugarPrivacion__: 155,
-    __estadoCaso__: 135,
     __accionPendiente__: 165,
+    __fuenteInformacion__: 120,
+    __fechaCorte__: 115,
     __departamentoReclusion__: 140,
     __municipioReclusion__: 130,
   };
@@ -453,9 +455,11 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     const cached = estadoInfoCacheRef.current.get(obj);
     if (cached) return cached;
     const backendLabel = String(obj?.estadoEtiqueta || obj?.['Estado del caso'] || '').trim();
-    const computed = backendLabel
-      ? { label: backendLabel, className: getEstadoClassByLabel(backendLabel) }
-      : getEstadoDisplayInfo(obj);
+    const derived = getEstadoDisplayInfo(obj);
+    const computed = {
+      label: String(derived?.label || backendLabel).trim(),
+      className: String(derived?.className || getEstadoClassByLabel(backendLabel)).trim(),
+    };
     estadoInfoCacheRef.current.set(obj, computed);
     return computed;
   }
@@ -665,7 +669,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       sticky.scrollLeft = container.scrollLeft;
       syncingHorizontalScrollRef.current = false;
     }
-  }, []);
+  }, [setShowStickyScroll, setStickyScrollWidth]);
 
   useEffect(() => {
     const container = tableScrollRef.current;
@@ -783,14 +787,14 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
   const orderedColumns = useMemo(() => {
     const fixed = [
-      '__estadoReclusion__',
       '__situacionJuridica__',
       '__numeroIdentificacion__',
       '__nombreUsuario__',
       '__defensor__',
       '__lugarPrivacion__',
-      '__estadoCaso__',
       '__accionPendiente__',
+      '__fuenteInformacion__',
+      '__fechaCorte__',
       '__departamentoReclusion__',
       '__municipioReclusion__',
     ];
@@ -830,6 +834,10 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       'situacionJuridicaActualizada',
       'situacionActiva',
       'estadoReclusion',
+      'fuenteInformacion',
+      'fechaCorte',
+      'totalSituaciones',
+      'tieneHistorialActivoInactivo',
       'Departamento del lugar de reclusi\u00f3n',
       'Departamento del lugar de reclusion',
       'departamentoLugarReclusion',
@@ -864,25 +872,20 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   }, [columns]);
 
   function renderHeader(col) {
-    if (col === '__estadoReclusion__') return 'ESTADO DE RECLUSIÓN';
     if (col === '__situacionJuridica__') return 'SITUACIÓN JURÍDICA';
     if (col === '__numeroIdentificacion__') return 'NÚMERO DE IDENTIFICACIÓN';
     if (col === '__nombreUsuario__') return 'NOMBRE USUARIO';
     if (col === '__defensor__') return 'DEFENSOR';
     if (col === '__lugarPrivacion__') return 'NOMBRE DEL LUGAR DE PRIVACIÓN DE LA LIBERTAD';
-    if (col === '__estadoCaso__') return 'ESTADO DEL CASO';
-    if (col === '__accionPendiente__') return 'ACCIÓN PENDIENTE';
+    if (col === '__accionPendiente__') return 'ACCIÓN A IMPULSAR';
+    if (col === '__fuenteInformacion__') return 'FUENTE DE INFORMACIÓN';
+    if (col === '__fechaCorte__') return 'FECHA DE CORTE';
     if (col === '__departamentoReclusion__') return 'DEPARTAMENTO';
     if (col === '__municipioReclusion__') return 'MUNICIPIO';
     return getTableHeaderLabel(col);
   }
 
   function renderCell(row, col) {
-    if (col === '__estadoReclusion__') {
-      const estado = getEstadoReclusion(pickActiveCaseData(row));
-      const estadoClass = estado === ESTADO_RECLUSION_INACTIVO ? 'estado--fuera-prision' : 'estado--en-prision';
-      return <span className={`estadoBadge ${estadoClass}`}>{estado}</span>;
-    }
     if (col === '__situacionJuridica__') return displayOrDash(getSituacionJuridicaValue(row));
     if (col === '__numeroIdentificacion__') return displayOrDash(getNumeroIdentificacionValue(row));
     if (col === '__nombreUsuario__') return displayOrDash(getNombreUsuarioValue(row));
@@ -893,29 +896,28 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       return (
         <div>
           <span>{lugar}</span>
-          <small style={{ display: 'block', color: '#8a5a00', marginTop: '0.25rem' }}>No homologado</small>
+          <small
+            title="El nombre de la fuente aún no tiene equivalencia en el catálogo institucional de centros."
+            style={{ display: 'block', color: '#8a5a00', marginTop: '0.25rem' }}
+          >
+            Centro pendiente de homologación
+          </small>
         </div>
       );
-    }
-    if (col === '__estadoCaso__') {
-      if (!isSituacionActiva(pickActiveCaseData(row))) {
-        return <span className="estadoBadge estado--fuera-prision">PERSONA FUERA DE PRISIÓN — CASO CERRADO</span>;
-      }
-      const estadoInfo = getEstadoDisplayInfoMemo(row);
-      const estado = String(estadoInfo.label || '').trim();
-      if (!estado) return '\u2014';
-      const estadoClass = String(estadoInfo.className || '').trim();
-      if (!estadoClass) return estado;
-      return <span className={`estadoBadge ${estadoClass}`}>{estado}</span>;
     }
     if (col === '__accionPendiente__') {
       const accion = row?.accionPendiente;
       const etiqueta = String(accion?.etiqueta || row?.accionImpulsar || '').trim();
       const original = String(accion?.valorOriginal || '').trim();
       if (!etiqueta) return '\u2014';
+      const situacionActiva = isSituacionActiva(pickActiveCaseData(row));
+      const estadoCanonico = String(row?.estadoEtiqueta || etiqueta).trim();
+      const estadoClass = situacionActiva
+        ? String(getEstadoClassForRecord(row, estadoCanonico)).trim()
+        : 'estado--fuera-prision';
       return (
         <div>
-          <span>{etiqueta}</span>
+          <span className={`estadoBadge${estadoClass ? ` ${estadoClass}` : ''}`}>{etiqueta}</span>
           {accion?.homologada === false && original && normalize(original) !== normalize(etiqueta) && (
             <small style={{ display: 'block', color: '#8a5a00', marginTop: '0.25rem' }}>
               Valor original no homologado: {original}
@@ -924,6 +926,23 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
         </div>
       );
     }
+    if (col === '__fuenteInformacion__') {
+      const fuente = displayOrDash(row?.fuenteInformacion);
+      return (
+        <div>
+          <span>{fuente}</span>
+          {row?.tieneHistorialActivoInactivo && (
+            <small
+              title="La persona tiene más de una situación carcelaria y el historial contiene registros ACTIVO=1 y ACTIVO=0. Se muestra la situación con la fecha efectiva más reciente."
+              style={{ display: 'block', color: '#6b4f00', marginTop: '0.25rem' }}
+            >
+              Cambio de situación registrado
+            </small>
+          )}
+        </div>
+      );
+    }
+    if (col === '__fechaCorte__') return displayOrDash(row?.fechaCorte);
     if (col === '__departamentoReclusion__') return displayOrDash(getDepartamentoPrivacionValue(row));
     if (col === '__municipioReclusion__') return displayOrDash(getMunicipioPrivacionValue(row));
     return displayOrDash(getCellValue(row, col));
@@ -993,14 +1012,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
               />
 
               <DropdownField
-                label="Estado del caso"
-                value={filtrosDraft.estadoCodigo}
-                onChange={(value) => setFiltroDraft('estadoCodigo', value)}
-                options={estadosDisponibles}
-              />
-
-              <DropdownField
-                label="Acción pendiente"
+                label="Acción a Impulsar / estado"
                 value={filtrosDraft.accionCodigo}
                 onChange={(value) => setFiltroDraft('accionCodigo', value)}
                 options={accionesDisponibles}

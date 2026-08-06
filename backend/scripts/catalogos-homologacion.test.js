@@ -7,6 +7,7 @@ const {
   resolveAccionPendiente,
   resolveCentro,
 } = require('../domain/catalogosHomologacion');
+const { buildActiveSituacionCte, buildStrictActiveSituacionCte } = require('../repositories/oracle/sqlFragments');
 
 function testCentroAliasesShareCanonicalIdentity() {
   const canonical = resolveCentro('CPAMS EL BARNE');
@@ -41,7 +42,24 @@ function testActionsAreSeparatedFromStateAndKeepOriginalValue() {
   assert(listAcciones().some((item) => item.codigo === 'SIN_ACCION_PENDIENTE'));
 }
 
+function testFilterCatalogsRequireActivePrisonStatus() {
+  const sql = buildStrictActiveSituacionCte();
+  assert.match(sql, /WHERE\s+NVL\(s\.ACTIVO,\s*0\)\s*=\s*1/i);
+  assert.doesNotMatch(sql, /CASE\s+WHEN\s+NVL\(s\.ACTIVO/i);
+}
+
+function testCurrentSituationPrioritizesLatestCutoff() {
+  const sql = buildActiveSituacionCte();
+  assert.match(
+    sql,
+    /ORDER BY\s+COALESCE\(s\.FECHA_CORTE, CAST\(s\.FECHA_REGISTRO AS DATE\), s\.FECHA_CAPTURA\) DESC NULLS LAST[\s\S]*CASE WHEN NVL\(s\.ACTIVO, 0\) = 1/i
+  );
+  assert.match(sql, /COUNT\(\*\) OVER \(PARTITION BY s\.ID_PERSONA\) AS TOTAL_SITUACIONES/i);
+}
+
 testCentroAliasesShareCanonicalIdentity();
 testUnknownCentersRemainVisibleAndStable();
 testActionsAreSeparatedFromStateAndKeepOriginalValue();
+testFilterCatalogsRequireActivePrisonStatus();
+testCurrentSituationPrioritizesLatestCutoff();
 console.log('OK catalogos-homologacion.test');

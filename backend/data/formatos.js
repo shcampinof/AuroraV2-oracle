@@ -24,12 +24,12 @@ const formatos = [
   {
     id: 'f5',
     titulo: 'JEPMS-Aplicación retroactiva 2x3 redención por trabajo',
-    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQDAVJycTdadTrfeDtv2fj1dAQmnTO85BZQus9Ru8jqJssk?e=7ifqwX&download=1',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQAHhSy7mlYQRKlM9GXBVBk0AftsW-46a8XjuXGQacEeLhw?e=VltZgf&download=1',
   },
   {
     id: 'f6',
     titulo: 'JEPMS-Aplicación retroactiva e igualitaria 2x3 redención otras actividades STP 5152 2026',
-    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQAHhSy7mlYQRKlM9GXBVBk0AftsW-46a8XjuXGQacEeLhw?e=VltZgf&download=1',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQDAVJycTdadTrfeDtv2fj1dAQmnTO85BZQus9Ru8jqJssk?e=7ifqwX&download=1',
   },
   {
     id: 'f7',
@@ -44,17 +44,18 @@ const formatos = [
   {
     id: 'f9',
     titulo: 'JEPMS-Solicitud libertad condicional',
-    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQBix5RIYey5ToGaflYtk1OBASUWFn4JH55Q-N1YZh7JBLU?e=ji9Njc&download=1',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQAPWjpc_WcCQbbyK6tgidngAUbieB2j5xZNHjLRcInZoB4?e=OhFxaQ&download=1',
   },
   {
     id: 'f10',
     titulo: 'JEPMS-Solicitud prisión domiciliaria',
-    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQCaX4H4a-1GRIFlrvuLesvEAQevh6YuhdNro_ZqkwXpSF0?e=Ju4yp4&download=1',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQBix5RIYey5ToGaflYtk1OBASUWFn4JH55Q-N1YZh7JBLU?e=ji9Njc&download=1',
+
   },
   {
     id: 'f11',
     titulo: 'JEPMS-Traslado del proceso de Distrito Judicial por traslado de persona privada de la libertad',
-    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQAPWjpc_WcCQbbyK6tgidngAUbieB2j5xZNHjLRcInZoB4?e=OhFxaQ&download=1',
+    downloadUrl: 'https://defensoriadelpueblo.sharepoint.com/:w:/s/DNDP-DOCUMENTACION/IQCaX4H4a-1GRIFlrvuLesvEAQevh6YuhdNro_ZqkwXpSF0?e=Ju4yp4&download=1',
   },
   {
     id: 'f12',
