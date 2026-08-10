@@ -1,0 +1,50 @@
+# syntax=docker/dockerfile:1
+
+FROM node:20.19-bookworm-slim AS frontend-builder
+WORKDIR /app/frontend
+
+ARG VITE_API_BASE_URL=/api
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ ./
+RUN npm run build
+
+FROM node:20.19-bookworm-slim AS production
+ENV NODE_ENV=production
+ENV PORT=7860
+
+WORKDIR /app
+
+COPY scripts/cargas_bd/requirements.txt ./scripts/cargas_bd/requirements.txt
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 python3-pip gosu \
+  && pip3 install --break-system-packages --no-cache-dir -r ./scripts/cargas_bd/requirements.txt \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app/backend
+
+COPY backend/package*.json ./
+RUN npm ci --omit=dev --no-audit && npm cache clean --force
+
+COPY backend/ ./
+COPY scripts/cargas_bd/ ../scripts/cargas_bd/
+COPY scripts/docker-entrypoint.sh /usr/local/bin/aurora-entrypoint.sh
+COPY --from=frontend-builder /app/frontend/dist ./public/app
+
+RUN cd tutorial-videos \
+  && sha256sum --check SHA256SUMS \
+  && cd .. \
+  && chown -R node:node /app \
+  && chmod +x /usr/local/bin/aurora-entrypoint.sh
+
+EXPOSE 7860
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD node -e "process.env.NODE_TLS_REJECT_UNAUTHORIZED='0'; const protocol = process.env.HTTPS_KEY_PATH && process.env.HTTPS_CERT_PATH ? 'https' : 'http'; fetch(protocol + '://127.0.0.1:' + (process.env.PORT || 7860) + '/api/health').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
+
+ENTRYPOINT ["/usr/local/bin/aurora-entrypoint.sh"]
+CMD ["npm", "run", "start:prod"]

@@ -1,0 +1,96 @@
+﻿.tabla-historial-actuaciones-wrap {
+  overflow-x: auto;
+  margin-top: 0.65rem;
+}
+
+.tabla-historial-actuaciones {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.tabla-historial-actuaciones .historial-col-numero {
+  width: 8%;
+}
+
+.tabla-historial-actuaciones .historial-col-fecha {
+  width: 16%;
+}
+
+.tabla-historial-actuaciones .historial-col-resumen {
+  width: 22%;
+}
+
+.tabla-historial-actuaciones .historial-col-actuacion {
+  width: 17%;
+}
+
+.tabla-historial-actuaciones .historial-col-accion {
+  width: 13%;
+}
+
+.tabla-historial-actuaciones .historial-col-botones {
+  width: 12%;
+}
+
+.tabla-historial-actuaciones thead th {
+  background-color: var(--primary-blue-soft);
+  color: var(--secondaryBlue);
+  font-weight: 600;
+  white-space: normal;
+  line-height: 1.2;
+  padding: 10px 10px;
+  font-size: 0.96rem;
+  vertical-align: middle;
+}
+
+.tabla-historial-actuaciones tbody td {
+  padding: 10px 10px;
+  vertical-align: middle;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.tabla-historial-actuaciones .historial-head-numero,
+.tabla-historial-actuaciones .historial-col-numero-cell {
+  text-align: center;
+}
+
+.tabla-historial-actuaciones .historial-col-acciones-cell {
+  white-space: normal;
+  text-align: center;
+}
+
+.tabla-historial-actuaciones .historial-action-button {
+  width: 100%;
+  max-width: 140px;
+  white-space: normal;
+  line-height: 1.15;
+  padding: 0.42rem 0.55rem;
+  font-size: 0.9rem;
+  justify-content: center;
+}
+
+.tabla-historial-actuaciones .historial-empty-row td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.tabla-historial-actuaciones .historial-empty-message {
+  color: var(--secondaryBlue);
+}
+
+.historial-actuaciones .historial-create-button-wrap {
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .tabla-historial-actuaciones {
+    min-width: 1040px;
+  }
+
+  .tabla-historial-actuaciones thead th {
+    white-space: nowrap;
+  }
+}

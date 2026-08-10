@@ -1,0 +1,35 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node scripts/auth-config.test.js && node scripts/pag-access.test.js && node scripts/user-csv-import.test.js && node scripts/carga-bd-service.test.js && node scripts/actuacion-cleanup-service.test.js && node scripts/asignacion-safety.test.js",
+    "start": "node index.js",
+    "start:prod": "node index.js",
+    "dev": "nodemon index.js",
+    "smoke:oracle": "node scripts/oracle-smoke.js",
+    "test:api": "node scripts/api-regression.js",
+    "test:api:write": "node scripts/api-write-regression.js",
+    "test-db:setup": "node scripts/test-db/setup-test-db.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "jwks-rsa": "^4.0.1",
+    "ldapts": "^8.1.8",
+    "multer": "^2.1.1",
+    "oracledb": "^6.9.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}

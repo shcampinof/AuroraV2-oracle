@@ -1,0 +1,43 @@
+.env
+.env.*
+!.env.example
+
+node_modules
+**/node_modules
+dist
+dist-ssr
+frontend/dist/
+backend/public/app/
+backend/storage/
+backend/certs/
+
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+.cleanup-backups/
+
+# Solo la guía operativa de despliegue acompaña al código. El resto de la
+# documentación y los entregables binarios permanecen fuera de Git.
+documentacion/**
+!documentacion/
+!documentacion/documentacion_tecnica/
+!documentacion/documentacion_tecnica/GUIA_DESPLIEGUE_AURORA.md
+
+# Archivos de entrega, pruebas funcionales y cargues operativos.
+*.zip
+*.tar
+*.tar.gz
+scripts/cargas_bd/*.xlsx
+scripts/cargas_bd/*.xls
+scripts/cargas_bd/*.csv
+scripts/cargas_bd/*.log
+
+.DS_Store
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
+.idea
