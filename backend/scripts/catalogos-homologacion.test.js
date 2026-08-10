@@ -26,6 +26,23 @@ function testOfficialCenterDirectoryIsLoaded() {
   assert(centers.every((center) => /^INPEC_\d+$/.test(center.id)));
 }
 
+function testArmeniaCentersKeepSeparateCanonicalIdentities() {
+  const cpms = resolveCentro('CPMS ARMENIA');
+  const cpmsHistorical = resolveCentro('EPMSC ARMENIA');
+  const cpmsCommonTypo = resolveCentro('EMPSC ARMENIA');
+  const cpmsm = resolveCentro('CPMSM ARMENIA');
+  const cpmsmHistorical = resolveCentro('RM ARMENIA');
+
+  assert.strictEqual(cpms.id, 'INPEC_613');
+  assert.strictEqual(cpms.label, 'CPMS ARMENIA');
+  assert.strictEqual(cpmsHistorical.id, cpms.id);
+  assert.strictEqual(cpmsCommonTypo.id, cpms.id);
+  assert.strictEqual(cpmsm.id, 'INPEC_615');
+  assert.strictEqual(cpmsm.label, 'CPMSM ARMENIA');
+  assert.strictEqual(cpmsmHistorical.id, cpmsm.id);
+  assert.notStrictEqual(cpms.id, cpmsm.id);
+}
+
 function testUnknownCentersRemainVisibleAndStable() {
   const first = resolveCentro('Centro histórico X');
   const variant = resolveCentro('  CENTRO HISTÓRICO   X ');
@@ -67,6 +84,7 @@ function testCurrentSituationPrioritizesLatestCutoff() {
 
 testCentroAliasesShareCanonicalIdentity();
 testOfficialCenterDirectoryIsLoaded();
+testArmeniaCentersKeepSeparateCanonicalIdentities();
 testUnknownCentersRemainVisibleAndStable();
 testActionsAreSeparatedFromStateAndKeepOriginalValue();
 testFilterCatalogsRequireActivePrisonStatus();

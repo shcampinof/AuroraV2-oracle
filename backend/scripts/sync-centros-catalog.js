@@ -1,6 +1,6 @@
 const fs = require('fs/promises');
 const path = require('path');
-const { normalizeSearchText, normalizeWhitespace } = require('../utils/textNormalization');
+const { normalizeWhitespace } = require('../utils/textNormalization');
 
 const DATASET_ID = '24zf-4cfu';
 const DATASET_URL = `https://www.datos.gov.co/resource/${DATASET_ID}.json?$limit=500`;
@@ -12,7 +12,7 @@ async function readCurrentAliases() {
     const current = JSON.parse(await fs.readFile(CATALOG_PATH, 'utf8'));
     return new Map(
       (current?.items || []).map((item) => [
-        normalizeSearchText(item?.label),
+        String(item?.id || '').trim(),
         Array.isArray(item?.aliases) ? item.aliases : [],
       ])
     );
@@ -31,19 +31,23 @@ async function main() {
   }
 
   const previousAliases = await readCurrentAliases();
-  const curatedAliases = JSON.parse(await fs.readFile(ALIASES_PATH, 'utf8'))?.aliasesById || {};
+  const curatedConfig = JSON.parse(await fs.readFile(ALIASES_PATH, 'utf8')) || {};
+  const curatedAliases = curatedConfig.aliasesById || {};
+  const preferredLabels = curatedConfig.preferredLabelsById || {};
   const ids = new Set();
   const items = rows
     .map((row) => {
       const code = normalizeWhitespace(row?.cod_establecimiento).replace(/\D+/g, '');
-      const label = normalizeWhitespace(row?.nombre_establecimiento_sisipec);
-      if (!code || !label) return null;
+      const officialLabel = normalizeWhitespace(row?.nombre_establecimiento_sisipec);
+      if (!code || !officialLabel) return null;
       const id = `INPEC_${code}`;
       if (ids.has(id)) throw new Error(`Código INPEC duplicado: ${code}`);
       ids.add(id);
+      const label = normalizeWhitespace(preferredLabels[id]) || officialLabel;
       const aliases = Array.from(new Set([
         label,
-        ...(previousAliases.get(normalizeSearchText(label)) || []),
+        officialLabel,
+        ...(previousAliases.get(id) || []),
         ...(Array.isArray(curatedAliases[id]) ? curatedAliases[id] : []),
       ].map(normalizeWhitespace).filter(Boolean)));
       return { id, label, aliases };

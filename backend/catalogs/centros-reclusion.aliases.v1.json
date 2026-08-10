@@ -1,7 +1,11 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": "2026-08-06",
+  "catalogVersion": "2026-08-10",
   "description": "Alias históricos verificados por coincidencia única del nombre geográfico con el directorio INPEC.",
+  "preferredLabelsById": {
+    "INPEC_613": "CPMS ARMENIA",
+    "INPEC_615": "CPMSM ARMENIA"
+  },
   "aliasesById": {
     "INPEC_101": ["CPMS LETICIA"],
     "INPEC_103": ["CPMS SANTA ROSA DE VITERBO (JYP-MUJERES)"],
@@ -45,7 +49,8 @@
     "INPEC_609": ["CPMS RIOSUCIO"],
     "INPEC_610": ["CPMS SALAMINA"],
     "INPEC_612": ["CPMS CALARCA"],
-    "INPEC_613": ["CPMS ARMENIA"],
+    "INPEC_613": ["CPMS ARMENIA", "EPMSC ARMENIA", "EMPSC ARMENIA"],
+    "INPEC_615": ["CPMSM ARMENIA", "RM ARMENIA"],
     "INPEC_616": ["CPMS PEREIRA (ERE)"],
     "INPEC_617": ["CPMS SANTA ROSA DE CABAL", "SANTA ROSA DE CABAL"],
     "INPEC_620": ["CPMSM PEREIRA"],

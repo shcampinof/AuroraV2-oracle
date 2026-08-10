@@ -847,16 +847,18 @@
     },
     {
       "id": "INPEC_613",
-      "label": "EPMSC ARMENIA",
+      "label": "CPMS ARMENIA",
       "aliases": [
+        "CPMS ARMENIA",
         "EPMSC ARMENIA",
-        "CPMS ARMENIA"
+        "EMPSC ARMENIA"
       ]
     },
     {
       "id": "INPEC_615",
-      "label": "RM ARMENIA",
+      "label": "CPMSM ARMENIA",
       "aliases": [
+        "CPMSM ARMENIA",
         "RM ARMENIA"
       ]
     },
