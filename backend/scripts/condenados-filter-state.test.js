@@ -186,6 +186,19 @@ async function testAssignedUsersClosedCasesRequireManagementOrDefenderHistory() 
   assert.match(actionFilter.sql, /FROM DNDP\.ASIGNACION historical_a/);
 }
 
+async function testCombinedClosedFilterDoesNotExpandThePreviousResultSet() {
+  const captured = await captureStateSearch({
+    defensor: 'LUBIANA',
+    estadoCodigo: 'CASO_CERRADO',
+  }, 'all');
+
+  assert.strictEqual(captured.binds.defensorFilter, 'LUBIANA%');
+  assert.strictEqual(captured.binds.estadoCodigo, 'CASO_CERRADO');
+  assert.match(captured.sql, /TRIM\(s\.SITUACION\) IS NOT NULL/);
+  assert.doesNotMatch(captured.sql, /historical_s/);
+  assert.doesNotMatch(captured.sql, /historical_a/);
+}
+
 async function testPagClosedFilterKeepsMandatoryActiveRuleWithoutHistoricalExpansion() {
   const captured = await captureStateSearch({ estadoCodigo: 'CASO_CERRADO' }, 'condenado');
   assert.match(captured.sql, /NVL\(s\.ACTIVO, 0\) = 1/);
@@ -314,6 +327,7 @@ async function testPagFiltersActiveAndAssignmentStateBeforePagination() {
   await testUnknownStateNeverFallsBackToUnfilteredResults();
   await testQueryContainsBothBusinessFlows();
   await testAssignedUsersClosedCasesRequireManagementOrDefenderHistory();
+  await testCombinedClosedFilterDoesNotExpandThePreviousResultSet();
   await testPagClosedFilterKeepsMandatoryActiveRuleWithoutHistoricalExpansion();
   await testCanonicalCenterUsesControlledAliases();
   await testOtherActiveLocationsExcludeOfficialAliases();

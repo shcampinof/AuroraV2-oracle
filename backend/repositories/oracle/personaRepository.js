@@ -712,8 +712,13 @@ async function listCondenadosSummary({
   const accionCodigo = resolveAccionCodigo(rawAccionCodigo) || resolveAccionCodigo(rawAccionLegada);
   const hasAccionFilter = Boolean(rawAccionCodigo || rawAccionLegada);
   const accionCatalogada = getAccionByCodigo(accionCodigo);
+  const hasAdditionalUserFilters = Object.entries(filters || {}).some(([key, value]) => (
+    !['estadoCodigo', 'estado', 'accionCodigo', 'accion'].includes(key) &&
+    String(value || '').trim() !== ''
+  ));
   const requireClosedHistoryEvidence =
     String(tipo || '').trim().toLowerCase() === 'all' &&
+    !hasAdditionalUserFilters &&
     (
       estadoCodigo === 'CASO_CERRADO' ||
       accionCatalogada?.estadoCodigos?.includes('CASO_CERRADO')

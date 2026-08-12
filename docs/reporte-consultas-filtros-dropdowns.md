@@ -64,7 +64,7 @@ WITH ranked_situacion AS (
 
 La tabla de Usuarios asignados admite condenados y sindicados. Una consulta por defensor, nombre o documento puede incluir una situación cerrada; la interfaz la presenta como caso histórico. Una consulta por ubicación exige `ACTIVO = 1`.
 
-El filtro `Caso cerrado` comprende los cierres determinados por las reglas del trámite y las situaciones más recientes con `ACTIVO = 0` o `NULL` que tengan gestión jurídica o asignación histórica de defensor. La asignación histórica se reconoce por cédula o por nombre, incluidos los registros anteriores a la adopción del catálogo de defensores.
+El filtro `Caso cerrado`, cuando se consulta por sí solo, comprende los cierres determinados por las reglas del trámite y las situaciones más recientes con `ACTIVO = 0` o `NULL` que tengan gestión jurídica o asignación histórica de defensor. La asignación histórica se reconoce por cédula o por nombre, incluidos los registros anteriores a la adopción del catálogo de defensores. Cuando se combina con defensor, identificación, nombre o ubicación, conserva el universo de ese primer criterio y actúa como una intersección; por tanto, agregar `Caso cerrado` no puede aumentar el total obtenido con el otro filtro.
 
 ```sql
 AND ESTADO_CODIGO = 'CASO_CERRADO'
