@@ -1917,16 +1917,26 @@ export default function FormularioAtencion({ numeroInicial }) {
   function renderCrearDefensorCompacto() {
     return (
       <div className="defensor-create-inline">
-        <button
-          className="secondary-button defensor-create-inline__toggle"
-          type="button"
-          onClick={() => {
-            setMostrarCrearDefensor((value) => !value);
-            setCrearDefensorEstado('');
-          }}
-        >
-          {mostrarCrearDefensor ? 'Cancelar' : 'Crear defensor'}
-        </button>
+        <div className="defensor-create-inline__actions">
+          <button
+            className="secondary-button defensor-create-inline__toggle"
+            type="button"
+            onClick={() => {
+              setMostrarCrearDefensor((value) => !value);
+              setCrearDefensorEstado('');
+            }}
+          >
+            {mostrarCrearDefensor ? 'Cancelar' : 'Crear defensor'}
+          </button>
+          <button
+            className="secondary-button defensor-create-inline__toggle"
+            type="button"
+            onClick={handleLimpiarDefensor}
+            disabled={!getDefensorAsignadoValue(registro)}
+          >
+            Limpiar defensor
+          </button>
+        </div>
         {mostrarCrearDefensor && (
           <div className="defensor-create-inline__form">
             <div className="form-field">
@@ -2153,6 +2163,7 @@ export default function FormularioAtencion({ numeroInicial }) {
         if (!touched) {
           base[name] = nextValue;
         }
+        if (nextValue.trim()) delete base.__desasignarDefensor;
         return wrapRegistroForLookup(base);
       }
 
@@ -2233,6 +2244,22 @@ export default function FormularioAtencion({ numeroInicial }) {
       setFieldValueAcrossAliases(base, name, value);
       return wrapRegistroForLookup(base);
     });
+  }
+
+  function handleLimpiarDefensor() {
+    if (personaFueraPrision) return;
+    setRegistro((prev) => {
+      const base = { ...unwrapRegistro(prev) };
+      Object.keys(base).forEach((key) => {
+        if (isDefensorFieldName(key)) base[key] = '';
+      });
+      DEFENSOR_DIRECT_KEYS.forEach((key) => {
+        base[key] = '';
+      });
+      base.__desasignarDefensor = true;
+      return wrapRegistroForLookup(base);
+    });
+    setCrearDefensorEstado('Defensor eliminado del formulario. Guarde los cambios para desasignar el caso.');
   }
 
   function handleSeleccionarActuacion(actuacion) {

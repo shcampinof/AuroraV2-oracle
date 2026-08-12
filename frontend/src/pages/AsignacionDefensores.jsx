@@ -8,6 +8,7 @@ import {
   getDefensoresCatalogo,
   extractDefensoresCatalogo,
   isQueuedResponse,
+  unassignDefensorPpl,
   validatePagCedula,
 } from '../services/api.js';
 import Toast from '../components/Toast.jsx';
@@ -622,6 +623,43 @@ function AsignacionDefensores({ isAdmin = false }) {
     }
   }
 
+  async function desasignarSeleccionados() {
+    if (!pagValidado?.cedula) {
+      setError('Debe validar la cedula del PAG antes de desasignar.');
+      return;
+    }
+
+    const documentos = Array.from(seleccionados);
+    if (!documentos.length) {
+      setError('Seleccione al menos un PPL.');
+      return;
+    }
+    if (!window.confirm(`¿Confirmar la desasignación de ${documentos.length} caso(s)?`)) return;
+
+    setCargando(true);
+    setError('');
+    setToastOpen(false);
+    try {
+      const data = await unassignDefensorPpl(documentos, { pagCedula: pagValidado.cedula });
+      setToastMessage(
+        isQueuedResponse(data)
+          ? 'Desasignación guardada en cola. Se sincronizará cuando vuelva la conexión.'
+          : 'Casos desasignados correctamente.'
+      );
+      setToastOpen(true);
+      setSeleccionados(new Set());
+      if (!isQueuedResponse(data)) {
+        await cargarPpl(filtrosAplicados, tab, pagina);
+        await cargarDefensoresActuales();
+      }
+    } catch (e) {
+      reportError(e, 'asignacion-defensores:desasignar');
+      setError(String(e?.message || 'Error desasignando los casos.'));
+    } finally {
+      setCargando(false);
+    }
+  }
+
   async function guardarNuevoDefensor() {
     const cedula = normalizeDocumento(crearDefensorCedula);
     const nombre = normalizeDefensorNombre(crearDefensorNombre);
@@ -1099,6 +1137,16 @@ function AsignacionDefensores({ isAdmin = false }) {
           <button className="save-button" onClick={guardarAsignacion} disabled={cargando || !pagValidado?.cedula}>
             {tab === 'asignacion' ? 'GUARDAR ASIGNACIÓN' : 'GUARDAR REASIGNACIÓN'}
           </button>
+          {tab === 'reasignacion' && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={desasignarSeleccionados}
+              disabled={cargando || !pagValidado?.cedula}
+            >
+              DESASIGNAR CASOS SELECCIONADOS
+            </button>
+          )}
         </div>
       </div>
 

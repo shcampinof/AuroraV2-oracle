@@ -48,9 +48,11 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
     listRowsWithActiveSituacionAndGestiones: personaRepo.listRowsWithActiveSituacionAndGestiones,
     getLatestBySituacion: gestionRepo.getLatestBySituacion,
     replaceActiveAssignmentByPersona: asignacionRepo.replaceActiveAssignmentByPersona,
+    endActiveAssignmentByPersona: asignacionRepo.endActiveAssignmentByPersona,
     findUniqueByNombre: defensoresRepo.findUniqueByNombre,
   };
   const assignmentWrites = [];
+  const assignmentEnds = [];
 
   personaRepo.findActiveContextByDocumento = async () => ({
     P_ID_PERSONA: 10,
@@ -71,6 +73,10 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
   gestionRepo.getLatestBySituacion = async () => ({ ID_GESTION: 30 });
   asignacionRepo.replaceActiveAssignmentByPersona = async (idPersona, assignment) => {
     assignmentWrites.push({ idPersona, assignment });
+    return 1;
+  };
+  asignacionRepo.endActiveAssignmentByPersona = async (idPersona) => {
+    assignmentEnds.push(idPersona);
     return 1;
   };
   defensoresRepo.findUniqueByNombre = async (nombre) => (
@@ -114,11 +120,21 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
       (error) => error?.code === 'DEFENSOR_NOT_IN_CATALOG' && error?.status === 400
     );
     assert.strictEqual(assignmentWrites.length, 1, 'Un nombre fuera del catálogo no debe crear asignaciones.');
+
+    await service.updateByDocumento('123', {
+      data: {
+        'Defensor(a) Público(a) Asignado para tramitar la solicitud': '',
+        __desasignarDefensor: true,
+      },
+    });
+    assert.deepStrictEqual(assignmentEnds, [10], 'La señal explícita debe cerrar la asignación activa.');
+    assert.strictEqual(assignmentWrites.length, 1, 'Desasignar no debe crear una asignación nueva.');
   } finally {
     personaRepo.findActiveContextByDocumento = originals.findActiveContextByDocumento;
     personaRepo.listRowsWithActiveSituacionAndGestiones = originals.listRowsWithActiveSituacionAndGestiones;
     gestionRepo.getLatestBySituacion = originals.getLatestBySituacion;
     asignacionRepo.replaceActiveAssignmentByPersona = originals.replaceActiveAssignmentByPersona;
+    asignacionRepo.endActiveAssignmentByPersona = originals.endActiveAssignmentByPersona;
     defensoresRepo.findUniqueByNombre = originals.findUniqueByNombre;
     delete require.cache[servicePath];
   }

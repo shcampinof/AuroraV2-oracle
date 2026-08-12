@@ -155,6 +155,7 @@ function isQueueableWrite(request, url) {
   if (method === 'PUT' && /^\/api\/ppl\/[^/]+$/.test(pathname)) return true;
   if (method === 'POST' && /^\/api\/ppl\/[^/]+\/actuaciones$/.test(pathname)) return true;
   if (method === 'POST' && pathname === '/api/ppl/asignar-defensor') return true;
+  if (method === 'POST' && pathname === '/api/ppl/desasignar-defensor') return true;
   if (method === 'POST' && pathname === '/api/defensores') return true;
   return false;
 }

@@ -725,7 +725,7 @@ function normalizePayload(payload) {
 
 function stripControlKeys(source) {
   const out = { ...(source || {}) };
-  ['caseId', 'casos', 'activeCaseId', 'tipo', 'tipoPpl', 'data', 'rowIndex', 'actuacionId', '__calificacionesConducta'].forEach((key) => {
+  ['caseId', 'casos', 'activeCaseId', 'tipo', 'tipoPpl', 'data', 'rowIndex', 'actuacionId', '__calificacionesConducta', '__desasignarDefensor'].forEach((key) => {
     delete out[key];
   });
   return out;
@@ -988,7 +988,10 @@ async function updateByDocumento(documento, payload) {
     }
   }
 
-  if (payloadHasDefensorField(normalizedPayload)) {
+  if (normalizedPayload.__desasignarDefensor === true) {
+    const affected = await asignacionRepo.endActiveAssignmentByPersona(context.P_ID_PERSONA);
+    if (affected > 0) dataVersion += 1;
+  } else if (payloadHasDefensorField(normalizedPayload)) {
     const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
     const currentDefensor = String(context.G_DEFENSOR || '').trim();
     if (nextDefensor && normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
@@ -1072,6 +1075,25 @@ async function assignDefensor(documentos, defensor, options = {}) {
   return updated;
 }
 
+async function unassignDefensor(documentos) {
+  const docs = Array.from(new Set((documentos || []).map((item) => normalizeDocumento(item)).filter(Boolean)));
+  if (!docs.length) return 0;
+
+  let updated = 0;
+  for (const doc of docs) {
+    const context = await personaRepo.findActiveContextByDocumento(doc, {
+      scopeDepartamentos: SCOPE_DEPARTAMENTOS,
+    });
+    if (!context?.S_ID_SITUACION) continue;
+    if (Object.prototype.hasOwnProperty.call(context, 'S_ACTIVO') && Number(context.S_ACTIVO) !== 1) continue;
+
+    updated += await asignacionRepo.endActiveAssignmentByPersona(context.P_ID_PERSONA);
+  }
+
+  if (updated > 0) dataVersion += 1;
+  return updated;
+}
+
 async function getDefensoresDistinct({ tipo } = {}) {
   const rows = await personaRepo.listDistinctDefensores({
     tipo,
@@ -1093,6 +1115,7 @@ module.exports = {
   createActuacionByDocumento,
   updateByDocumento,
   assignDefensor,
+  unassignDefensor,
   getDefensoresDistinct,
   computeTipo,
   getDataVersion,

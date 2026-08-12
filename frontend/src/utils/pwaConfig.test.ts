@@ -38,6 +38,7 @@ describe('PWA configuration', () => {
     expect(serviceWorker).toContain("method === 'PUT' && /^\\/api\\/ppl\\/[^/]+$/.test(pathname)");
     expect(serviceWorker).toContain("method === 'POST' && /^\\/api\\/ppl\\/[^/]+\\/actuaciones$/.test(pathname)");
     expect(serviceWorker).toContain("method === 'POST' && pathname === '/api/ppl/asignar-defensor'");
+    expect(serviceWorker).toContain("method === 'POST' && pathname === '/api/ppl/desasignar-defensor'");
     expect(serviceWorker).toContain("method === 'POST' && pathname === '/api/defensores'");
     expect(serviceWorker).toContain("status: 202");
     expect(serviceWorker).toContain("'X-Aurora-Queued': 'true'");

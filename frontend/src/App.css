@@ -1498,6 +1498,12 @@ input[list]{
   font-size: 0.78rem;
 }
 
+.defensor-create-inline__actions{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .defensor-create-inline__form{
   display: grid;
   grid-template-columns: minmax(120px, 0.7fr) minmax(190px, 1.3fr) auto;

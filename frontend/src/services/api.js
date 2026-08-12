@@ -513,6 +513,24 @@ export async function assignDefensorPpl(documento, defensor, options = {}) {
   return normalizeQueuedResponse(data, { documentos, defensor: defensorNombre });
 }
 
+export async function unassignDefensorPpl(documento, options = {}) {
+  const documentos = Array.isArray(documento)
+    ? documento.map((d) => String(d || '').trim()).filter(Boolean)
+    : [String(documento || '').trim()].filter(Boolean);
+  if (!documentos.length) throw new Error('No hay documentos para desasignar.');
+
+  const res = await fetchJson(`${API_BASE}/ppl/desasignar-defensor`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documentos, ...(options || {}) }),
+  });
+
+  const data = await readJsonOrThrow(res, 'Error desasignando el defensor');
+  if (!res.ok) throw new Error(String(data?.message || 'Error desasignando el defensor'));
+  invalidateCondenadosClientCache();
+  return normalizeQueuedResponse(data, { documentos });
+}
+
 // =====================
 // Administracion de cargas mensuales
 // =====================

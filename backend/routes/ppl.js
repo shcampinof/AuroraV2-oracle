@@ -1146,6 +1146,41 @@ router.post('/asignar-defensor', requirePag, async (req, res) => {
   }
 });
 
+// Desasignacion masiva de defensor por documento(s)
+// POST /api/ppl/desasignar-defensor
+// body: { documentos: string[] | string, pagCedula: string }
+router.post('/desasignar-defensor', requirePag, async (req, res) => {
+  const body = req.body || {};
+  const pagCedula = String(body?.pagCedula || '').trim();
+  const rawDocs = Array.isArray(body?.documentos) ? body.documentos : [body?.documentos];
+  const documentos = rawDocs.map((d) => String(d || '').trim()).filter(Boolean);
+
+  if (!pagCedula) {
+    return res.status(400).json({ message: 'Debe indicar la cedula del PAG que desasigna.' });
+  }
+  if (!documentos.length) {
+    return res.status(400).json({ message: 'Debe indicar al menos un documento.' });
+  }
+
+  try {
+    const pag = await pagRepo.findByCedula(pagCedula);
+    if (!pag) {
+      return res.status(400).json({ message: 'Cedula PAG no valida para desasignar.' });
+    }
+
+    const updated = await consolidado.unassignDefensor(documentos);
+    return res.json({
+      ok: true,
+      updated,
+      documentos: Array.from(new Set(documentos)),
+      pag,
+    });
+  } catch (err) {
+    console.error('[ppl:desasignar-defensor] Error Oracle:', err?.message || err);
+    return res.status(500).json({ message: 'Error desasignando el defensor.' });
+  }
+});
+
 // Historial de actuaciones por documento
 router.get('/:documento/actuaciones', async (req, res) => {
   const doc = req.params.documento;
