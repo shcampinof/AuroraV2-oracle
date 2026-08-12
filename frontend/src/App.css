@@ -1519,9 +1519,32 @@ input[list]{
   white-space: nowrap;
 }
 
+.pag-page-picker{
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pag-page-picker input{
+  width: 4.5rem;
+  min-width: 0;
+  padding: 0.5rem 0.4rem;
+  border: 2px solid var(--secondaryBlue);
+  border-radius: 4px;
+  text-align: center;
+}
+
 @media (max-width: 760px){
   .defensor-create-inline__form{
     grid-template-columns: 1fr;
+  }
+
+  .pag-page-picker{
+    width: 100%;
+    justify-content: center;
   }
 }
 

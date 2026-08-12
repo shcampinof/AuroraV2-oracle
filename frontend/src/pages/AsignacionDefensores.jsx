@@ -109,6 +109,7 @@ function AsignacionDefensores({ isAdmin = false }) {
 
   const [rows, setRows] = useState([]);
   const [pagina, setPagina] = useState(1);
+  const [paginaDestino, setPaginaDestino] = useState('1');
   const [busquedaRealizada, setBusquedaRealizada] = useState(false);
   const [seleccionados, setSeleccionados] = useState(new Set());
 
@@ -182,6 +183,7 @@ function AsignacionDefensores({ isAdmin = false }) {
       setRows(Array.isArray(data?.rows) ? data.rows : []);
       setMetaConsulta(data?.meta || null);
       setPagina(nextPage);
+      setPaginaDestino(String(nextPage));
       setBusquedaRealizada(true);
     } catch (e) {
       reportError(e, 'asignacion-defensores:cargar-ppl');
@@ -514,6 +516,7 @@ function AsignacionDefensores({ isAdmin = false }) {
     setRows([]);
     setMetaConsulta(null);
     setPagina(1);
+    setPaginaDestino('1');
     setBusquedaRealizada(false);
   }
 
@@ -534,6 +537,7 @@ function AsignacionDefensores({ isAdmin = false }) {
       setRows([]);
       setMetaConsulta(null);
       setPagina(1);
+      setPaginaDestino('1');
       setBusquedaRealizada(false);
     } catch (e) {
       reportError(e, 'asignacion-defensores:validar-pag');
@@ -698,6 +702,7 @@ function AsignacionDefensores({ isAdmin = false }) {
     setRows([]);
     setMetaConsulta(null);
     setPagina(1);
+    setPaginaDestino('1');
     setBusquedaRealizada(false);
 
     if (nextTab === 'usuariosPag') return;
@@ -716,9 +721,21 @@ function AsignacionDefensores({ isAdmin = false }) {
 
   async function cambiarPagina(nextPage) {
     const boundedPage = Math.max(1, Math.min(totalPaginas, nextPage));
-    if (boundedPage === pagina || cargando) return;
+    if (boundedPage === pagina || cargando) {
+      setPaginaDestino(String(pagina));
+      return;
+    }
     setSeleccionados(new Set());
     await cargarPpl(filtrosAplicados, tab, boundedPage);
+  }
+
+  async function irAPaginaSolicitada() {
+    const requested = Number.parseInt(String(paginaDestino || ''), 10);
+    if (!Number.isFinite(requested)) {
+      setPaginaDestino(String(pagina));
+      return;
+    }
+    await cambiarPagina(requested);
   }
 
   const botonGuardarDefensorDeshabilitado =
@@ -740,7 +757,7 @@ function AsignacionDefensores({ isAdmin = false }) {
 
       {!['crearDefensor', 'usuariosPag'].includes(tab) && busquedaRealizada && metaConsulta && (
         <p className="hint-text">
-          Se encontraron {totalResultados} registros. Página {pagina} de {totalPaginas}; se muestran hasta {PAGE_SIZE} por página.
+          Se encontraron {totalResultados} registros.
         </p>
       )}
 
@@ -1134,14 +1151,41 @@ function AsignacionDefensores({ isAdmin = false }) {
       {busquedaRealizada && totalResultados > 0 && (
         <div className="search-row" style={{ marginTop: '0.75rem', justifyContent: 'space-between' }}>
           <p className="hint-text" style={{ margin: 0 }}>
-            Mostrando {rowsFiltradas.length} de {totalResultados} registros.
+            Registros {(pagina - 1) * PAGE_SIZE + 1}–{Math.min((pagina - 1) * PAGE_SIZE + rowsFiltradas.length, totalResultados)} de {totalResultados}. Página {pagina} de {totalPaginas}.
           </p>
           <div className="search-row" style={{ gap: '0.5rem' }}>
+            <button className="secondary-button" type="button" onClick={() => cambiarPagina(1)} disabled={pagina <= 1 || cargando}>
+              Primera
+            </button>
             <button className="primary-button" type="button" onClick={() => cambiarPagina(pagina - 1)} disabled={pagina <= 1 || cargando}>
               Anterior
             </button>
+            <label className="pag-page-picker">
+              <span>Página</span>
+              <input
+                type="number"
+                min="1"
+                max={totalPaginas}
+                value={paginaDestino}
+                onChange={(event) => setPaginaDestino(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    irAPaginaSolicitada();
+                  }
+                }}
+                aria-label={`Página, máximo ${totalPaginas}`}
+              />
+              <span>de {totalPaginas}</span>
+            </label>
+            <button className="secondary-button" type="button" onClick={irAPaginaSolicitada} disabled={cargando}>
+              Ir
+            </button>
             <button className="primary-button" type="button" onClick={() => cambiarPagina(pagina + 1)} disabled={pagina >= totalPaginas || cargando}>
               Siguiente
+            </button>
+            <button className="secondary-button" type="button" onClick={() => cambiarPagina(totalPaginas)} disabled={pagina >= totalPaginas || cargando}>
+              Última
             </button>
           </div>
         </div>
