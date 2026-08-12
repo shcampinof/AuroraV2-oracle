@@ -251,6 +251,14 @@ async function testAuroraFilterUsesTheRadicationDateForTheSelectedFlow() {
   assert.match(captured.sql, /DECISION_USUARIO.*LIKE 'SI%'/s);
 }
 
+async function testPlaceholderAnswersRemainEmptyInDerivedState() {
+  const captured = await captureStateSearch({ documento: '123456' });
+  assert.match(captured.sql, /TRIM\(TO_CHAR\(g\.DECISION_USUARIO\)\) NOT IN \('-', '--'\)/);
+  assert.match(captured.sql, /OTRAS_SOLICITUDES_TRAMITAR[\s\S]*IN \(\s*'',\s*'-',\s*'--',\s*'NINGUNA'/);
+  assert.match(captured.sql, /OTRAS_SOLICITUDES_TRAMITAR[\s\S]*= 'NINGUNA'/);
+  assert.match(captured.sql, /HAS_POSITIVE_ANALYSIS_OUTCOME|REGEXP_REPLACE/);
+}
+
 async function testEverySupportedFilterBuildsAnEffectivePredicate() {
   const captured = await captureStateSearch({
     defensor: 'DEFENSOR EJEMPLO',
@@ -313,6 +321,7 @@ async function testPagFiltersActiveAndAssignmentStateBeforePagination() {
   await testEveryActionFiltersThroughItsCanonicalStates();
   await testUpdatedLegalSituationGovernsFlowAndTypeFilter();
   await testAuroraFilterUsesTheRadicationDateForTheSelectedFlow();
+  await testPlaceholderAnswersRemainEmptyInDerivedState();
   await testEverySupportedFilterBuildsAnEffectivePredicate();
   await testInvalidIdentityFiltersFailClosed();
   await testPagFiltersActiveAndAssignmentStateBeforePagination();

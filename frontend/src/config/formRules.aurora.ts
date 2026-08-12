@@ -493,7 +493,9 @@ function isCasoCerrado(record: FormRecord): boolean {
     hasExplicitNingunaInP36(record) &&
     isFilled(getAny(record, FECHA_ANALISIS_ALIASES))
   ) return true;
-  if (decisionUsuario && !decisionUsuarioPermiteContinuar(decisionUsuario)) {
+  // Los registros históricos usan "-"/"--" como marcador de campo vacío.
+  // Solo una respuesta real y negativa puede cerrar el caso.
+  if (isFilled(decisionUsuario) && !decisionUsuarioPermiteContinuar(decisionUsuario)) {
     return true;
   }
   if (includesAnyInsensitive(actuacion, ['ninguna', 'no procede nada'])) return true;

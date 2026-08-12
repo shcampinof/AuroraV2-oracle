@@ -44,6 +44,29 @@ function buildNegativeClosureBase(): Record<string, unknown> {
 }
 
 describe('evaluateAuroraRules - reglas Aurora', () => {
+  it.each(['-', '--'])('AURORA.ESTADO.DECISION_PLACEHOLDER.1 - %s en Q39 no cierra el caso', (placeholder) => {
+    const result = evaluateAuroraRules({
+      answers: {
+        ...buildBloque3Base(),
+        [AURORA_FIELD_CATALOG.q39]: placeholder,
+      },
+    });
+
+    expect(result.derivedStatus).toBe('Entrevistar al usuario');
+    expect(result.locked).toBe(false);
+  });
+
+  it('AURORA.ESTADO.DECISION_NEGATIVA.1 - una decisión negativa real en Q39 conserva el cierre', () => {
+    const result = evaluateAuroraRules({
+      answers: {
+        ...buildBloque3Base(),
+        [AURORA_FIELD_CATALOG.q39]: 'No desea tramitar la solicitud',
+      },
+    });
+
+    expect(result.derivedStatus).toBe('Caso cerrado');
+  });
+
   it('AURORA.CATALOGO.TUTELA.1 - Acción de tutela en Q36 permite continuar al bloque 4', () => {
     const answers = {
       ...buildBloque3Base(),

@@ -2414,7 +2414,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     [registro]
   );
   const decisionUsuarioDesbloquea = useMemo(() => decisionUsuarioPermiteAvance(decisionUsuario), [decisionUsuario]);
-  const decisionUsuarioBloquea = useMemo(() => Boolean(decisionUsuario && !decisionUsuarioDesbloquea), [
+  const decisionUsuarioBloquea = useMemo(() => Boolean(isMeaningfullyFilled(decisionUsuario) && !decisionUsuarioDesbloquea), [
     decisionUsuario,
     decisionUsuarioDesbloquea,
   ]);
