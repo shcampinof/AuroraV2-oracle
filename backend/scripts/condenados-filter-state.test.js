@@ -295,14 +295,14 @@ async function testInvalidIdentityFiltersFailClosed() {
 async function testPagFiltersActiveAndAssignmentStateBeforePagination() {
   const assignment = await capturePagedSearch({ asignacionEstado: 'sin_defensor' }, { offset: 100 });
   assert.match(assignment.sql, /NVL\(s\.ACTIVO, 0\) = 1/);
-  assert.match(assignment.sql, /a\.CEDULA_DEFENSOR IS NULL/);
+  assert.match(assignment.sql, /a\.CEDULA_DEFENSOR IS NULL AND TRIM\(a\.NOMBRE_DEFENSOR\) IS NULL/);
   assert.match(assignment.sql, /COUNT\(\*\) OVER\(\) AS TOTAL_MATCHED/);
   assert.match(assignment.sql, /WHERE ROWNUM <= :endRow[\s\S]*WHERE PAGE_ROW_NUMBER > :offsetRows/);
   assert.strictEqual(assignment.binds.endRow, 150);
   assert.strictEqual(assignment.binds.offsetRows, 100);
 
   const reassignment = await capturePagedSearch({ asignacionEstado: 'con_defensor' });
-  assert.match(reassignment.sql, /a\.CEDULA_DEFENSOR IS NOT NULL/);
+  assert.match(reassignment.sql, /a\.CEDULA_DEFENSOR IS NOT NULL OR TRIM\(a\.NOMBRE_DEFENSOR\) IS NOT NULL/);
 }
 
 (async () => {

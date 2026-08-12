@@ -642,9 +642,9 @@ function buildCondenadosSummaryWhereClause({
 
   const asignacionEstado = String(filters?.asignacionEstado || '').trim().toLowerCase();
   if (asignacionEstado === 'sin_defensor') {
-    clauses.push('a.CEDULA_DEFENSOR IS NULL');
+    clauses.push('(a.CEDULA_DEFENSOR IS NULL AND TRIM(a.NOMBRE_DEFENSOR) IS NULL)');
   } else if (asignacionEstado === 'con_defensor') {
-    clauses.push('a.CEDULA_DEFENSOR IS NOT NULL');
+    clauses.push('(a.CEDULA_DEFENSOR IS NOT NULL OR TRIM(a.NOMBRE_DEFENSOR) IS NOT NULL)');
   } else if (asignacionEstado) {
     clauses.push('1=0');
   }
