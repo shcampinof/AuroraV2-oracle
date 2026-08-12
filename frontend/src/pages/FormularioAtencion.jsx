@@ -825,6 +825,9 @@ function wrapRegistroForLookup(rawRegistro) {
   if (REGISTRO_PROXY_TARGET.has(rawRegistro)) return rawRegistro;
 
   const target = hydrateDefensorAliases(rawRegistro);
+  if (!Object.prototype.hasOwnProperty.call(target, '__defensorAsignadoOriginal')) {
+    target.__defensorAsignadoOriginal = getDefensorAsignadoValue(target);
+  }
   const normalizedIndex = new Map();
   Object.keys(target).forEach((key) => {
     const nk = normalizeFieldName(key);
@@ -1860,8 +1863,10 @@ export default function FormularioAtencion({ numeroInicial }) {
       const nombre = String(item?.nombre ?? '').trim();
       if (nombre) dedup.add(nombre);
     });
+    const defensorAsignadoOriginal = String(registro?.__defensorAsignadoOriginal ?? '').trim();
+    if (defensorAsignadoOriginal) dedup.add(defensorAsignadoOriginal);
     return Array.from(dedup).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
-  }, [defensoresCatalogo]);
+  }, [defensoresCatalogo, registro]);
 
   async function guardarDefensorDesdeFormulario() {
     const cedula = String(crearDefensorCedula || '').replace(/\D+/g, '');
