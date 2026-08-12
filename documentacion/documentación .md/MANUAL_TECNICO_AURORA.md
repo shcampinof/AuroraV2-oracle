@@ -184,7 +184,7 @@ En desarrollo, Vite usa proxy para /api. En producción con el backend como serv
 
 - AsignacionDefensores.jsx usa el mismo derivador para Acción a impulsar.
 
-- RegistrosAsignados.jsx no presenta un campo separado de Estado de reclusión. Una situación vigente inactiva se expresa como `Caso cerrado - Fuera de prisión` en Acción a impulsar.
+- RegistrosAsignados.jsx no presenta un campo separado de Estado de reclusión. Una situación vigente inactiva se expresa como `Caso cerrado` en Acción a impulsar y se conserva en modo de solo lectura.
 
 - La procedencia de utilidad pública es opcional y su ausencia no bloquea el guardado ni el cálculo de la acción. Ante una decisión negativa con la respuesta de recurso aún vacía, la acción es `Presentar recurso`; solo una respuesta explícita `No` cierra el caso.
 

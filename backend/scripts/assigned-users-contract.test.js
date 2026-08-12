@@ -69,11 +69,11 @@ function testInactiveRowsCloseStateAndAction() {
   const mapped = contract.mapRow({ ...activeRawRow(), S_ACTIVO: 0, ESTADO_CODIGO: 'ANALIZAR_CASO' });
   assert.equal(mapped.situacionActiva, false);
   assert.equal(mapped.estadoCodigo, 'CASO_CERRADO');
-  assert.equal(mapped.accionImpulsar, 'Caso cerrado - Fuera de prisión');
-  assert.equal(mapped['Acción a impulsar'], 'Caso cerrado - Fuera de prisión');
+  assert.equal(mapped.accionImpulsar, 'Caso cerrado');
+  assert.equal(mapped['Acción a impulsar'], 'Caso cerrado');
   assert.equal(mapped.accionPendiente.codigo, 'SIN_ACCION_PENDIENTE');
   assert.equal(mapped.accionPendiente.homologada, true);
-  assert.equal(mapped.estadoSource['Acción a impulsar'], 'Caso cerrado - Fuera de prisión');
+  assert.equal(mapped.estadoSource['Acción a impulsar'], 'Caso cerrado');
 }
 
 function testAllApiFiltersAreParsedAndTrimmed() {

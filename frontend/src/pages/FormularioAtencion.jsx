@@ -3995,7 +3995,7 @@ export default function FormularioAtencion({ numeroInicial }) {
           <div ref={formularioDetalleRef} className="card" style={{ marginTop: '1rem' }}>
             {personaFueraPrision && (
               <div className="ppl-inactive-alert" role="status">
-                Caso cerrado - Fuera de prisión. Este registro histórico no se puede editar.
+                Caso cerrado. La persona figura fuera de prisión y este registro histórico no se puede editar.
               </div>
             )}
             <fieldset className="readonly-form-fieldset" disabled={personaFueraPrision}>

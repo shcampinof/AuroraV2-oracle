@@ -172,6 +172,27 @@ async function testQueryContainsBothBusinessFlows() {
   assert.match(captured.sql, /THEN 'CASO_CERRADO'/);
 }
 
+async function testAssignedUsersClosedCasesRequireManagementOrDefenderHistory() {
+  const captured = await captureStateSearch({ estadoCodigo: 'CASO_CERRADO' }, 'all');
+  assert.match(captured.sql, /NVL\(s\.ACTIVO, 0\) = 1\s+OR EXISTS \(\s*SELECT 1\s+FROM DNDP\.SITUACION_CARCELARIA historical_s/s);
+  assert.match(captured.sql, /JOIN DNDP\.GESTION_JURIDICA historical_g/);
+  assert.match(captured.sql, /historical_s\.ID_PERSONA = p\.ID_PERSONA/);
+  assert.match(captured.sql, /FROM DNDP\.ASIGNACION historical_a/);
+  assert.match(captured.sql, /historical_a\.CEDULA_DEFENSOR IS NOT NULL/);
+  assert.match(captured.sql, /TRIM\(historical_a\.NOMBRE_DEFENSOR\) IS NOT NULL/);
+  assert.doesNotMatch(captured.sql, /WHERE\s+1=1\s+AND\s+TRIM\(s\.SITUACION\) IS NOT NULL/s);
+
+  const actionFilter = await captureStateSearch({ accionCodigo: 'SIN_ACCION_PENDIENTE' }, 'all');
+  assert.match(actionFilter.sql, /FROM DNDP\.ASIGNACION historical_a/);
+}
+
+async function testPagClosedFilterKeepsMandatoryActiveRuleWithoutHistoricalExpansion() {
+  const captured = await captureStateSearch({ estadoCodigo: 'CASO_CERRADO' }, 'condenado');
+  assert.match(captured.sql, /NVL\(s\.ACTIVO, 0\) = 1/);
+  assert.doesNotMatch(captured.sql, /historical_s/);
+  assert.doesNotMatch(captured.sql, /historical_a/);
+}
+
 async function testCanonicalCenterUsesControlledAliases() {
   const captured = await captureStateSearch({
     centroId: 'INPEC_150',
@@ -284,6 +305,8 @@ async function testPagFiltersActiveAndAssignmentStateBeforePagination() {
   await testFilterOptionsOnlyUseActivePrisonSituations();
   await testUnknownStateNeverFallsBackToUnfilteredResults();
   await testQueryContainsBothBusinessFlows();
+  await testAssignedUsersClosedCasesRequireManagementOrDefenderHistory();
+  await testPagClosedFilterKeepsMandatoryActiveRuleWithoutHistoricalExpansion();
   await testCanonicalCenterUsesControlledAliases();
   await testOtherActiveLocationsExcludeOfficialAliases();
   await testActionCodeFiltersThroughCanonicalStateIdentity();

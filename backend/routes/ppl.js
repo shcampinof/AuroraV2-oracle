@@ -26,7 +26,7 @@ const MAX_LIST_LIMIT = 10000;
 const DEFAULT_CONDENADOS_LIMIT = 1000;
 const DEFAULT_CONDENADOS_FILTERED_LIMIT = 200;
 const MAX_CONDENADOS_FILTERED_LIMIT = 200;
-const ACCION_FUERA_PRISION = 'Caso cerrado - Fuera de prisión';
+const ACCION_FUERA_PRISION = 'Caso cerrado';
 const CONDENADOS_COLUMNS = [
   'numeroIdentificacion',
   'nombreUsuario',

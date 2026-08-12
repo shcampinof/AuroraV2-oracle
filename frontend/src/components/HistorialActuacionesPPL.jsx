@@ -587,7 +587,7 @@ export default function HistorialActuacionesPPL({
                         {soloLectura || actuacion?.estadoLabel ? (
                           soloLectura || actuacion?.estadoClass ? (
                             <span className={`estadoBadge ${soloLectura ? 'estado--fuera-prision' : actuacion.estadoClass}`}>
-                              {displayText(soloLectura ? 'Persona fuera de prisión — caso cerrado' : actuacion.estadoLabel)}
+                              {displayText(soloLectura ? 'Caso cerrado' : actuacion.estadoLabel)}
                             </span>
                           ) : (
                             displayText(actuacion.estadoLabel)
@@ -622,7 +622,7 @@ export default function HistorialActuacionesPPL({
                   <td>
                     {soloLectura ? (
                       <span className="estadoBadge estado--fuera-prision">
-                        {displayText('Persona fuera de prisión — caso cerrado')}
+                        {displayText('Caso cerrado')}
                       </span>
                     ) : (
                       '\u2014'

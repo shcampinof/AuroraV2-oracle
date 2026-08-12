@@ -46,7 +46,7 @@
     },
     {
       "id": "SIN_ACCION_PENDIENTE",
-      "label": "Sin acción pendiente",
+      "label": "Caso cerrado",
       "estadoCodigos": ["CASO_CERRADO"],
       "aliases": ["Caso cerrado", "Sin acción pendiente"]
     }

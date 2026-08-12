@@ -475,19 +475,44 @@ function buildCondenadosSummaryWhereClause({
   filters = {},
   scopeDepartamentos = DEFAULT_SCOPE_DEPARTAMENTOS,
   includeUserFilters = true,
+  requireClosedHistoryEvidence = false,
 } = {}) {
   const binds = {};
   const clauses = [];
   const { clause: scopeClause, binds: scopeBinds } = buildScopeWhereClause('s.DEPARTAMENTO', 'dep', scopeDepartamentos);
   Object.assign(binds, scopeBinds);
   clauses.push(scopeClause);
-  clauses.push(buildTipoFilter(tipo));
+  // En Usuarios asignados, un histórico cerrado con gestión o defensor sigue
+  // siendo consultable aunque la fuente no haya informado SITUACION.
+  clauses.push(requireClosedHistoryEvidence ? '1=1' : buildTipoFilter(tipo));
   if (String(tipo || '').trim().toLowerCase() === 'condenado') {
     clauses.push('NVL(s.ACTIVO, 0) = 1');
   }
 
   if (!includeUserFilters) {
     return { clause: clauses.join('\n      AND '), binds };
+  }
+
+  if (requireClosedHistoryEvidence) {
+    clauses.push(`(
+      NVL(s.ACTIVO, 0) = 1
+      OR EXISTS (
+        SELECT 1
+        FROM DNDP.SITUACION_CARCELARIA historical_s
+        JOIN DNDP.GESTION_JURIDICA historical_g
+          ON historical_g.ID_SITUACION = historical_s.ID_SITUACION
+        WHERE historical_s.ID_PERSONA = p.ID_PERSONA
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM DNDP.ASIGNACION historical_a
+        WHERE historical_a.ID_PERSONA = p.ID_PERSONA
+          AND (
+            historical_a.CEDULA_DEFENSOR IS NOT NULL
+            OR TRIM(historical_a.NOMBRE_DEFENSOR) IS NOT NULL
+          )
+      )
+    )`);
   }
 
   const rawDocumento = String(filters?.documento || '').trim();
@@ -614,12 +639,14 @@ function buildCondenadosSummaryFromAndWhere({
   filters = {},
   scopeDepartamentos = DEFAULT_SCOPE_DEPARTAMENTOS,
   includeUserFilters = true,
+  requireClosedHistoryEvidence = false,
 } = {}) {
   const { clause, binds } = buildCondenadosSummaryWhereClause({
     tipo,
     filters,
     scopeDepartamentos,
     includeUserFilters,
+    requireClosedHistoryEvidence,
   });
 
   const fromAndWhere = `
@@ -664,6 +691,12 @@ async function listCondenadosSummary({
   const accionCodigo = resolveAccionCodigo(rawAccionCodigo) || resolveAccionCodigo(rawAccionLegada);
   const hasAccionFilter = Boolean(rawAccionCodigo || rawAccionLegada);
   const accionCatalogada = getAccionByCodigo(accionCodigo);
+  const requireClosedHistoryEvidence =
+    String(tipo || '').trim().toLowerCase() === 'all' &&
+    (
+      estadoCodigo === 'CASO_CERRADO' ||
+      accionCatalogada?.estadoCodigos?.includes('CASO_CERRADO')
+    );
   const repositoryFilters = {
     ...(filters && typeof filters === 'object' ? filters : {}),
     estadoCodigo: '',
@@ -703,6 +736,7 @@ async function listCondenadosSummary({
     filters: repositoryFilters,
     scopeDepartamentos,
     includeUserFilters: true,
+    requireClosedHistoryEvidence,
   });
 
   const baseSelectSql = `

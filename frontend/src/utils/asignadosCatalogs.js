@@ -31,7 +31,7 @@ export const ACCIONES_IMPULSAR_OPTIONS = [
     estadoCodigos: ['PENDIENTE_DECISION'],
   },
   { value: 'PRESENTAR_RECURSO', label: 'Presentar recurso', estadoCodigos: ['PRESENTAR_RECURSO'] },
-  { value: 'SIN_ACCION_PENDIENTE', label: 'Sin acción pendiente', estadoCodigos: ['CASO_CERRADO'] },
+  { value: 'SIN_ACCION_PENDIENTE', label: 'Caso cerrado', estadoCodigos: ['CASO_CERRADO'] },
 ];
 
 function normalizeCatalogText(value) {

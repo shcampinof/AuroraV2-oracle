@@ -47,10 +47,10 @@ describe('catálogos de filtros de usuarios asignados', () => {
       'Hacer seguimiento a la decisión de audiencia',
       'Hacer seguimiento a la decisión',
       'Presentar recurso',
-      'Sin acción pendiente',
+      'Caso cerrado',
     ]);
     expect(options.acciones.map((item) => item.label)).not.toContain('Pendiente audiencia');
-    expect(options.acciones.map((item) => item.label)).not.toContain('Caso cerrado');
+    expect(options.acciones.map((item) => item.label)).not.toContain('Sin acción pendiente');
   });
 
   it('mantiene completos los ocho estados que alimentan el filtro visible', () => {

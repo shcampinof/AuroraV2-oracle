@@ -5,7 +5,7 @@
 | Módulo | Campo | Origen | Regla principal |
 |---|---|---|---|
 | Usuarios asignados | Defensor | Asignación activa y catálogo de defensores | Identidad por cédula; texto homologado para presentación |
-| Usuarios asignados | Acción o estado | Catálogo de estados y acciones | Código canónico, no texto libre |
+| Usuarios asignados | Acción o estado | Catálogo de estados y acciones | Código canónico; los cierres se presentan como `Caso cerrado` |
 | Usuarios asignados | Nombre, documento y ubicación | Situación carcelaria vigente | Búsqueda normalizada; los lugares del filtro corresponden a personas con `ACTIVO = 1` |
 | Atención | Defensor | `DNDP.DEFENSORES` | Lista controlada y escribible; alta compacta con cédula y nombre |
 | Atención | Acción a impulsar | Reglas del flujo y campos diligenciados | Valor calculado; no usa SQL de catálogo |
@@ -63,6 +63,33 @@ WITH ranked_situacion AS (
 ```
 
 La tabla de Usuarios asignados admite condenados y sindicados. Una consulta por defensor, nombre o documento puede incluir una situación cerrada; la interfaz la presenta como caso histórico. Una consulta por ubicación exige `ACTIVO = 1`.
+
+El filtro `Caso cerrado` comprende los cierres determinados por las reglas del trámite y las situaciones más recientes con `ACTIVO = 0` o `NULL` que tengan gestión jurídica o asignación histórica de defensor. La asignación histórica se reconoce por cédula o por nombre, incluidos los registros anteriores a la adopción del catálogo de defensores.
+
+```sql
+AND ESTADO_CODIGO = 'CASO_CERRADO'
+AND (
+  NVL(s.ACTIVO, 0) = 1
+  OR EXISTS (
+    SELECT 1
+    FROM DNDP.SITUACION_CARCELARIA historical_s
+    JOIN DNDP.GESTION_JURIDICA historical_g
+      ON historical_g.ID_SITUACION = historical_s.ID_SITUACION
+    WHERE historical_s.ID_PERSONA = p.ID_PERSONA
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM DNDP.ASIGNACION historical_a
+    WHERE historical_a.ID_PERSONA = p.ID_PERSONA
+      AND (
+        historical_a.CEDULA_DEFENSOR IS NOT NULL
+        OR TRIM(historical_a.NOMBRE_DEFENSOR) IS NOT NULL
+      )
+  )
+)
+```
+
+Los históricos con `ACTIVO = 0` o `NULL`, sin gestión y sin defensor, no forman parte del resultado. La ausencia del texto de situación jurídica no excluye un histórico que cumpla alguna de las dos condiciones.
 
 La consulta directa del formulario también puede recuperar una persona con situación inactiva. El formulario se presenta en modo de solo lectura y no permite crear actuaciones ni actualizar el caso.
 
@@ -214,6 +241,14 @@ El Formulario de atención usa el mismo catálogo. El texto escrito debe coincid
 
 Los estados y acciones proceden de catálogos de códigos. El filtro envía el código, por ejemplo `ENTREVISTAR_USUARIO`, y Oracle compara el estado derivado del flujo.
 
+El cierre usa una sola etiqueta visible:
+
+| Código de estado | Código de acción | Etiqueta |
+|---|---|---|
+| `CASO_CERRADO` | `SIN_ACCION_PENDIENTE` | `Caso cerrado` |
+
+`Sin acción pendiente` se conserva como alias de lectura para datos históricos. La tabla, los filtros, el formulario y el historial presentan `Caso cerrado`.
+
 Los potenciales candidatos se derivan de `SITUACION_CARCELARIA.CATEGORIZACION`:
 
 ```sql
@@ -326,34 +361,24 @@ Blindajes adicionales:
 
 ## 7. Índices y limitaciones
 
-Índices relevantes para el plan de consulta:
+Índices presentes en el esquema consultado:
 
-```sql
--- Selección de situación vigente
-CREATE INDEX IX_SC_PERSONA_FECHAS
-  ON DNDP.SITUACION_CARCELARIA
-     (ID_PERSONA, FECHA_CORTE, FECHA_REGISTRO, ID_SITUACION);
+| Tabla | Índice | Columnas |
+|---|---|---|
+| `SITUACION_CARCELARIA` | `IDX_SIT_PERSONA_ACTIVO` | `ID_PERSONA, ACTIVO` |
+| `SITUACION_CARCELARIA` | `SYS_C008773` | `ID_SITUACION` |
+| `ASIGNACION` | `IDX_ASIG_DEFENSOR` | `CEDULA_DEFENSOR, FECHA_FIN` |
+| `ASIGNACION` | `IDX_ASIG_PAG` | `CEDULA_PAG, FECHA_FIN` |
+| `ASIGNACION` | `IDX_ASIG_VIGENTE` | `ID_PERSONA, NVL(TO_CHAR(FECHA_FIN, 'YYYYMMDD'), 'VIGENTE')` |
+| `ASIGNACION` | `PK_ASIGNACION` | `ID_ASIGNACION` |
+| `GESTION_JURIDICA` | `IDX_GESTION_SITUACION` | `ID_SITUACION` |
+| `GESTION_JURIDICA` | `SYS_C008776` | `ID_GESTION` |
 
--- Asignación activa por persona
-CREATE INDEX IX_ASIG_PERSONA_FIN_FECHA
-  ON DNDP.ASIGNACION
-     (ID_PERSONA, FECHA_FIN, FECHA_ASIGNACION, ID_ASIGNACION);
-
--- Gestión vigente
-CREATE INDEX IX_GJ_SITUACION_FECHA
-  ON DNDP.GESTION_JURIDICA
-     (ID_SITUACION, FECHA_REGISTRO, ID_GESTION);
-
--- Cruce excepcional con el valor original de SISIPEC
-CREATE INDEX IX_SISIPEC_NUMERO_ESTABLECIMIENTO
-  ON DNDP.SISIPEC (NUMERO, ESTABLECIMIENTO);
-```
-
-La creación de índices requiere revisión del plan de ejecución, ventana de mantenimiento y autorización de administración de base de datos.
+No se observaron índices registrados para `SISIPEC` en el esquema consultado.
 
 Limitaciones vigentes:
 
-- Las funciones de normalización sobre columnas pueden impedir el uso de índices convencionales. Índices basados en función o columnas normalizadas persistentes permitirían mejorar estas búsquedas.
+- Las funciones de normalización sobre columnas pueden impedir el uso de índices convencionales.
 - El conteo exacto sigue recorriendo el conjunto filtrado. La ejecución paralela y la caché evitan repetirlo en cada página.
 - Los catálogos de ubicación dependen de la calidad del valor fuente. Los nombres desconocidos permanecen visibles en Usuarios asignados y Atención, pero no ingresan automáticamente a la lista oficial de 124 centros PAG.
 - La asociación histórica de Acacías requiere consultar `DNDP.SISIPEC` hasta corregir el dato consolidado de origen.

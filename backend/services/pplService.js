@@ -597,11 +597,11 @@ function toLegacyRecord(raw = {}) {
 
     'Acción a impulsar': situacionActiva
       ? String(raw.G_ACCION_REALIZAR ?? '')
-      : 'Caso cerrado - Fuera de prisión',
+      : 'Caso cerrado',
     // Alias legado para actuaciones creadas antes de unificar la terminología.
     'Acción a realizar': situacionActiva
       ? String(raw.G_ACCION_REALIZAR ?? '')
-      : 'Caso cerrado - Fuera de prisión',
+      : 'Caso cerrado',
     'Fecha de análisis jurídico del caso': toIsoDate(raw.G_FECHA_ANALISIS),
     'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS': String(raw.G_ACTUACION_ADELANTAR ?? raw.G_VENCIMIENTO_TERMINOS ?? ''),
     'Procedencia de utilidad pública (solo para mujeres)': String(raw.G_UTILIDAD_PUBLICA ?? ''),
@@ -650,7 +650,7 @@ function toLegacyRecord(raw = {}) {
     'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública': String(raw.G_CIERRE_CASO ?? ''),
     'Sentido de la decisión que resuelve la solicitud': String(raw.G_SENTIDO_DECISION_RESUELVE_RECURSO ?? ''),
     'Estado del caso': situacionActiva ? '' : 'Caso cerrado',
-    'Estado del trámite': situacionActiva ? '' : 'Caso cerrado - Fuera de prisión',
+    'Estado del trámite': situacionActiva ? '' : 'Caso cerrado',
     posibleActuacionJudicial: String(raw.G_ACTUACION_ADELANTAR ?? ''),
 
     __oracleIdPersona: raw.P_ID_PERSONA == null ? null : Number(raw.P_ID_PERSONA),
