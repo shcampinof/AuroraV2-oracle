@@ -83,6 +83,8 @@ const LEGACY_COLUMNS = [
   'Fecha de decisión de la autoridad',
   'Fecha de radicación de solicitud de utilidad pública',
   'Sentido de la decisión',
+  'Fecha de insistencia 1',
+  'Fecha de insistencia 2',
   'Motivo de la decisión negativa',
   'Se presenta recurso',
   'Fecha de recurso en caso desfavorable',
@@ -124,6 +126,8 @@ const DATE_FIELDS = new Set([
   'FECHA_REALIZACION_AUDIENCIA',
   'FECHA_PRESENTACION_SOLICITUD_AUTORIDAD',
   'FECHA_DECISION_AUTORIDAD',
+  'FECHA_INSISTENCIA_1',
+  'FECHA_INSISTENCIA_2',
   'FECHA_RECURSO_DESFAVORABLE',
   'FECHA_RADICACION_UTILIDAD',
   'FECHA_PRESENTACION_RECURSO',
@@ -168,6 +172,15 @@ function normalizeText(value) {
 
 function normalizeDocumento(value) {
   return String(value ?? '').replace(/\D+/g, '');
+}
+
+async function resolveDefensorCatalogado(nombre) {
+  const defensor = await defensoresRepo.findUniqueByNombre(nombre);
+  if (defensor) return defensor;
+  const err = new Error('Seleccione un defensor válido del catálogo.');
+  err.code = 'DEFENSOR_NOT_IN_CATALOG';
+  err.status = 400;
+  throw err;
 }
 
 function parseLooseDate(value) {
@@ -480,6 +493,8 @@ bind(
   'FECHA_RADICACION_UTILIDAD'
 );
 bind(['Sentido de la decisión', 'Sentido de la decision'], 'GESTION', 'SENTIDO_DECISION');
+bind(['Fecha de insistencia 1'], 'GESTION', 'FECHA_INSISTENCIA_1');
+bind(['Fecha de insistencia 2'], 'GESTION', 'FECHA_INSISTENCIA_2');
 bind(['Motivo de la decisión negativa', 'Motivo de la decision negativa'], 'GESTION', 'MOTIVO_DECISION_NEGATIVA');
 bind(
   [
@@ -621,6 +636,8 @@ function toLegacyRecord(raw = {}) {
     'Fecha de radicación de la solicitud de utilidad pública': toIsoDate(raw.G_FECHA_RADICACION_UTILIDAD),
     'Fecha de decisión de la autoridad': toIsoDate(raw.G_FECHA_DECISION_AUTORIDAD),
     'Sentido de la decisión': String(raw.G_SENTIDO_DECISION ?? ''),
+    'Fecha de insistencia 1': toIsoDate(raw.G_FECHA_INSISTENCIA_1),
+    'Fecha de insistencia 2': toIsoDate(raw.G_FECHA_INSISTENCIA_2),
     'Motivo de la decisión negativa': String(raw.G_MOTIVO_DECISION_NEGATIVA ?? ''),
     'Se presenta recurso': String(raw.G_SE_PRESENTA_RECURSO ?? ''),
     '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?': String(raw.G_SE_PRESENTA_RECURSO ?? ''),
@@ -743,7 +760,10 @@ function splitUpdatesByTable(payload, { allowBaseUpdates = false } = {}) {
   Object.entries(clean).forEach(([key, value]) => {
     const binding = UPDATE_BINDINGS.get(normalizeText(key));
     if (!binding) return;
-    if (!allowBaseUpdates && (binding.table === 'PERSONA' || binding.table === 'SITUACION')) return;
+    if (!allowBaseUpdates && binding.table === 'PERSONA') return;
+    // El formulario puede corregir el enfoque diferencial, pero los demás
+    // campos base de la situación siguen siendo de solo lectura para esta API.
+    if (!allowBaseUpdates && binding.table === 'SITUACION' && binding.column !== 'ENFOQUE') return;
     const dbValue = toTypedDbValue(binding.column, value);
     if (
       dbValue == null &&
@@ -880,8 +900,10 @@ async function createActuacionByDocumento(documento, payload) {
     const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
     const currentDefensor = String(context.G_DEFENSOR || '').trim();
     if (nextDefensor && normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
+      const defensorCatalogado = await resolveDefensorCatalogado(nextDefensor);
       await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
-        defensorNombre: nextDefensor,
+        defensorNombre: defensorCatalogado.nombre,
+        defensorCedula: defensorCatalogado.cedula,
         pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
         pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
       });
@@ -970,8 +992,10 @@ async function updateByDocumento(documento, payload) {
     const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
     const currentDefensor = String(context.G_DEFENSOR || '').trim();
     if (nextDefensor && normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
+      const defensorCatalogado = await resolveDefensorCatalogado(nextDefensor);
       await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
-        defensorNombre: nextDefensor,
+        defensorNombre: defensorCatalogado.nombre,
+        defensorCedula: defensorCatalogado.cedula,
         pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
         pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
       });

@@ -19,9 +19,7 @@ import {
   isSituacionActiva,
 } from '../utils/pplStatus.js';
 import {
-  getEstadoClassByLabel,
   getEstadoClassForRecord,
-  getEstadoDisplayInfo,
 } from '../config/estadoActuaciones.rules.ts';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
 
@@ -35,9 +33,7 @@ function prettifyHeader(key) {
 }
 
 const EXTRA_COLUMNS = ['actuacionJudicial'];
-const ROWS_PER_PAGE = 25;
-const DEFAULT_INITIAL_LIMIT = 50;
-const DEFAULT_FILTERED_LIMIT = 100;
+const PAGE_SIZE = 50;
 const INITIAL_FILTER_OPTIONS_QUERY = { tipo: 'all' };
 const HEADER_LABELS = {
   Title: 'N\u00famero de identificaci\u00f3n',
@@ -365,7 +361,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   const [defensores, setDefensores] = useState(() => initialOptions.defensores);
   const [opcionesFiltro, setOpcionesFiltro] = useState(() => initialOptions);
   const isDev = typeof import.meta !== 'undefined' && import.meta?.env?.DEV;
-  const estadoInfoCacheRef = useRef(new WeakMap());
   const tableScrollRef = useRef(null);
   const stickyScrollRef = useRef(null);
   const syncingHorizontalScrollRef = useRef(false);
@@ -450,20 +445,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     );
   }
 
-  function getEstadoDisplayInfoMemo(obj) {
-    if (!obj || typeof obj !== 'object') return getEstadoDisplayInfo(obj);
-    const cached = estadoInfoCacheRef.current.get(obj);
-    if (cached) return cached;
-    const backendLabel = String(obj?.estadoEtiqueta || obj?.['Estado del caso'] || '').trim();
-    const derived = getEstadoDisplayInfo(obj);
-    const computed = {
-      label: String(derived?.label || backendLabel).trim(),
-      className: String(derived?.className || getEstadoClassByLabel(backendLabel)).trim(),
-    };
-    estadoInfoCacheRef.current.set(obj, computed);
-    return computed;
-  }
-
   function setFiltroDraft(key, value) {
     setFiltrosDraft((prev) => ({ ...prev, [key]: value }));
   }
@@ -501,11 +482,11 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     }));
   }
 
-  const cargarRowsFromBackend = useCallback(async (nextFiltros = {}) => {
+  const cargarRowsFromBackend = useCallback(async (nextFiltros = {}, nextPage = 1) => {
     const request = {
       tipo: 'all',
-      limit: DEFAULT_INITIAL_LIMIT,
-      filteredLimit: DEFAULT_FILTERED_LIMIT,
+      page: nextPage,
+      pageSize: PAGE_SIZE,
       filters: buildAssignedUsersFilters(nextFiltros),
     };
     const hasCachedRows = Boolean(getCachedCondenados(request));
@@ -516,7 +497,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       setColumns(normalized?.columns || []);
       setRows(normalized?.rows || []);
       setMetaConsulta(normalized?.meta || null);
-      setPagina(1);
+      setPagina(nextPage);
     } catch (e) {
       console.error(e);
       setErrorCarga(String(e?.message || 'No fue posible cargar los usuarios asignados.'));
@@ -551,10 +532,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   useEffect(() => {
     cargarOpcionesFiltro();
   }, [cargarOpcionesFiltro]);
-
-  useEffect(() => {
-    estadoInfoCacheRef.current = new WeakMap();
-  }, [rows]);
 
   useEffect(() => {
     setDefensores((prev) => {
@@ -599,7 +576,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     () => (opcionesFiltro.estados.length ? opcionesFiltro.estados : ESTADOS_TRAMITE_OPTIONS),
     [opcionesFiltro.estados]
   );
-  const accionesDisponibles = useMemo(() => opcionesFiltro.acciones || [], [opcionesFiltro.acciones]);
   const municipiosDisponiblesDraft = useMemo(() => {
     if (filtroAdicionalSeleccionado !== 'municipio') return [];
     const depNeedle = normalize(filtrosDraft.departamento);
@@ -610,46 +586,21 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     return distinctSorted(candidates, getMunicipioPrivacionValue);
   }, [opcionesFiltro.municipios, rows, filtrosDraft.departamento, filtroAdicionalSeleccionado]);
 
-  const rowsFiltradas = useMemo(() => {
-    const estadoCodigo = String(filtrosAplicados.estadoCodigo || '').trim();
-    const accionCodigo = String(filtrosAplicados.accionCodigo || '').trim();
-    if (!estadoCodigo && !accionCodigo) return rows;
-    const estadoLabel = estadosDisponibles.find((item) => item.value === estadoCodigo)?.label || '';
-    const accionSeleccionada = accionesDisponibles.find((item) => item.value === accionCodigo);
-    return rows.filter((row) => {
-      const rowCodigo = String(row?.estadoCodigo || '').trim();
-      const matchesEstado = !estadoCodigo || (rowCodigo
-        ? rowCodigo === estadoCodigo
-        : estadoLabel && normalize(getEstadoDisplayInfoMemo(row).label) === normalize(estadoLabel));
-      const rowAccionCodigo = String(row?.accionPendiente?.codigo || '').trim();
-      const matchesAccion = !accionCodigo || (rowAccionCodigo
-        ? rowAccionCodigo === accionCodigo
-        : accionSeleccionada?.estadoCodigos?.includes(rowCodigo));
-      return matchesEstado && matchesAccion;
-    });
-  }, [rows, filtrosAplicados.estadoCodigo, filtrosAplicados.accionCodigo, estadosDisponibles, accionesDisponibles]);
+  // Todos los filtros, incluidos estado y acción, se aplican en Oracle antes
+  // de contar y paginar. La interfaz muestra la página recibida sin recortarla.
+  const rowsFiltradas = rows;
 
-  const totalPaginas = useMemo(() => Math.max(1, Math.ceil(rowsFiltradas.length / ROWS_PER_PAGE)), [rowsFiltradas.length]);
+  const totalResultados = Number(metaConsulta?.totalMatched || 0);
+  const totalPaginas = Math.max(
+    1,
+    Number(metaConsulta?.totalPages || Math.ceil(totalResultados / PAGE_SIZE) || 1)
+  );
   const paginaActual = Math.min(pagina, totalPaginas);
-
-  const rowsPaginaActual = useMemo(() => {
-    const inicio = (paginaActual - 1) * ROWS_PER_PAGE;
-    return rowsFiltradas.slice(inicio, inicio + ROWS_PER_PAGE);
-  }, [rowsFiltradas, paginaActual]);
+  const rowsPaginaActual = rowsFiltradas;
 
   useEffect(() => {
     if (!isDev) return;
   }, [isDev, rowsFiltradas.length, rowsPaginaActual.length]);
-
-  useEffect(() => {
-    setPagina(1);
-  }, [filtrosAplicados, rows]);
-
-  useEffect(() => {
-    if (pagina > totalPaginas) {
-      setPagina(totalPaginas);
-    }
-  }, [pagina, totalPaginas]);
 
   const syncStickyMetrics = useCallback(() => {
     const container = tableScrollRef.current;
@@ -755,7 +706,13 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
     setFiltrosAplicados(next);
     setBusquedaRealizada(true);
-    await cargarRowsFromBackend(next);
+    await cargarRowsFromBackend(next, 1);
+  }
+
+  async function cambiarPagina(nextPage) {
+    const boundedPage = Math.max(1, Math.min(totalPaginas, nextPage));
+    if (boundedPage === paginaActual || cargando) return;
+    await cargarRowsFromBackend(filtrosAplicados, boundedPage);
   }
 
   function reiniciar() {
@@ -964,13 +921,9 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       </div>
 
       {!cargando && errorCarga && <p className="hint-text">{errorCarga}</p>}
-      {!cargando && metaConsulta?.filtered && (
+      {!cargando && busquedaRealizada && metaConsulta && (
         <p className="hint-text">
-          {metaConsulta?.truncated
-            ? metaConsulta?.totalMatchedExact === false
-              ? `Se muestran los primeros ${metaConsulta?.returned || 0} registros. Hay más resultados; ajuste los filtros para precisar la búsqueda.`
-              : `Se encontraron ${metaConsulta?.totalMatched || 0} registros y se muestran los primeros ${metaConsulta?.returned || 0}.`
-            : `Se encontraron ${metaConsulta?.returned || metaConsulta?.totalMatched || 0} registros.`}
+          Se encontraron {totalResultados} registros. Página {paginaActual} de {totalPaginas}; se muestran hasta {PAGE_SIZE} por página.
         </p>
       )}
 
@@ -1151,25 +1104,25 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
               <div style={{ width: `${stickyScrollWidth}px` }} />
             </div>
 
-            {rowsFiltradas.length > 0 && (
+            {busquedaRealizada && rowsFiltradas.length > 0 && (
               <div className="search-row" style={{ marginTop: '0.75rem', justifyContent: 'space-between' }}>
                 <p className="hint-text" style={{ margin: 0 }}>
-                  Mostrando {rowsPaginaActual.length} de {rowsFiltradas.length} registros. Pagina {paginaActual} de {totalPaginas}.
+                  Mostrando {rowsPaginaActual.length} registros de {totalResultados}. Página {paginaActual} de {totalPaginas}.
                 </p>
                 <div className="search-row" style={{ gap: '0.5rem' }}>
                   <button
                     className="primary-button"
                     type="button"
-                    onClick={() => setPagina((p) => Math.max(1, p - 1))}
-                    disabled={paginaActual <= 1}
+                    onClick={() => cambiarPagina(paginaActual - 1)}
+                    disabled={paginaActual <= 1 || cargando}
                   >
                     Anterior
                   </button>
                   <button
                     className="primary-button"
                     type="button"
-                    onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
-                    disabled={paginaActual >= totalPaginas}
+                    onClick={() => cambiarPagina(paginaActual + 1)}
+                    disabled={paginaActual >= totalPaginas || cargando}
                   >
                     Siguiente
                   </button>

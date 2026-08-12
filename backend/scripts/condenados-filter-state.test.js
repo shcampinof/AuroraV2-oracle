@@ -28,6 +28,28 @@ async function captureStateSearch(filters, tipo = 'all') {
   }
 }
 
+async function capturePagedSearch(filters, { tipo = 'condenado', limit = 50, offset = 0 } = {}) {
+  const oraclePoolPath = require.resolve('../db/oraclePool');
+  const repositoryPath = require.resolve('../repositories/oracle/personaRepository');
+  const oraclePool = require(oraclePoolPath);
+  const originalExecute = oraclePool.execute;
+  let captured = null;
+
+  oraclePool.execute = async (sql, binds, options) => {
+    captured = { sql, binds, options };
+    return { rows: [] };
+  };
+  delete require.cache[repositoryPath];
+  try {
+    const repository = require(repositoryPath);
+    await repository.listCondenadosSummary({ tipo, filters, limit, offset, includeExactCounts: true });
+    return captured;
+  } finally {
+    oraclePool.execute = originalExecute;
+    delete require.cache[repositoryPath];
+  }
+}
+
 async function testEstadoUsesDerivedWorkflowMilestones() {
   const captured = await captureStateSearch({
     defensor: 'PEDRO PABLO DIAZ CRISTANCHO',
@@ -241,6 +263,19 @@ async function testInvalidIdentityFiltersFailClosed() {
   }
 }
 
+async function testPagFiltersActiveAndAssignmentStateBeforePagination() {
+  const assignment = await capturePagedSearch({ asignacionEstado: 'sin_defensor' }, { offset: 100 });
+  assert.match(assignment.sql, /NVL\(s\.ACTIVO, 0\) = 1/);
+  assert.match(assignment.sql, /a\.CEDULA_DEFENSOR IS NULL/);
+  assert.match(assignment.sql, /COUNT\(\*\) OVER\(\) AS TOTAL_MATCHED/);
+  assert.match(assignment.sql, /WHERE ROWNUM <= :endRow[\s\S]*WHERE PAGE_ROW_NUMBER > :offsetRows/);
+  assert.strictEqual(assignment.binds.endRow, 150);
+  assert.strictEqual(assignment.binds.offsetRows, 100);
+
+  const reassignment = await capturePagedSearch({ asignacionEstado: 'con_defensor' });
+  assert.match(reassignment.sql, /a\.CEDULA_DEFENSOR IS NOT NULL/);
+}
+
 (async () => {
   await testEstadoUsesDerivedWorkflowMilestones();
   await testLugarKeepsPrefixFilterAlongsideEstado();
@@ -257,6 +292,7 @@ async function testInvalidIdentityFiltersFailClosed() {
   await testAuroraFilterUsesTheRadicationDateForTheSelectedFlow();
   await testEverySupportedFilterBuildsAnEffectivePredicate();
   await testInvalidIdentityFiltersFailClosed();
+  await testPagFiltersActiveAndAssignmentStateBeforePagination();
   console.log('OK condenados-filter-state.test');
 })().catch((error) => {
   console.error(error);

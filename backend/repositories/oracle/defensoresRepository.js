@@ -13,6 +13,8 @@ function normalizeCedula(value) {
 
 function normalizeNombre(nombre) {
   return String(nombre ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase()
     .replace(/\s+/g, ' ')
     .trim();
@@ -114,6 +116,13 @@ async function findByCedula(cedula) {
   return mapDefensorRow(row);
 }
 
+async function findUniqueByNombre(nombre) {
+  const normalized = normalizeNombre(nombre);
+  if (!normalized) return null;
+  const matches = (await listAll()).filter((item) => normalizeNombre(item?.nombre) === normalized);
+  return matches.length === 1 ? matches[0] : null;
+}
+
 async function create({ cedula, nombre, correo = '', regional = '', cedulaPag = '' } = {}) {
   const normalizedCedula = normalizeCedula(cedula);
   if (!normalizedCedula) {
@@ -155,6 +164,7 @@ async function create({ cedula, nombre, correo = '', regional = '', cedulaPag = 
 module.exports = {
   listAll,
   findByCedula,
+  findUniqueByNombre,
   create,
   toOptions,
   normalizeNombre,

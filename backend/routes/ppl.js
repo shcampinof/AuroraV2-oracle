@@ -7,9 +7,9 @@ const { ESTADOS_CASO, getEstadoEtiqueta, resolveEstadoCodigo } = require('../dom
 const {
   catalogVersions,
   listAcciones,
-  OTROS_LUGARES_ACTIVOS_ID,
   resolveAccionPendiente,
   resolveCentro,
+  listCentros,
 } = require('../domain/catalogosHomologacion');
 const {
   homologateIdentityOptions,
@@ -46,6 +46,8 @@ const FILTER_OPTIONS_CACHE_TTL_MS = 5 * 60 * 1000;
 const pplListCache = new Map();
 const condenadosListCache = new Map();
 const condenadosListInFlight = new Map();
+const condenadosCountCache = new Map();
+const condenadosCountInFlight = new Map();
 const condenadosFilterOptionsCache = new Map();
 const homologationAuditCache = new Map();
 
@@ -66,6 +68,27 @@ function getTimedCache(map, key) {
   return hit.value;
 }
 
+async function getCondenadosExactCount(cacheKey, options) {
+  const cached = getTimedCache(condenadosCountCache, cacheKey);
+  if (cached && Number.isFinite(Number(cached.total))) return Number(cached.total);
+
+  const existing = condenadosCountInFlight.get(cacheKey);
+  if (existing) return existing;
+
+  const request = personaRepo.countCondenadosSummary(options)
+    .then((total) => {
+      const safeTotal = Number(total || 0);
+      boundedCacheSet(condenadosCountCache, cacheKey, {
+        createdAt: Date.now(),
+        value: { total: safeTotal },
+      });
+      return safeTotal;
+    })
+    .finally(() => condenadosCountInFlight.delete(cacheKey));
+  condenadosCountInFlight.set(cacheKey, request);
+  return request;
+}
+
 function parseLimit(rawLimit, fallback = DEFAULT_LIST_LIMIT) {
   const parsed = Number.parseInt(String(rawLimit || `${fallback}`), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
@@ -76,6 +99,11 @@ function parseFilteredLimit(rawLimit, fallback = DEFAULT_CONDENADOS_FILTERED_LIM
   const parsed = Number.parseInt(String(rawLimit || `${fallback}`), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.min(parsed, MAX_CONDENADOS_FILTERED_LIMIT);
+}
+
+function parsePage(rawPage) {
+  const parsed = Number.parseInt(String(rawPage || '1'), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
 const normalizeText = normalizeComparisonText;
@@ -608,6 +636,7 @@ function getCondenadosFiltersFromQuery(query) {
     accionCodigo: String(query?.accionCodigo ?? '').trim(),
     accion: String(query?.accion ?? '').trim(),
     potencialSubrogado: String(query?.potencialSubrogado ?? '').trim(),
+    asignacionEstado: String(query?.asignacionEstado ?? '').trim(),
   };
 }
 
@@ -865,20 +894,22 @@ router.get('/condenados/filter-options', async (req, res) => {
     };
     // PAG/condenados usa la lista blanca de ERON oficiales; tipo=all conserva
     // además CDT y otros lugares activos reportados por SISIPEC.
-    const centros = buildCentrosFiltro(lugares, tipo);
+    const hasDependentLocationFilter = Boolean(filters.departamento || filters.municipio);
+    const centros = tipo === 'condenado' && !hasDependentLocationFilter
+      ? listCentros()
+          .filter((item) => item.id !== 'INPEC_514')
+          .map((item) => ({
+            id: item.id,
+            label: item.label,
+            homologado: true,
+            valoresOriginales: [...item.aliases],
+          }))
+          .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
+      : buildCentrosFiltro(lugares, tipo);
     const lugaresNoOficiales = tipo === 'condenado'
       ? buildCentrosFiltro(lugares, 'all').filter((item) => !item.homologado)
       : [];
-    const opcionOtrosLugares = lugaresNoOficiales.length
-      ? {
-          id: OTROS_LUGARES_ACTIVOS_ID,
-          label: 'OTROS LUGARES ACTIVOS (CDT, URI, ESTACIONES Y OTROS)',
-          homologado: true,
-          categoria: true,
-          valoresOriginales: lugaresNoOficiales.flatMap((item) => item.valoresOriginales),
-        }
-      : null;
-    const centrosVisibles = opcionOtrosLugares ? [...centros, opcionOtrosLugares] : centros;
+    const centrosVisibles = centros;
     const centrosHomologados = centros.filter((item) => item.homologado).length;
     const centrosNoHomologados = centros.length - centrosHomologados;
     const lugaresVisibles = tipo === 'condenado'
@@ -966,10 +997,12 @@ router.get('/condenados', async (req, res) => {
   }
   const limit = parseLimit(req.query.limit, DEFAULT_CONDENADOS_LIMIT);
   const filteredLimit = parseFilteredLimit(req.query.filteredLimit, DEFAULT_CONDENADOS_FILTERED_LIMIT);
-  const effectiveLimit = hasFilters ? filteredLimit : limit;
+  const page = parsePage(req.query.page);
+  const requestedPageSize = parseFilteredLimit(req.query.pageSize, hasFilters ? filteredLimit : limit);
+  const pageSize = Math.min(requestedPageSize, MAX_CONDENADOS_FILTERED_LIMIT);
   const version = Number(consolidado.getDataVersion?.() || 0);
   const filtersKey = hasFilters ? JSON.stringify(filters) : 'nofilter';
-  const cacheKey = `${version}|${tipo}|${limit}|${filteredLimit}|${filtersKey}`;
+  const cacheKey = `${version}|${tipo}|${page}|${pageSize}|${filtersKey}`;
   if (condenadosListCache.has(cacheKey)) {
     res.setHeader('Server-Timing', 'condenados;dur=0;desc="cache-hit"');
     res.setHeader('X-Aurora-Cache', 'HIT');
@@ -982,14 +1015,17 @@ router.get('/condenados', async (req, res) => {
     const request =
       existingRequest ||
       (async () => {
-        const summary = await personaRepo.listCondenadosSummary({
-          tipo,
-          filters,
-          limit: effectiveLimit,
-          // Para la tabla basta saber si hay mas resultados. Evita COUNT(*)
-          // sobre todo el conjunto, que era la parte mas costosa del primer ingreso.
-          includeExactCounts: false,
-        });
+        const countCacheKey = `${version}|${tipo}|${filtersKey}`;
+        const [summary, totalMatched] = await Promise.all([
+          personaRepo.listCondenadosSummary({
+            tipo,
+            filters,
+            limit: pageSize,
+            offset: (page - 1) * pageSize,
+            includeExactCounts: false,
+          }),
+          getCondenadosExactCount(countCacheKey, { tipo, filters }),
+        ]);
         const rows = (Array.isArray(summary?.rows) ? summary.rows : []).map((row) => mapCondenadoRow(row));
         const payload = {
           columns: CONDENADOS_COLUMNS,
@@ -997,20 +1033,21 @@ router.get('/condenados', async (req, res) => {
           meta: {
             tipo,
             filtered: hasFilters,
-            totalAvailable: Number(summary?.totalAvailable || 0),
-            totalMatched: Number(summary?.totalMatched || 0),
-            totalMatchedExact: summary?.totalMatchedExact !== false,
+            totalAvailable: totalMatched,
+            totalMatched,
+            totalMatchedExact: true,
+            page,
+            pageSize,
+            totalPages: Math.max(1, Math.ceil(totalMatched / pageSize)),
             returned: rows.length,
             homologacion: {
               centrosNoHomologados: rows.filter((row) => row?.centroReclusion?.homologado === false).length,
               accionesNoHomologadas: rows.filter((row) => row?.accionPendiente?.homologada === false).length,
               catalogVersions,
             },
-            limitApplied: effectiveLimit,
+            limitApplied: pageSize,
             truncated:
-              typeof summary?.truncated === 'boolean'
-                ? summary.truncated
-                : Number(summary?.totalMatched || 0) > effectiveLimit,
+              (page - 1) * pageSize + rows.length < totalMatched,
           },
         };
         boundedCacheSet(condenadosListCache, cacheKey, payload);
@@ -1159,6 +1196,9 @@ router.post('/:documento/actuaciones', async (req, res) => {
     if (err?.code === 'PPL_SITUACION_INACTIVA') {
       return res.status(409).json({ code: err.code, message: err.message });
     }
+    if (err?.code === 'DEFENSOR_NOT_IN_CATALOG') {
+      return res.status(400).json({ code: err.code, message: err.message });
+    }
     return res.status(500).json({ message: 'Error creando actuación.' });
   }
 });
@@ -1199,6 +1239,9 @@ router.put('/:documento', async (req, res) => {
     console.error('[ppl:update] Error Oracle:', err?.message || err);
     if (err?.code === 'PPL_SITUACION_INACTIVA') {
       return res.status(409).json({ code: err.code, message: err.message });
+    }
+    if (err?.code === 'DEFENSOR_NOT_IN_CATALOG') {
+      return res.status(400).json({ code: err.code, message: err.message });
     }
     return res.status(500).json({ message: 'Error actualizando registro.' });
   }

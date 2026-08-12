@@ -22,7 +22,8 @@ function testCentroAliasesShareCanonicalIdentity() {
 
 function testOfficialCenterDirectoryIsLoaded() {
   const centers = listCentros();
-  assert(centers.length >= 100);
+  assert.strictEqual(centers.length, 125);
+  assert.strictEqual(centers.filter((center) => center.id !== 'INPEC_514').length, 124);
   assert(centers.every((center) => /^INPEC_\d+$/.test(center.id)));
 }
 
@@ -41,6 +42,26 @@ function testArmeniaCentersKeepSeparateCanonicalIdentities() {
   assert.strictEqual(cpmsm.label, 'CPMSM ARMENIA');
   assert.strictEqual(cpmsmHistorical.id, cpmsm.id);
   assert.notStrictEqual(cpms.id, cpmsm.id);
+}
+
+function testMaleAndFemaleCentersRemainSeparate() {
+  const cases = [
+    ['CPMS MANIZALES', 'INPEC_601', 'CPMSM MANIZALES', 'INPEC_611'],
+    ['CPMS ARMENIA', 'INPEC_613', 'CPMSM ARMENIA', 'INPEC_615'],
+  ];
+  cases.forEach(([maleName, maleId, femaleName, femaleId]) => {
+    const male = resolveCentro(maleName);
+    const female = resolveCentro(femaleName);
+    assert.strictEqual(male.id, maleId);
+    assert.strictEqual(female.id, femaleId);
+    assert.notStrictEqual(male.id, female.id);
+  });
+
+  assert.strictEqual(resolveCentro('EPMSC VALLEDUPAR').id, 'INPEC_307');
+  assert.strictEqual(resolveCentro('CPMS VALLEDUPAR').id, 'INPEC_307');
+  assert.strictEqual(resolveCentro('CPMS BARRANQUILLA').id, 'INPEC_301');
+  assert.strictEqual(resolveCentro('CPMS BARRANQUILLA (JYP)').id, 'INPEC_322');
+  assert.notStrictEqual(resolveCentro('CPOMS ACACIAS').id, resolveCentro('CPMS ACACIAS').id);
 }
 
 function testUnknownCentersRemainVisibleAndStable() {
@@ -85,6 +106,7 @@ function testCurrentSituationPrioritizesLatestCutoff() {
 testCentroAliasesShareCanonicalIdentity();
 testOfficialCenterDirectoryIsLoaded();
 testArmeniaCentersKeepSeparateCanonicalIdentities();
+testMaleAndFemaleCentersRemainSeparate();
 testUnknownCentersRemainVisibleAndStable();
 testActionsAreSeparatedFromStateAndKeepOriginalValue();
 testFilterCatalogsRequireActivePrisonStatus();

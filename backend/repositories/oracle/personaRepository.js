@@ -136,6 +136,8 @@ const BASE_SELECT_COLUMNS = [
   'g.FECHA_DECISION_AUTORIDAD AS G_FECHA_DECISION_AUTORIDAD',
   'g.FECHA_RADICACION_UTILIDAD AS G_FECHA_RADICACION_UTILIDAD',
   'g.SENTIDO_DECISION AS G_SENTIDO_DECISION',
+  'g.FECHA_INSISTENCIA_1 AS G_FECHA_INSISTENCIA_1',
+  'g.FECHA_INSISTENCIA_2 AS G_FECHA_INSISTENCIA_2',
   'g.MOTIVO_DECISION_NEGATIVA AS G_MOTIVO_DECISION_NEGATIVA',
   'g.SE_PRESENTA_RECURSO AS G_SE_PRESENTA_RECURSO',
   'g.FECHA_RECURSO_DESFAVORABLE AS G_FECHA_RECURSO_DESFAVORABLE',
@@ -192,6 +194,8 @@ const GESTION_MEANINGFUL_ORDER_EXPR = `
       OR g.FECHA_DECISION_AUTORIDAD IS NOT NULL
       OR g.FECHA_RADICACION_UTILIDAD IS NOT NULL
       OR g.SENTIDO_DECISION IS NOT NULL
+      OR g.FECHA_INSISTENCIA_1 IS NOT NULL
+      OR g.FECHA_INSISTENCIA_2 IS NOT NULL
       OR g.MOTIVO_DECISION_NEGATIVA IS NOT NULL
       OR g.SE_PRESENTA_RECURSO IS NOT NULL
       OR g.FECHA_RECURSO_DESFAVORABLE IS NOT NULL
@@ -478,6 +482,9 @@ function buildCondenadosSummaryWhereClause({
   Object.assign(binds, scopeBinds);
   clauses.push(scopeClause);
   clauses.push(buildTipoFilter(tipo));
+  if (String(tipo || '').trim().toLowerCase() === 'condenado') {
+    clauses.push('NVL(s.ACTIVO, 0) = 1');
+  }
 
   if (!includeUserFilters) {
     return { clause: clauses.join('\n      AND '), binds };
@@ -507,7 +514,22 @@ function buildCondenadosSummaryWhereClause({
 
   const centroId = String(filters?.centroId || '').trim();
   const centroCatalogado = getCentroById(centroId);
-  if (centroId === OTROS_LUGARES_ACTIVOS_ID) {
+  if (centroId === 'INPEC_130') {
+    clauses.push(`EXISTS (
+      SELECT 1
+      FROM DNDP.SISIPEC source_si
+      WHERE TO_CHAR(source_si.NUMERO) = TO_CHAR(p.NUMERO)
+        AND ${normalizedMojibakeSqlExpr('source_si.ESTABLECIMIENTO')} = 'CPOMS ACACIAS'
+    )`);
+  } else if (centroId === 'INPEC_148') {
+    clauses.push(`${normalizedMojibakeSqlExpr('s.ESTABLECIMIENTO')} = 'CPMS ACACIAS'`);
+    clauses.push(`NOT EXISTS (
+      SELECT 1
+      FROM DNDP.SISIPEC source_si
+      WHERE TO_CHAR(source_si.NUMERO) = TO_CHAR(p.NUMERO)
+        AND ${normalizedMojibakeSqlExpr('source_si.ESTABLECIMIENTO')} = 'CPOMS ACACIAS'
+    )`);
+  } else if (centroId === OTROS_LUGARES_ACTIVOS_ID) {
     const aliases = getAllCentroNormalizedAliases();
     const placeholders = aliases.map((alias, index) => {
       const bindKey = `centroOficial${index}`;
@@ -572,6 +594,15 @@ function buildCondenadosSummaryWhereClause({
     }
   }
 
+  const asignacionEstado = String(filters?.asignacionEstado || '').trim().toLowerCase();
+  if (asignacionEstado === 'sin_defensor') {
+    clauses.push('a.CEDULA_DEFENSOR IS NULL');
+  } else if (asignacionEstado === 'con_defensor') {
+    clauses.push('a.CEDULA_DEFENSOR IS NOT NULL');
+  } else if (asignacionEstado) {
+    clauses.push('1=0');
+  }
+
   return {
     clause: clauses.join('\n      AND '),
     binds,
@@ -616,10 +647,13 @@ async function listCondenadosSummary({
   tipo = 'condenado',
   filters = {},
   limit = 1000,
+  offset = 0,
   scopeDepartamentos = DEFAULT_SCOPE_DEPARTAMENTOS,
   includeExactCounts = true,
+  countOnly = false,
 } = {}) {
   const safeLimit = Math.max(1, Number.parseInt(String(limit || '1000'), 10) || 1000);
+  const safeOffset = Math.max(0, Number.parseInt(String(offset || '0'), 10) || 0);
   const fetchLimit = includeExactCounts ? safeLimit : safeLimit + 1;
   const rawEstadoCodigo = String(filters?.estadoCodigo || '').trim();
   const rawEstadoLegado = String(filters?.estado || '').trim();
@@ -637,6 +671,9 @@ async function listCondenadosSummary({
     accionCodigo: '',
     accion: '',
   };
+  const establecimientoResultadoExpr = String(filters?.centroId || '').trim() === 'INPEC_130'
+    ? "'CPOMS ACACIAS'"
+    : 's.ESTABLECIMIENTO';
   const activeSituacionCte = buildActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
   const cte = `
     ${activeSituacionCte},
@@ -674,8 +711,8 @@ async function listCondenadosSummary({
         TO_CHAR(p.NUMERO) AS "numero",
         p.NOMBRE AS "Nombre",
         p.NOMBRE AS "Nombre usuario",
-        s.ESTABLECIMIENTO AS "Nombre del lugar de privacion de la libertad",
-        s.ESTABLECIMIENTO AS "ESTABLECIMIENTO",
+        ${establecimientoResultadoExpr} AS "Nombre del lugar de privacion de la libertad",
+        ${establecimientoResultadoExpr} AS "ESTABLECIMIENTO",
         s.DEPARTAMENTO AS "Departamento del lugar de privacion de la libertad",
         s.DEPARTAMENTO AS "Departamento",
         s.MUNICIPIO AS "Distrito/municipio del lugar de privacion de la libertad",
@@ -739,6 +776,8 @@ async function listCondenadosSummary({
         g.SE_PRESENTA_RECURSO AS "SE RECURRIO EN CASO DE DECISION NEGATIVA",
         g.SENTIDO_DECISION AS "Sentido de la decision",
         g.SENTIDO_DECISION AS "SENTIDO DE LA DECISION",
+        g.FECHA_INSISTENCIA_1 AS "Fecha de insistencia 1",
+        g.FECHA_INSISTENCIA_2 AS "Fecha de insistencia 2",
         g.MOTIVO_DECISION_NEGATIVA AS "Motivo de la decision negativa",
         g.FECHA_RECURSO_DESFAVORABLE AS "Fecha de recurso en caso desfavorable",
         g.FECHA_PRESENTACION_RECURSO AS "Fecha de presentacion del recurso",
@@ -789,20 +828,50 @@ async function listCondenadosSummary({
     WHERE ${estadoPredicate}
   `;
 
+  if (countOnly) {
+    const countSql = `
+      WITH
+      ${cte}
+      SELECT COUNT(*) AS TOTAL_MATCHED
+      FROM (
+        ${baseSelectSql}
+      ) filtered_rows
+      WHERE ${estadoPredicate}
+    `;
+    const countResult = await execute(
+      countSql,
+      { ...binds, ...outerBinds },
+      { operation: 'persona.listCondenadosSummary.count' }
+    );
+    const countRow = Array.isArray(countResult?.rows) ? countResult.rows[0] : null;
+    const totalMatched = Number(countRow?.TOTAL_MATCHED || 0);
+    return {
+      rows: [],
+      totalMatched,
+      totalAvailable: totalMatched,
+      totalMatchedExact: true,
+      truncated: false,
+    };
+  }
+
   const rowsSql = `
     WITH
     ${cte}
     SELECT *
     FROM (
-      ${filteredSelectSql}
-      ORDER BY "Numero de identificacion" ASC
+      SELECT ordered_rows.*, ROWNUM AS PAGE_ROW_NUMBER
+      FROM (
+        ${filteredSelectSql}
+        ORDER BY "Numero de identificacion" ASC
+      ) ordered_rows
+      WHERE ROWNUM <= :endRow
     )
-    WHERE ROWNUM <= :limit
+    WHERE PAGE_ROW_NUMBER > :offsetRows
   `;
 
   const result = await execute(
     rowsSql,
-    { ...binds, ...outerBinds, limit: fetchLimit },
+    { ...binds, ...outerBinds, endRow: safeOffset + fetchLimit, offsetRows: safeOffset },
     { operation: 'persona.listCondenadosSummary.rows' }
   );
   const fetchedRows = Array.isArray(result?.rows) ? result.rows : [];
@@ -816,41 +885,22 @@ async function listCondenadosSummary({
       ? safeLimit + 1
       : rows.length;
 
-  const hasUserFilters = Object.values(filters || {}).some((value) => String(value || '').trim() !== '');
-  if (!hasUserFilters || !includeExactCounts) {
-    return {
-      rows,
-      totalMatched,
-      totalAvailable: includeExactCounts ? totalMatched : 0,
-      totalMatchedExact: includeExactCounts,
-      truncated: includeExactCounts ? totalMatched > safeLimit : truncated,
-    };
-  }
-
-  const { fromAndWhere: availableFromWhere, binds: availableBinds } = buildCondenadosSummaryFromAndWhere({
-    tipo,
-    filters: {},
-    scopeDepartamentos,
-    includeUserFilters: false,
-  });
-
-  const availableSql = `
-    WITH
-    ${cte}
-    SELECT COUNT(*) AS TOTAL_AVAILABLE
-    ${availableFromWhere}
-  `;
-
-  const availableResult = await execute(availableSql, availableBinds, { operation: 'persona.listCondenadosSummary.countAvailable' });
-  const availableRow = Array.isArray(availableResult?.rows) ? availableResult.rows[0] : null;
-
   return {
     rows,
     totalMatched,
-    totalAvailable: Number(availableRow?.TOTAL_AVAILABLE || 0),
-    totalMatchedExact: true,
-    truncated: totalMatched > safeLimit,
+    totalAvailable: totalMatched,
+    totalMatchedExact: includeExactCounts,
+    truncated: includeExactCounts ? safeOffset + rows.length < totalMatched : truncated,
   };
+}
+
+async function countCondenadosSummary(options = {}) {
+  const summary = await listCondenadosSummary({
+    ...(options && typeof options === 'object' ? options : {}),
+    countOnly: true,
+    includeExactCounts: false,
+  });
+  return Number(summary?.totalMatched || 0);
 }
 
 async function listDistinctCondenadosFilterOptions({
@@ -1188,6 +1238,7 @@ async function updatePersonaById(idPersona, fields = {}) {
 module.exports = {
   listRowsWithActiveSituacionAndGestiones,
   listCondenadosSummary,
+  countCondenadosSummary,
   listCondenadosHomologationValues,
   listDistinctCondenadosFilterOptions,
   findActiveContextByDocumento,

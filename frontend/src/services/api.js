@@ -229,8 +229,8 @@ export async function updatePpl(documento, payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error('Error actualizando registro');
   const data = await readJsonOrThrow(res, 'Error actualizando registro');
+  if (!res.ok) throw new Error(String(data?.message || 'Error actualizando registro'));
   invalidateCondenadosClientCache();
   return normalizeQueuedResponse(data, {
     registro: payload?.data && typeof payload.data === 'object' ? payload.data : null,
@@ -245,8 +245,8 @@ export async function createPplActuacion(documento, payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload || {}),
   });
-  if (!res.ok) throw new Error('Error creando actuacion');
   const data = await readJsonOrThrow(res, 'Error creando actuacion');
+  if (!res.ok) throw new Error(String(data?.message || 'Error creando actuación'));
   invalidateCondenadosClientCache();
   return normalizeQueuedResponse(data, { documento }); // { documento, actuacion, registro }
 }
@@ -297,11 +297,19 @@ export function getCondenadosRequest(options = 1000) {
   const safeFilteredLimit = Number.isFinite(Number(source?.filteredLimit))
     ? Math.max(1, Math.min(200, Number(source.filteredLimit)))
     : 200;
+  const safePage = Number.isFinite(Number(source?.page))
+    ? Math.max(1, Math.trunc(Number(source.page)))
+    : 1;
+  const safePageSize = Number.isFinite(Number(source?.pageSize))
+    ? Math.max(1, Math.min(200, Math.trunc(Number(source.pageSize))))
+    : null;
 
   const filters = source?.filters && typeof source.filters === 'object' ? source.filters : {};
   const params = new URLSearchParams();
   if (safeTipo) params.set('tipo', safeTipo);
   params.set('limit', String(safeLimit));
+  params.set('page', String(safePage));
+  if (safePageSize) params.set('pageSize', String(safePageSize));
 
   const filterKeys = [
     'defensor',
@@ -318,6 +326,7 @@ export function getCondenadosRequest(options = 1000) {
     'accionCodigo',
     'accion',
     'potencialSubrogado',
+    'asignacionEstado',
   ];
   let hasFilters = false;
   filterKeys.forEach((key) => {

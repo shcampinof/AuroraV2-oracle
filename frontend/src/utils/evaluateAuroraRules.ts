@@ -127,7 +127,7 @@ export function isFilled(value: unknown): boolean {
 function isAffirmativeProcedencia(value: unknown): boolean {
   if (!isFilled(value)) return false;
   if (normalizeYesNo(value) === 'si') return true;
-  return normalizeText(value).startsWith('si');
+  return normalizeText(value).replace(/^\d+\s*[.)-]?\s*/, '').startsWith('si');
 }
 
 function parseOtrasSolicitudesSelection(value: unknown): string[] {
@@ -293,4 +293,3 @@ export function evaluateAuroraRules({ answers }: EvaluateAuroraRulesInput): Eval
 }
 
 export default evaluateAuroraRules;
-

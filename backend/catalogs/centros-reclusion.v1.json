@@ -443,7 +443,7 @@
     },
     {
       "id": "INPEC_301",
-      "label": "CMS BARRANQUILLA",
+      "label": "CPMS BARRANQUILLA",
       "aliases": [
         "CMS BARRANQUILLA",
         "CPMS BARRANQUILLA"
@@ -465,9 +465,10 @@
     },
     {
       "id": "INPEC_307",
-      "label": "EPMSC VALLEDUPAR",
+      "label": "CPMS VALLEDUPAR",
       "aliases": [
-        "EPMSC VALLEDUPAR"
+        "EPMSC VALLEDUPAR",
+        "CPMS VALLEDUPAR"
       ]
     },
     {
@@ -517,9 +518,10 @@
     },
     {
       "id": "INPEC_322",
-      "label": "EPMSC BARRANQUILLA",
+      "label": "CPMS BARRANQUILLA (JYP)",
       "aliases": [
-        "EPMSC BARRANQUILLA"
+        "EPMSC BARRANQUILLA",
+        "CPMS BARRANQUILLA (JYP)"
       ]
     },
     {
@@ -783,11 +785,10 @@
     },
     {
       "id": "INPEC_601",
-      "label": "EPMSC MANIZALES",
+      "label": "CPMS MANIZALES",
       "aliases": [
         "EPMSC MANIZALES",
-        "CPMS MANIZALES",
-        "CPMSM MANIZALES"
+        "CPMS MANIZALES"
       ]
     },
     {
@@ -832,9 +833,10 @@
     },
     {
       "id": "INPEC_611",
-      "label": "RM MANIZALES",
+      "label": "CPMSM MANIZALES",
       "aliases": [
-        "RM MANIZALES"
+        "RM MANIZALES",
+        "CPMSM MANIZALES"
       ]
     },
     {

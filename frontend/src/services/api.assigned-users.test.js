@@ -16,6 +16,7 @@ const API_FILTER_KEYS = [
   'accionCodigo',
   'accion',
   'potencialSubrogado',
+  'asignacionEstado',
 ];
 
 describe('contrato API de filtros de usuarios asignados', () => {
@@ -25,6 +26,8 @@ describe('contrato API de filtros de usuarios asignados', () => {
       tipo: 'all',
       limit: 50,
       filteredLimit: 100,
+      page: 3,
+      pageSize: 50,
       forceRefresh: true,
       filters,
     });
@@ -32,6 +35,8 @@ describe('contrato API de filtros de usuarios asignados', () => {
     expect(params.get('tipo')).toBe('all');
     expect(params.get('limit')).toBe('50');
     expect(params.get('filteredLimit')).toBe('100');
+    expect(params.get('page')).toBe('3');
+    expect(params.get('pageSize')).toBe('50');
     API_FILTER_KEYS.forEach((key) => expect(params.get(key)).toBe(`valor-${key}`));
     expect(request.forceRefresh).toBe(true);
   });
@@ -41,6 +46,7 @@ describe('contrato API de filtros de usuarios asignados', () => {
     const params = new URLSearchParams(request.key);
     expect(params.has('tipo')).toBe(false);
     expect(params.get('limit')).toBe('10000');
+    expect(params.get('page')).toBe('1');
     expect(params.has('filteredLimit')).toBe(false);
   });
 

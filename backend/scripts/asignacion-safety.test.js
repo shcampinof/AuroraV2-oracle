@@ -40,6 +40,7 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
   const personaRepo = require('../repositories/oracle/personaRepository');
   const gestionRepo = require('../repositories/oracle/gestionRepository');
   const asignacionRepo = require('../repositories/oracle/asignacionRepository');
+  const defensoresRepo = require('../repositories/oracle/defensoresRepository');
   const servicePath = require.resolve('../services/pplService');
 
   const originals = {
@@ -47,6 +48,7 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
     listRowsWithActiveSituacionAndGestiones: personaRepo.listRowsWithActiveSituacionAndGestiones,
     getLatestBySituacion: gestionRepo.getLatestBySituacion,
     replaceActiveAssignmentByPersona: asignacionRepo.replaceActiveAssignmentByPersona,
+    findUniqueByNombre: defensoresRepo.findUniqueByNombre,
   };
   const assignmentWrites = [];
 
@@ -71,6 +73,11 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
     assignmentWrites.push({ idPersona, assignment });
     return 1;
   };
+  defensoresRepo.findUniqueByNombre = async (nombre) => (
+    String(nombre || '').trim() === 'DEFENSOR DISTINTO'
+      ? { cedula: '20', nombre: 'DEFENSOR DISTINTO' }
+      : null
+  );
   delete require.cache[servicePath];
 
   try {
@@ -86,6 +93,7 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
     assert.strictEqual(assignmentWrites.length, 1, 'Un defensor distinto debe crear una nueva asignación.');
     assert.strictEqual(assignmentWrites[0].idPersona, 10);
     assert.strictEqual(assignmentWrites[0].assignment.defensorNombre, 'DEFENSOR DISTINTO');
+    assert.strictEqual(assignmentWrites[0].assignment.defensorCedula, '20');
     assert(!Object.prototype.hasOwnProperty.call(assignmentWrites[0].assignment, 'fechaAsignacion'));
     assert.strictEqual(updated.defensorAsignado, 'DEFENSOR ACTUAL');
 
@@ -96,11 +104,22 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
       },
     });
     assert.strictEqual(assignmentWrites.length, 1, 'El mismo defensor no debe renovar la fecha de asignación.');
+
+    await assert.rejects(
+      () => service.updateByDocumento('123', {
+        data: {
+          'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'NOMBRE INVENTADO',
+        },
+      }),
+      (error) => error?.code === 'DEFENSOR_NOT_IN_CATALOG' && error?.status === 400
+    );
+    assert.strictEqual(assignmentWrites.length, 1, 'Un nombre fuera del catálogo no debe crear asignaciones.');
   } finally {
     personaRepo.findActiveContextByDocumento = originals.findActiveContextByDocumento;
     personaRepo.listRowsWithActiveSituacionAndGestiones = originals.listRowsWithActiveSituacionAndGestiones;
     gestionRepo.getLatestBySituacion = originals.getLatestBySituacion;
     asignacionRepo.replaceActiveAssignmentByPersona = originals.replaceActiveAssignmentByPersona;
+    defensoresRepo.findUniqueByNombre = originals.findUniqueByNombre;
     delete require.cache[servicePath];
   }
 }
@@ -202,12 +221,21 @@ function testUpdatedLegalSituationHasPriority() {
   );
 }
 
+function testNewDefenderNameIsUppercaseAndAccentFree() {
+  const defensoresRepo = require('../repositories/oracle/defensoresRepository');
+  assert.strictEqual(
+    defensoresRepo.normalizeNombre('  María José   Muñoz  '),
+    'MARIA JOSE MUNOZ'
+  );
+}
+
 (async () => {
   await testRepositoryUsesDatabaseClock();
   await testGenericDefenderChangeCreatesFreshAssignment();
   await testInactivePrisonRecordRejectsUpdates();
   await testNewActuacionAlwaysPersistsCanonicalAction();
   testUpdatedLegalSituationHasPriority();
+  testNewDefenderNameIsUppercaseAndAccentFree();
   console.log('OK asignacion-safety.test');
 })().catch((error) => {
   console.error(error);

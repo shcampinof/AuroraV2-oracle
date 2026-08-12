@@ -1153,6 +1153,40 @@ a:hover{
   background: transparent;
 }
 
+.checkbox-multiple-option{
+  width: fit-content !important;
+  max-width: 100%;
+  margin-bottom: 0 !important;
+  padding: 0.18rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+
+.checkbox-multiple-options{
+  display: grid;
+  justify-items: start;
+  gap: 0.08rem;
+}
+
+.checkbox-multiple-option.is-exclusive{
+  border-color: #b7791f;
+  background: #fff8dc;
+  font-weight: 800;
+}
+
+.checkbox-multiple-option.is-exclusive.is-selected{
+  border-color: #8a5700;
+  background: #ffe7a3;
+}
+
+.checkbox-exclusive-note{
+  display: inline-block;
+  margin-left: 0.5rem;
+  color: #704500;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
 .form-field input:focus-visible,
 .form-field select:focus-visible,
 .form-field textarea:focus-visible,
@@ -1451,6 +1485,44 @@ input[list]{
 
 .secondary-button:hover{
   background-color: var(--primary-blue-soft);
+}
+
+.defensor-create-inline{
+  margin-top: -0.35rem;
+  margin-bottom: 0.85rem;
+}
+
+.defensor-create-inline__toggle{
+  width: auto;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.defensor-create-inline__form{
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(190px, 1.3fr) auto;
+  gap: 0.55rem;
+  align-items: end;
+  margin-top: 0.55rem;
+  padding: 0.65rem;
+  border: 1px solid var(--primary-blue-soft-border);
+  border-radius: 6px;
+  background: var(--primary-blue-soft);
+}
+
+.defensor-create-inline__form .form-field{
+  margin-bottom: 0;
+}
+
+.defensor-create-inline__save{
+  padding: 0.58rem 0.75rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px){
+  .defensor-create-inline__form{
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Variante: botón de buscar */
@@ -3031,28 +3103,16 @@ input[list]{
   background: var(--tool-accent);
 }
 
-.tool-card:nth-child(4n + 1){
-  --tool-accent: #2f64ad;
+.tool-card--general{
+  --tool-accent: #2563a6;
   --tool-surface: #f7faff;
   --tool-surface-hover: #eef5ff;
 }
 
-.tool-card:nth-child(4n + 2){
-  --tool-accent: #d28616;
-  --tool-surface: #fffaf1;
-  --tool-surface-hover: #fff3dc;
-}
-
-.tool-card:nth-child(4n + 3){
-  --tool-accent: #1f8a70;
-  --tool-surface: #f3fbf8;
-  --tool-surface-hover: #e8f6f1;
-}
-
-.tool-card:nth-child(4n){
-  --tool-accent: #7a5baf;
-  --tool-surface: #f8f6fd;
-  --tool-surface-hover: #f1ecfb;
+.tool-card--utilidad-publica{
+  --tool-accent: #c23b73;
+  --tool-surface: #fff5f9;
+  --tool-surface-hover: #ffeaf2;
 }
 
 .tool-card:hover{

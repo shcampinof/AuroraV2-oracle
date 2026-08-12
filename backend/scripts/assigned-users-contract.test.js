@@ -92,6 +92,7 @@ function testAllApiFiltersAreParsedAndTrimmed() {
     'accionCodigo',
     'accion',
     'potencialSubrogado',
+    'asignacionEstado',
   ];
   const parsed = contract.parseFilters(Object.fromEntries(keys.map((key) => [key, `  ${key}  `])));
   assert.deepEqual(Object.keys(parsed), keys);

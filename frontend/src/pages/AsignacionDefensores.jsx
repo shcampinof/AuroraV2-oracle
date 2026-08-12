@@ -28,6 +28,8 @@ function normalizeDocumento(value) {
 
 function normalizeDefensorNombre(value) {
   return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase()
     .replace(/\s+/g, ' ')
     .trim();
@@ -67,8 +69,7 @@ function getAccionImpulsarDisplay(row) {
   return String(estadoInfo?.label || row?.accionImpulsar || '').trim();
 }
 
-const DEFAULT_INITIAL_LIMIT = 100;
-const DEFAULT_FILTERED_LIMIT = 200;
+const PAGE_SIZE = 50;
 const MAX_DEFENSOR_SUGGESTIONS = 80;
 
 const AsignacionRow = memo(function AsignacionRow({ row, selected, onToggle }) {
@@ -107,6 +108,8 @@ function AsignacionDefensores({ isAdmin = false }) {
   const [toastMessage, setToastMessage] = useState('Aurora - Cambios guardados correctamente');
 
   const [rows, setRows] = useState([]);
+  const [pagina, setPagina] = useState(1);
+  const [busquedaRealizada, setBusquedaRealizada] = useState(false);
   const [seleccionados, setSeleccionados] = useState(new Set());
 
   const [defensores, setDefensores] = useState([]);
@@ -115,6 +118,7 @@ function AsignacionDefensores({ isAdmin = false }) {
     municipios: [],
     lugares: [],
     centros: [],
+    defensores: [],
   });
   const [opcionesFiltroDependientes, setOpcionesFiltroDependientes] = useState({
     municipios: [],
@@ -161,25 +165,30 @@ function AsignacionDefensores({ isAdmin = false }) {
       centroId: String(safe.centroId || '').trim(),
       potencialSubrogado: String(safe.potencialSubrogado || '').trim(),
       defensor: currentTab === 'reasignacion' ? String(safe.defensorActual || '').trim() : '',
+      asignacionEstado: currentTab === 'reasignacion' ? 'con_defensor' : 'sin_defensor',
     };
   }, []);
 
-  const cargarPpl = useCallback(async (filtros = {}, currentTab = 'asignacion') => {
+  const cargarPpl = useCallback(async (filtros = {}, currentTab = 'asignacion', nextPage = 1) => {
     setCargando(true);
     setError('');
     try {
       const data = await getCondenados({
-        limit: DEFAULT_INITIAL_LIMIT,
-        filteredLimit: DEFAULT_FILTERED_LIMIT,
+        tipo: 'condenado',
+        page: nextPage,
+        pageSize: PAGE_SIZE,
         filters: buildBackendFilters(currentTab, filtros),
       });
       setRows(Array.isArray(data?.rows) ? data.rows : []);
       setMetaConsulta(data?.meta || null);
+      setPagina(nextPage);
+      setBusquedaRealizada(true);
     } catch (e) {
       reportError(e, 'asignacion-defensores:cargar-ppl');
       setError(String(e?.message || 'Error cargando PPL.'));
       setRows([]);
       setMetaConsulta(null);
+      setBusquedaRealizada(true);
     } finally {
       setCargando(false);
     }
@@ -190,7 +199,7 @@ function AsignacionDefensores({ isAdmin = false }) {
       const map = new Map();
       (Array.isArray(catalogo) ? catalogo : []).forEach((item) => {
         const id = String(item?.id || '').trim();
-        const nombre = String(item?.nombre || '').trim();
+        const nombre = normalizeDefensorNombre(item?.nombre);
         if (!id || !nombre) return;
         if (!map.has(id)) map.set(id, { id, nombre });
       });
@@ -267,6 +276,7 @@ function AsignacionDefensores({ isAdmin = false }) {
         municipios: Array.isArray(data?.municipios) ? data.municipios : [],
         lugares: Array.isArray(data?.lugares) ? data.lugares : [],
         centros: Array.isArray(data?.centros) ? data.centros : [],
+        defensores: Array.isArray(data?.defensores) ? data.defensores : [],
       });
     });
     return () => {
@@ -305,11 +315,6 @@ function AsignacionDefensores({ isAdmin = false }) {
       clearTimeout(timeoutId);
     };
   }, [cargarOpcionesFiltro, fDepartamento, fMunicipio]);
-
-  useEffect(() => {
-    if (!pagValidado?.cedula) return;
-    cargarPpl({}, 'asignacion');
-  }, [cargarPpl, pagValidado?.cedula]);
 
   const defensoresOrdenados = useMemo(() => {
     return [...defensores].sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -361,14 +366,10 @@ function AsignacionDefensores({ isAdmin = false }) {
   }, [defensores]);
 
   const defensoresActualesOrdenados = useMemo(() => {
-    const set = new Set();
-    rows.forEach((row) => {
-      const nombre = String(row?.defensorAsignado || '').trim();
-      if (!nombre || nombre === '-') return;
-      set.add(nombre);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
+    return Array.from(
+      new Set((opcionesFiltro.defensores || []).map(normalizeDefensorNombre).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b));
+  }, [opcionesFiltro.defensores]);
 
   const rowsPorDocumento = useMemo(() => {
     const map = new Map();
@@ -419,10 +420,12 @@ function AsignacionDefensores({ isAdmin = false }) {
   }, [fDepartamento, fMunicipio, opcionesFiltroDependientes.centros, opcionesFiltro.centros]);
 
   const rowsTab = useMemo(() => {
-    if (tab === 'asignacion') return rows.filter((r) => !tieneDefensor(r?.defensorAsignado));
-    if (tab === 'reasignacion') return rows.filter((r) => tieneDefensor(r?.defensorAsignado));
+    if (tab === 'asignacion' || tab === 'reasignacion') return rows;
     return [];
   }, [rows, tab]);
+
+  const totalResultados = Number(metaConsulta?.totalMatched || 0);
+  const totalPaginas = Math.max(1, Number(metaConsulta?.totalPages || Math.ceil(totalResultados / PAGE_SIZE) || 1));
 
   const rowsFiltradas = useMemo(() => {
     return rowsTab.map((row, idx) => ({
@@ -431,20 +434,6 @@ function AsignacionDefensores({ isAdmin = false }) {
       accionImpulsarDisplay: getAccionImpulsarDisplay(row),
     }));
   }, [rowsTab]);
-
-  const sugerenciaReasignacion = useMemo(() => {
-    if (tab !== 'asignacion') return '';
-    const needle = normalizeDocumento(filtrosAplicados.documento);
-    if (!needle) return '';
-
-    const hit = rows.find((r) => {
-      const doc = normalizeDocumento(r?.numeroIdentificacion);
-      return doc.startsWith(needle) && tieneDefensor(r?.defensorAsignado);
-    });
-
-    if (!hit) return '';
-    return `El documento ${hit.numeroIdentificacion} ya tiene defensor (${hit.defensorAsignado}). Use la pestaña Reasignación.`;
-  }, [tab, rows, filtrosAplicados.documento]);
 
   const defensorActualSeleccionados = useMemo(() => {
     if (tab !== 'reasignacion') return '-';
@@ -479,11 +468,27 @@ function AsignacionDefensores({ isAdmin = false }) {
       defensorActual: tab === 'reasignacion' ? String(fDefensorActual || '').trim() : '',
     };
 
+    const hasUserFilter = [
+      nextFiltros.documento,
+      nextFiltros.departamento,
+      nextFiltros.municipio,
+      nextFiltros.lugar,
+      nextFiltros.potencialSubrogado,
+      nextFiltros.defensorActual,
+    ].some((value) => String(value || '').trim());
+    if (!hasUserFilter) {
+      setError('Seleccione al menos un filtro antes de consultar.');
+      setRows([]);
+      setMetaConsulta(null);
+      setBusquedaRealizada(false);
+      return;
+    }
+
     setError('');
     setToastOpen(false);
     setSeleccionados(new Set());
     setFiltrosAplicados(nextFiltros);
-    await cargarPpl(nextFiltros, tab);
+    await cargarPpl(nextFiltros, tab, 1);
   }
 
   async function limpiarFiltros() {
@@ -506,7 +511,10 @@ function AsignacionDefensores({ isAdmin = false }) {
     setSeleccionados(new Set());
     setError('');
     setToastOpen(false);
-    await cargarPpl(emptyFiltros, tab);
+    setRows([]);
+    setMetaConsulta(null);
+    setPagina(1);
+    setBusquedaRealizada(false);
   }
 
   async function validarPag() {
@@ -523,6 +531,10 @@ function AsignacionDefensores({ isAdmin = false }) {
       const pag = await validatePagCedula(cedula);
       setPagCedula(cedula);
       setPagValidado(pag || { cedula });
+      setRows([]);
+      setMetaConsulta(null);
+      setPagina(1);
+      setBusquedaRealizada(false);
     } catch (e) {
       reportError(e, 'asignacion-defensores:validar-pag');
       setPagValidado(null);
@@ -595,7 +607,7 @@ function AsignacionDefensores({ isAdmin = false }) {
       setToastOpen(true);
       setSeleccionados(new Set());
       if (!isQueuedResponse(data)) {
-        await cargarPpl(filtrosAplicados, tab);
+        await cargarPpl(filtrosAplicados, tab, pagina);
         await cargarDefensoresActuales();
       }
     } catch (e) {
@@ -638,7 +650,7 @@ function AsignacionDefensores({ isAdmin = false }) {
       const opcionCreada = data?.opcion;
       const opcionNormalizada = {
         id: String(opcionCreada?.id || cedula),
-        nombre: String(opcionCreada?.nombre || creado),
+        nombre: normalizeDefensorNombre(opcionCreada?.nombre || creado),
       };
 
       setDefensores((prev) => {
@@ -683,6 +695,10 @@ function AsignacionDefensores({ isAdmin = false }) {
     setCrearDefensorSuccess('');
     setNuevoDefensorId('');
     setNuevoDefensorInput('');
+    setRows([]);
+    setMetaConsulta(null);
+    setPagina(1);
+    setBusquedaRealizada(false);
 
     if (nextTab === 'usuariosPag') return;
 
@@ -694,11 +710,15 @@ function AsignacionDefensores({ isAdmin = false }) {
       setFDefensorActual('');
       const nextFiltros = { ...(filtrosAplicados || {}), defensorActual: '' };
       setFiltrosAplicados(nextFiltros);
-      if (pagValidado?.cedula) cargarPpl(nextFiltros, nextTab);
       return;
     }
+  }
 
-    if (pagValidado?.cedula) cargarPpl(filtrosAplicados, nextTab);
+  async function cambiarPagina(nextPage) {
+    const boundedPage = Math.max(1, Math.min(totalPaginas, nextPage));
+    if (boundedPage === pagina || cargando) return;
+    setSeleccionados(new Set());
+    await cargarPpl(filtrosAplicados, tab, boundedPage);
   }
 
   const botonGuardarDefensorDeshabilitado =
@@ -718,21 +738,13 @@ function AsignacionDefensores({ isAdmin = false }) {
         onClose={() => setToastOpen(false)}
       />
 
-      {!['crearDefensor', 'usuariosPag'].includes(tab) && metaConsulta?.filtered && (
+      {!['crearDefensor', 'usuariosPag'].includes(tab) && busquedaRealizada && metaConsulta && (
         <p className="hint-text">
-          {metaConsulta?.truncated
-            ? metaConsulta?.totalMatchedExact === false
-              ? `Se muestran los primeros ${metaConsulta?.returned || 0} registros. Hay más resultados; ajuste los filtros para precisar la búsqueda.`
-              : `Se encontraron ${metaConsulta?.totalMatched || 0} registros y se muestran los primeros ${metaConsulta?.returned || 0}.`
-            : `Se encontraron ${metaConsulta?.returned || metaConsulta?.totalMatched || 0} registros.`}
+          Se encontraron {totalResultados} registros. Página {pagina} de {totalPaginas}; se muestran hasta {PAGE_SIZE} por página.
         </p>
       )}
 
       {!['crearDefensor', 'usuariosPag'].includes(tab) && error && <p className="hint-text">{error}</p>}
-      {!['crearDefensor', 'usuariosPag'].includes(tab) && sugerenciaReasignacion && (
-        <p className="hint-text">{sugerenciaReasignacion}</p>
-      )}
-
       <div className="search-row" style={{ marginTop: '0.75rem' }}>
         <button
           className={`primary-button aurora-tab ${tab === 'asignacion' ? 'active' : ''}`}
@@ -800,7 +812,7 @@ function AsignacionDefensores({ isAdmin = false }) {
                 placeholder="Ingrese nombre completo en MAYÚSCULA"
                 value={crearDefensorNombre}
                 onChange={(e) => {
-                  setCrearDefensorNombre(String(e.target.value || '').toUpperCase());
+                  setCrearDefensorNombre(normalizeDefensorNombre(e.target.value));
                   if (crearDefensorError) setCrearDefensorError('');
                   if (crearDefensorSuccess) setCrearDefensorSuccess('');
                 }}
@@ -1039,7 +1051,7 @@ function AsignacionDefensores({ isAdmin = false }) {
               placeholder="Escriba para buscar defensor"
               value={nuevoDefensorInput}
               onChange={(e) => {
-                const next = String(e.target.value || '');
+                const next = normalizeDefensorNombre(e.target.value);
                 setNuevoDefensorInput(next);
                 const hit = defensoresPorNombreNormalizado.get(normalizeDefensorNombre(next));
                 setNuevoDefensorId(hit?.id ? String(hit.id) : '');
@@ -1073,6 +1085,7 @@ function AsignacionDefensores({ isAdmin = false }) {
         </div>
       </div>
 
+      {busquedaRealizada && (
       <div className="pag-layout" style={{ marginTop: '1rem' }}>
         <div className="pag-table-shell">
           <div className="table-container tall tabla-asignacion-wrapper pag-table-container">
@@ -1117,6 +1130,22 @@ function AsignacionDefensores({ isAdmin = false }) {
           </div>
         </div>
       </div>
+      )}
+      {busquedaRealizada && totalResultados > 0 && (
+        <div className="search-row" style={{ marginTop: '0.75rem', justifyContent: 'space-between' }}>
+          <p className="hint-text" style={{ margin: 0 }}>
+            Mostrando {rowsFiltradas.length} de {totalResultados} registros.
+          </p>
+          <div className="search-row" style={{ gap: '0.5rem' }}>
+            <button className="primary-button" type="button" onClick={() => cambiarPagina(pagina - 1)} disabled={pagina <= 1 || cargando}>
+              Anterior
+            </button>
+            <button className="primary-button" type="button" onClick={() => cambiarPagina(pagina + 1)} disabled={pagina >= totalPaginas || cargando}>
+              Siguiente
+            </button>
+          </div>
+        </div>
+      )}
         </>
       ) : (
         <p className="hint-text" style={{ marginTop: '0.75rem' }}>

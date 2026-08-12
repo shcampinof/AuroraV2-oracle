@@ -1,740 +1,360 @@
-# Reporte de consultas, dropdowns y filtros
+# Consultas y controles de filtros
 
-Fecha de revisión: 10 de agosto de 2026.
+## 1. Alcance
 
-Este documento describe el estado actual de los filtros y dropdowns de Usuarios asignados, Formulario de atención y Asignación PAG. Incluye las consultas Oracle, la lógica de homologación, los blindajes existentes, las limitaciones de cobertura y las recomendaciones de indexación.
+| Módulo | Campo | Origen | Regla principal |
+|---|---|---|---|
+| Usuarios asignados | Defensor | Asignación activa y catálogo de defensores | Identidad por cédula; texto homologado para presentación |
+| Usuarios asignados | Acción o estado | Catálogo de estados y acciones | Código canónico, no texto libre |
+| Usuarios asignados | Nombre, documento y ubicación | Situación carcelaria vigente | Búsqueda normalizada; los lugares del filtro corresponden a personas con `ACTIVO = 1` |
+| Atención | Defensor | `DNDP.DEFENSORES` | Lista controlada y escribible; alta compacta con cédula y nombre |
+| Atención | Acción a impulsar | Reglas del flujo y campos diligenciados | Valor calculado; no usa SQL de catálogo |
+| Atención | Nombre del establecimiento | Catálogo de centros activos | Lista controlada, escribible y dependiente de ubicación |
+| Atención | Departamento | Catálogo de ubicaciones activas | Lista controlada y escribible |
+| Atención | Distrito/municipio | Catálogo dependiente del departamento | Lista controlada y escribible |
+| PAG - Asignación | Departamento, municipio, establecimiento y potenciales candidatos | Condenados activos | Requiere al menos un filtro |
+| PAG - Reasignación | Los anteriores y defensor actual | Condenados activos con asignación vigente | Requiere al menos un filtro |
+| PAG | Nuevo defensor | `DNDP.DEFENSORES` | Nombre en mayúscula y sin signos diacríticos |
 
-## 1. Inventario actual
+## 2. Centro canónico
 
-| Pantalla | Campo | Implementación actual |
-|---|---|---|
-| Usuarios asignados | Defensor | Datalist proveniente de Oracle |
-| Usuarios asignados | Acción a impulsar / estado | Select de estados canónicos |
-| Usuarios asignados | Nombre | Texto libre |
-| Usuarios asignados | Establecimiento | Datalist homologado |
-| Usuarios asignados | Departamento / municipio | Datalist homologado |
-| Formulario de atención | Defensor | Datalist del maestro `DNDP.DEFENSORES` |
-| Formulario de atención | Acción a impulsar | Calculada por reglas; no es dropdown |
-| Formulario de atención | Nombre | Texto libre |
-| Formulario de atención | Tipo de lugar | Select estático: `CDT`, `ERON` |
-| Formulario de atención | Nombre del establecimiento | Texto libre |
-| Formulario de atención | Departamento / municipio | Texto libre |
-| Asignación PAG | Departamento / municipio | Datalist proveniente de Oracle |
-| Asignación PAG | Nombre del establecimiento | Datalist homologado |
-| Asignación PAG | Número de identificación | Texto numérico |
-| Asignación PAG | Potenciales candidatos | Select estático con categorías calculadas |
-| Reasignación PAG | Defensor actual | Datalist construido con las filas recuperadas |
-| Asignación/Reasignación | Nuevo defensor | Datalist del maestro `DNDP.DEFENSORES` |
+Un centro canónico es una identidad estable del catálogo, compuesta por:
 
-Actualmente PAG no tiene filtro por nombre de la persona. El campo denominado “Nombre” en este contexto corresponde al nombre del lugar de privación de la libertad.
+- código del establecimiento, por ejemplo `INPEC_601`;
+- nombre visible preferido, por ejemplo `CPMS MANIZALES`;
+- nombres históricos o variantes asociados al mismo establecimiento.
 
-## 2. SQL base de los catálogos de filtros
+La homologación agrupa variantes de escritura, no establecimientos distintos. Las siglas `CPMS` y `CPMSM` conservan identidades separadas cuando corresponden a centros masculino y femenino.
 
-Los catálogos de departamento, municipio, establecimiento y defensor comparten una situación vigente y una asignación vigente:
+| Nombre | Identidad |
+|---|---|
+| `CPMS MANIZALES`, `EPMSC MANIZALES` | `INPEC_601` |
+| `CPMSM MANIZALES`, `RM MANIZALES` | `INPEC_611` |
+| `CPMS ARMENIA`, `EPMSC ARMENIA`, `EMPSC ARMENIA` | `INPEC_613` |
+| `CPMSM ARMENIA`, `RM ARMENIA` | `INPEC_615` |
+| `CPMS BARRANQUILLA` | `INPEC_301` |
+| `CPMS BARRANQUILLA (JYP)`, `EPMSC BARRANQUILLA` | `INPEC_322` |
+| `CPMS VALLEDUPAR`, `EPMSC VALLEDUPAR` | `INPEC_307` |
+| `CPOMS ACACIAS` | `INPEC_130` |
+| `CPMS ACACIAS` | `INPEC_148` |
+
+La separación de Acacías consulta también el valor original de `DNDP.SISIPEC`, debido a que el consolidado histórico puede presentar `CPOMS ACACIAS` como `CPMS ACACIAS`.
+
+## 3. Universo de datos
+
+### 3.1 Situación vigente para resultados
+
+La situación mostrada se selecciona por persona con `ROW_NUMBER()`:
 
 ```sql
 WITH ranked_situacion AS (
-    SELECT *
-    FROM (
-        SELECT
-            s.*,
-            ROW_NUMBER() OVER (
-                PARTITION BY s.ID_PERSONA
-                ORDER BY
-                    COALESCE(
-                        s.FECHA_CORTE,
-                        CAST(s.FECHA_REGISTRO AS DATE),
-                        s.FECHA_CAPTURA
-                    ) DESC NULLS LAST,
-                    s.FECHA_REGISTRO DESC NULLS LAST,
-                    s.FECHA_CAPTURA DESC NULLS LAST,
-                    s.ID_SITUACION DESC
-            ) AS RN
-        FROM DNDP.SITUACION_CARCELARIA s
-    )
-    WHERE RN = 1
-      AND NVL(ACTIVO, 0) = 1
-),
-active_asignacion AS (
-    SELECT *
-    FROM (
-        SELECT
-            a.*,
-            ROW_NUMBER() OVER (
-                PARTITION BY a.ID_PERSONA
-                ORDER BY
-                    a.FECHA_ASIGNACION DESC NULLS LAST,
-                    a.ID_ASIGNACION DESC
-            ) AS RN
-        FROM DNDP.ASIGNACION a
-        WHERE a.FECHA_FIN IS NULL
-    )
-    WHERE RN = 1
+  SELECT
+    s.*,
+    ROW_NUMBER() OVER (
+      PARTITION BY s.ID_PERSONA
+      ORDER BY
+        COALESCE(s.FECHA_CORTE, CAST(s.FECHA_REGISTRO AS DATE), s.FECHA_CAPTURA)
+          DESC NULLS LAST,
+        CASE WHEN NVL(s.ACTIVO, 0) = 1 THEN 0 ELSE 1 END,
+        s.ID_SITUACION DESC
+    ) AS RN
+  FROM DNDP.SITUACION_CARCELARIA s
 )
-SELECT ...
-FROM DNDP.PERSONA p
-JOIN ranked_situacion s
-  ON s.ID_PERSONA = p.ID_PERSONA
-LEFT JOIN active_asignacion a
-  ON a.ID_PERSONA = p.ID_PERSONA
-LEFT JOIN DNDP.DEFENSORES d
-  ON d.CEDULA = a.CEDULA_DEFENSOR
-WHERE -- condenado, sindicado o ambos
 ```
 
-La regla de actividad está correctamente aplicada en los catálogos: primero se identifica la última situación y después se valida `ACTIVO=1`. Esto evita recuperar una situación histórica activa de una persona cuya situación posterior fue cerrada.
+La tabla de Usuarios asignados admite condenados y sindicados. Una consulta por defensor, nombre o documento puede incluir una situación cerrada; la interfaz la presenta como caso histórico. Una consulta por ubicación exige `ACTIVO = 1`.
 
-Implementación: `backend/repositories/oracle/sqlFragments.js`.
+La consulta directa del formulario también puede recuperar una persona con situación inactiva. El formulario se presenta en modo de solo lectura y no permite crear actuaciones ni actualizar el caso.
 
-### 2.1 Departamento
+### 3.2 Catálogos de ubicación
+
+Los catálogos se construyen solamente con la situación más reciente cuando continúa activa:
+
+```sql
+WITH ranked_situacion AS (
+  SELECT s.*
+  FROM (
+    SELECT
+      source_s.*,
+      ROW_NUMBER() OVER (
+        PARTITION BY source_s.ID_PERSONA
+        ORDER BY
+          COALESCE(
+            source_s.FECHA_CORTE,
+            CAST(source_s.FECHA_REGISTRO AS DATE),
+            source_s.FECHA_CAPTURA
+          ) DESC NULLS LAST,
+          source_s.ID_SITUACION DESC
+      ) AS RN
+    FROM DNDP.SITUACION_CARCELARIA source_s
+  ) s
+  WHERE s.RN = 1
+    AND NVL(s.ACTIVO, 0) = 1
+)
+```
+
+Este orden evita reactivar una ubicación histórica de una persona cuya situación posterior ya fue cerrada.
+
+## 4. Consultas de los catálogos
+
+El endpoint común es:
+
+```http
+GET /api/ppl/condenados/filter-options
+```
+
+Admite `tipo=all`, `tipo=condenado` o `tipo=sindicado`, además de departamento y municipio para catálogos dependientes.
+
+### 4.1 Departamento
 
 ```sql
 SELECT DEPARTAMENTO
 FROM (
-    SELECT DISTINCT TRIM(s.DEPARTAMENTO) AS DEPARTAMENTO
-    FROM ...
-    WHERE TRIM(s.DEPARTAMENTO) IS NOT NULL
-    ORDER BY DEPARTAMENTO
+  SELECT DISTINCT TRIM(s.DEPARTAMENTO) AS DEPARTAMENTO
+  FROM DNDP.PERSONA p
+  JOIN ranked_situacion s
+    ON s.ID_PERSONA = p.ID_PERSONA
+   AND s.RN = 1
+  WHERE TRIM(s.DEPARTAMENTO) IS NOT NULL
+  ORDER BY DEPARTAMENTO
 )
 WHERE ROWNUM <= :maxRows;
 ```
 
-### 2.2 Municipio
+### 4.2 Municipio dependiente
 
 ```sql
 SELECT MUNICIPIO
 FROM (
-    SELECT DISTINCT TRIM(s.MUNICIPIO) AS MUNICIPIO
-    FROM ...
-    WHERE TRIM(s.MUNICIPIO) IS NOT NULL
-      AND NORMALIZAR(s.DEPARTAMENTO)
-            LIKE :departamento || '%'
-    ORDER BY MUNICIPIO
+  SELECT DISTINCT TRIM(s.MUNICIPIO) AS MUNICIPIO
+  FROM DNDP.PERSONA p
+  JOIN ranked_situacion s
+    ON s.ID_PERSONA = p.ID_PERSONA
+   AND s.RN = 1
+  WHERE normalized(s.DEPARTAMENTO) LIKE :departamentoFilter
+    AND TRIM(s.MUNICIPIO) IS NOT NULL
+  ORDER BY MUNICIPIO
 )
 WHERE ROWNUM <= :maxRows;
 ```
 
-En PAG el municipio depende del departamento seleccionado.
-
-### 2.3 Establecimiento
+### 4.3 Establecimiento dependiente
 
 ```sql
 SELECT LUGAR
 FROM (
-    SELECT DISTINCT TRIM(s.ESTABLECIMIENTO) AS LUGAR
-    FROM ...
-    WHERE TRIM(s.ESTABLECIMIENTO) IS NOT NULL
-      AND NORMALIZAR(s.DEPARTAMENTO)
-            LIKE :departamento || '%'
-      AND NORMALIZAR(s.MUNICIPIO)
-            LIKE :municipio || '%'
-    ORDER BY LUGAR
+  SELECT DISTINCT TRIM(s.ESTABLECIMIENTO) AS LUGAR
+  FROM DNDP.PERSONA p
+  JOIN ranked_situacion s
+    ON s.ID_PERSONA = p.ID_PERSONA
+   AND s.RN = 1
+  WHERE normalized(s.DEPARTAMENTO) LIKE :departamentoFilter
+    AND normalized(s.MUNICIPIO) LIKE :municipioFilter
+    AND TRIM(s.ESTABLECIMIENTO) IS NOT NULL
+  ORDER BY LUGAR
 )
 WHERE ROWNUM <= :maxRows;
 ```
 
-### 2.4 Defensor asignado
+Los valores obtenidos se resuelven contra `centros-reclusion.v1.json`. Las variantes se agrupan por código `INPEC_*`.
+
+Política por módulo:
+
+- PAG muestra 124 establecimientos del corte SISIPEC del 7 de julio. El catálogo oficial contiene 125 y excluye `INPEC_514` para este flujo.
+- Usuarios asignados y Atención conservan todos los lugares activos observados, incluidos CDT, URI, estaciones y otros centros no incluidos en los 124 establecimientos de condenados.
+- Los filtros dependientes reducen la lista según departamento y municipio.
+
+### 4.4 Defensor actual
 
 ```sql
 SELECT DEFENSOR_ID, DEFENSOR
 FROM (
-    SELECT DISTINCT
-        TRIM(TO_CHAR(a.CEDULA_DEFENSOR)) AS DEFENSOR_ID,
-        TRIM(
-            COALESCE(
-                TO_NCHAR(d.NOMBRE),
-                TO_NCHAR(a.NOMBRE_DEFENSOR)
-            )
-        ) AS DEFENSOR
-    FROM ...
-    WHERE TRIM(
-        COALESCE(d.NOMBRE, a.NOMBRE_DEFENSOR)
-    ) IS NOT NULL
-    ORDER BY DEFENSOR
+  SELECT DISTINCT
+    TRIM(TO_CHAR(a.CEDULA_DEFENSOR)) AS DEFENSOR_ID,
+    TRIM(COALESCE(d.NOMBRE, a.NOMBRE_DEFENSOR)) AS DEFENSOR
+  FROM DNDP.PERSONA p
+  JOIN ranked_situacion s
+    ON s.ID_PERSONA = p.ID_PERSONA
+   AND s.RN = 1
+  LEFT JOIN active_asignacion a
+    ON a.ID_PERSONA = p.ID_PERSONA
+   AND a.RN = 1
+  LEFT JOIN DNDP.DEFENSORES d
+    ON d.CEDULA = a.CEDULA_DEFENSOR
+  WHERE TRIM(COALESCE(d.NOMBRE, a.NOMBRE_DEFENSOR)) IS NOT NULL
+  ORDER BY DEFENSOR
 )
 WHERE ROWNUM <= :maxRows;
 ```
 
-La implementación completa se encuentra en `backend/repositories/oracle/personaRepository.js`.
+El filtro Defensor actual de PAG - Reasignación consulta el catálogo de manera independiente sobre todas las asignaciones activas. Las sugerencias no dependen de las filas recuperadas para la tabla. El límite técnico es de 2.000 opciones.
 
-## 3. Usuarios asignados
-
-Usuarios asignados consulta condenados y sindicados:
-
-```javascript
-tipo: 'all'
-```
-
-Implementación de interfaz: `frontend/src/pages/RegistrosAsignados.jsx`.
-
-### 3.1 Consulta principal
-
-```sql
-WITH ranked_situacion AS (...),
-latest_gestion AS (...),
-active_asignacion AS (...)
-SELECT
-    TO_CHAR(p.NUMERO) AS NUMERO_IDENTIFICACION,
-    p.NOMBRE,
-    s.ESTABLECIMIENTO,
-    s.DEPARTAMENTO,
-    s.MUNICIPIO,
-    COALESCE(d.NOMBRE, a.NOMBRE_DEFENSOR) AS DEFENSOR,
-    ...
-FROM DNDP.PERSONA p
-JOIN ranked_situacion s
-  ON s.ID_PERSONA = p.ID_PERSONA
- AND s.RN = 1
-LEFT JOIN active_asignacion a
-  ON a.ID_PERSONA = p.ID_PERSONA
- AND a.RN = 1
-LEFT JOIN DNDP.DEFENSORES d
-  ON d.CEDULA = a.CEDULA_DEFENSOR
-LEFT JOIN latest_gestion g
-  ON g.ID_SITUACION = s.ID_SITUACION
- AND g.RN = 1
-WHERE ...
-ORDER BY TO_CHAR(p.NUMERO)
-```
-
-### 3.2 Predicados por filtro
-
-```sql
--- Documento
-TO_CHAR(p.NUMERO) LIKE :documentoPrefix
-
--- Nombre
-NORMALIZAR(p.NOMBRE) LIKE '%' || :nombre || '%'
-
--- Defensor por identidad
-TO_CHAR(a.CEDULA_DEFENSOR) = :defensorId
-
--- Defensor por texto
-NORMALIZAR(COALESCE(d.NOMBRE, a.NOMBRE_DEFENSOR))
-    LIKE :defensor || '%'
-
--- Establecimiento
-NVL(s.ACTIVO, 0) = 1
-AND NORMALIZAR(s.ESTABLECIMIENTO)
-    LIKE :lugar || '%'
-
--- Departamento
-NVL(s.ACTIVO, 0) = 1
-AND NORMALIZAR(s.DEPARTAMENTO)
-    LIKE :departamento || '%'
-
--- Municipio
-NVL(s.ACTIVO, 0) = 1
-AND NORMALIZAR(s.MUNICIPIO)
-    LIKE :municipio || '%'
-```
-
-Cuando se identifica un centro canónico, la consulta utiliza todos sus alias:
-
-```sql
-NORMALIZAR(s.ESTABLECIMIENTO) IN (
-    :centroAlias1,
-    :centroAlias2,
-    :centroAlias3
-)
-```
-
-Ejemplo actual:
-
-```text
-CPMS ARMENIA
-- CPMS ARMENIA
-- EPMSC ARMENIA
-- EMPSC ARMENIA
-```
-
-El dropdown muestra `CPMS ARMENIA`, pero la búsqueda recupera personas registradas con cualquiera de esos nombres.
-
-### 3.3 Acción a impulsar
-
-El control visible se llama “Acción a impulsar / estado”, pero actualmente trabaja principalmente con `estadoCodigo`:
-
-```text
-ANALIZAR_CASO
-ENTREVISTAR_USUARIO
-PRESENTAR_SOLICITUD
-PENDIENTE_AUDIENCIA
-PENDIENTE_DECISION
-PRESENTAR_RECURSO
-CASO_CERRADO
-```
-
-El estado se calcula desde los campos de gestión jurídica y se filtra en una consulta exterior:
-
-```sql
-SELECT *
-FROM (
-    SELECT
-        ...,
-        CASE
-            WHEN ... THEN 'ANALIZAR_CASO'
-            WHEN ... THEN 'ENTREVISTAR_USUARIO'
-            WHEN ... THEN 'PRESENTAR_SOLICITUD'
-            ...
-        END AS ESTADO_CODIGO
-    FROM ...
-)
-WHERE ESTADO_CODIGO = :estadoCodigo
-```
-
-El nombre del control sugiere que filtra acciones, pero la interfaz actual selecciona estados. El catálogo de acciones existe, aunque no está expuesto de forma independiente en ese control.
-
-## 4. Formulario de atención
-
-El formulario no ejecuta consultas separadas para nombre, establecimiento, departamento o municipio. Esos datos se cargan al consultar una persona por documento:
-
-```sql
-WITH ranked_situacion AS (...)
-SELECT
-    p.*,
-    s.*,
-    g.*,
-    a.*,
-    d.*
-FROM DNDP.PERSONA p
-JOIN ranked_situacion s
-  ON s.ID_PERSONA = p.ID_PERSONA
- AND s.RN = 1
-LEFT JOIN DNDP.GESTION_JURIDICA g
-  ON g.ID_SITUACION = s.ID_SITUACION
-LEFT JOIN asignacion_vigente a
-  ON a.ID_PERSONA = p.ID_PERSONA
-LEFT JOIN DNDP.DEFENSORES d
-  ON d.CEDULA = a.CEDULA_DEFENSOR
-WHERE TO_CHAR(p.NUMERO) = :documento
-ORDER BY g.FECHA_REGISTRO;
-```
-
-### 4.1 Defensor
-
-Es el único datalist dinámico de los campos mencionados. Consulta el maestro completo:
+El campo Nuevo defensor de Asignación y Reasignación usa el catálogo completo `DNDP.DEFENSORES`:
 
 ```sql
 SELECT
-    TO_CHAR(d.CEDULA) AS CEDULA,
-    d.NOMBRE,
-    d.CORREO,
-    d.REGIONAL,
-    TO_CHAR(d.CEDULA_PAG) AS CEDULA_PAG
+  TO_CHAR(d.CEDULA) AS CEDULA,
+  d.NOMBRE,
+  d.CORREO,
+  d.REGIONAL,
+  TO_CHAR(d.CEDULA_PAG) AS CEDULA_PAG
 FROM DNDP.DEFENSORES d
 ORDER BY d.NOMBRE;
 ```
 
-Implementación: `backend/repositories/oracle/defensoresRepository.js`.
-
-### 4.2 Tipo de lugar
-
-Es un select estático:
-
-```javascript
-['CDT', 'ERON']
-```
-
-### 4.3 Nombre, establecimiento, departamento y municipio
-
-Actualmente son campos de texto editables, no dropdowns:
+Al crear un defensor, el nombre se transforma antes de validar y guardar:
 
 ```text
-Nombre
-Nombre del lugar de privación
-Departamento
-Distrito/municipio
+normalización NFD -> eliminación de diacríticos -> mayúscula -> espacios simples
 ```
 
-Esto permite volver a introducir variantes como `BOLIVAR`, `BOLÍVAR` y `Bolivar`. La búsqueda posterior las agrupa, pero la base conserva el texto ingresado. Para reducir la duplicidad desde el origen, estos campos deberían reutilizar los catálogos homologados.
+El Formulario de atención usa el mismo catálogo. El texto escrito debe coincidir con una opción. La identidad se valida en la interfaz y en la API; la asignación conserva nombre y cédula. La opción `Crear defensor` permite registrar una cédula y un nombre sin salir del formulario y selecciona el registro creado.
 
-### 4.4 Acción a impulsar
+### 4.5 Acciones, estados y potenciales candidatos
 
-No es seleccionada manualmente. Se calcula mediante las reglas de AURORA o CELESTE:
+Los estados y acciones proceden de catálogos de códigos. El filtro envía el código, por ejemplo `ENTREVISTAR_USUARIO`, y Oracle compara el estado derivado del flujo.
 
-```javascript
-registro['Estado del trámite'] = estadoCalculado;
-registro['Acción a impulsar'] = estadoCalculado;
-```
-
-Por eso no tiene SQL propio de dropdown.
-
-## 5. Asignación PAG y Reasignación
-
-PAG consulta únicamente condenados:
-
-```javascript
-tipo: 'condenado'
-```
-
-El frontend no siempre envía expresamente el tipo; el backend utiliza `condenado` como valor predeterminado.
-
-### 5.1 Filtros enviados
-
-```javascript
-{
-    documento,
-    departamento,
-    municipio,
-    lugar,
-    centroId,
-    potencialSubrogado,
-    defensor // sólo reasignación
-}
-```
-
-Implementación: `frontend/src/pages/AsignacionDefensores.jsx`.
-
-### 5.2 Condición de condenado
-
-```sql
-LOWER(
-    NVL(situacion_juridica_efectiva, '')
-) LIKE '%condenad%'
-```
-
-### 5.3 Potenciales candidatos
-
-Se calcula desde `SITUACION_CARCELARIA.CATEGORIZACION`:
+Los potenciales candidatos se derivan de `SITUACION_CARCELARIA.CATEGORIZACION`:
 
 ```sql
 CASE
-    WHEN NORMALIZAR(s.CATEGORIZACION) LIKE 'PRELIMINAR %'
-        THEN 'proximos_requisito_temporal'
-
-    WHEN NORMALIZAR(s.CATEGORIZACION) = 'UTILIDAD PUBLICA'
-        THEN 'mujeres_potenciales_utilidad_publica'
-
-    WHEN NORMALIZAR(s.CATEGORIZACION)
-            LIKE '%PRISION DOMICILIARIA%'
-      OR NORMALIZAR(s.CATEGORIZACION)
-            LIKE '%LIBERTAD CONDICIONAL%'
-      OR NORMALIZAR(s.CATEGORIZACION)
-            LIKE '%REVISAR POR PENA%'
-        THEN 'potenciales_beneficiarios'
-
-    ELSE 'no_reunen_requisitos'
+  WHEN normalized(s.CATEGORIZACION) LIKE 'PRELIMINAR %'
+    THEN 'proximos_requisito_temporal'
+  WHEN normalized(s.CATEGORIZACION) = 'UTILIDAD PUBLICA'
+    THEN 'mujeres_potenciales_utilidad_publica'
+  WHEN normalized(s.CATEGORIZACION) LIKE '%PRISION DOMICILIARIA%'
+    OR normalized(s.CATEGORIZACION) LIKE '%LIBERTAD CONDICIONAL%'
+    OR normalized(s.CATEGORIZACION) LIKE '%REVISAR POR PENA%'
+    THEN 'potenciales_beneficiarios'
+  ELSE 'no_reunen_requisitos'
 END
 ```
 
-Después se aplica:
+## 5. Consulta de resultados
 
-```sql
-categoria_calculada = :potencialSubrogado
-```
+### 5.1 Asignación y Reasignación
 
-### 5.4 Diferencia entre Asignación y Reasignación
-
-Actualmente Oracle devuelve primero un conjunto limitado de condenados. Después el frontend separa:
-
-```javascript
-asignacion =
-    rows.filter(row => !tieneDefensor(row.defensorAsignado));
-
-reasignacion =
-    rows.filter(row => tieneDefensor(row.defensorAsignado));
-```
-
-Esto ocurre después del límite de resultados. Si Oracle devuelve las primeras 100 personas y después se separan las pestañas, pueden quedar personas fuera de la pestaña correspondiente.
-
-La separación debe hacerse en SQL antes del límite:
+La separación se aplica en Oracle antes del ordenamiento y de la paginación:
 
 ```sql
 -- Asignación
-a.CEDULA_DEFENSOR IS NULL
+AND NVL(s.ACTIVO, 0) = 1
+AND a.CEDULA_DEFENSOR IS NULL
 
 -- Reasignación
-a.CEDULA_DEFENSOR IS NOT NULL
+AND NVL(s.ACTIVO, 0) = 1
+AND a.CEDULA_DEFENSOR IS NOT NULL
 ```
 
-### 5.5 Defensor actual en Reasignación
+Cada pestaña consulta su propio universo de datos antes de aplicar el límite de página.
 
-El dropdown de defensor actual se construye con las filas recuperadas:
+PAG no ejecuta ni presenta la tabla inicial. La consulta se habilita después de validar el PAG y exige al menos uno de estos filtros: documento, departamento, municipio, establecimiento, potencial o defensor actual.
 
-```text
-rows
-→ extraer defensorAsignado
-→ eliminar repetidos
-→ ordenar
-```
+### 5.2 Conteo exacto
 
-No consulta todos los defensores con condenados asignados. Un defensor que no esté en las primeras filas puede no aparecer como sugerencia, aunque se pueda escribir manualmente.
-
-### 5.6 Nuevo defensor
-
-El selector de nuevo defensor utiliza el maestro completo:
+El total y la página se ejecutan en paralelo. El conteo no incluye `ORDER BY`:
 
 ```sql
-SELECT CEDULA, NOMBRE, CORREO, REGIONAL, CEDULA_PAG
-FROM DNDP.DEFENSORES
-ORDER BY NOMBRE;
+SELECT COUNT(*) AS TOTAL_MATCHED
+FROM (
+  -- persona, situación vigente, gestión y asignación activa
+) filtered_rows
+WHERE -- filtros de la consulta;
 ```
 
-La interfaz muestra como máximo 80 sugerencias mientras se escribe, pero la lista base contiene todos los defensores.
+El total se almacena en caché durante cinco minutos según el tipo y los filtros. Los cambios de asignación invalidan los totales almacenados.
 
-## 6. Homologación y reducción de opciones
-
-La normalización aplicada es:
-
-```text
-Reparar mojibake conocido
-→ eliminar espacios invisibles
-→ unificar espacios
-→ NFKD
-→ eliminar tildes
-→ mayúsculas
-```
-
-Ejemplos:
-
-```text
-ATLANTICO = ATLÁNTICO
-BOLIVAR = BOLÍVAR
-CPAMS EL BARNE = CPAMS EL BARNÉ
-```
-
-Oracle utiliza una expresión equivalente a:
+### 5.3 Página de resultados
 
 ```sql
-TRANSLATE(
-    UPPER(
-        TRIM(
-            NVL(
-                REGEXP_REPLACE(columna, '[[:space:]]+', ' '),
-                ''
-            )
-        )
-    ),
-    'ÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÑ',
-    'AEIOUAEIOUAEIOUN'
+SELECT *
+FROM (
+  SELECT ordered_rows.*, ROWNUM AS PAGE_ROW_NUMBER
+  FROM (
+    SELECT filtered_rows.*
+    FROM (
+      -- consulta base
+    ) filtered_rows
+    WHERE -- estado o acción
+    ORDER BY "Numero de identificacion"
+  ) ordered_rows
+  WHERE ROWNUM <= :endRow
 )
+WHERE PAGE_ROW_NUMBER > :offsetRows;
 ```
 
-El backend utiliza una normalización equivalente en JavaScript en `backend/utils/textNormalization.js`.
+Parámetros de interfaz:
 
-### 6.1 Identidades utilizadas
+- tamaño de página: 50;
+- `offsetRows = (page - 1) * 50`;
+- `endRow = offsetRows + 50`;
+- total exacto y número total de páginas en la respuesta;
+- navegación completa sin cargar el conjunto total en el navegador.
 
-| Campo | Identidad preferida |
-|---|---|
-| Defensor | Cédula |
-| Centro | Código `INPEC_*` |
-| Acción | Código canónico |
-| Departamento | Texto normalizado |
-| Municipio | Texto normalizado |
-| Valor desconocido | ID estable `LEGACY_*` |
+La misma estrategia se usa en Usuarios asignados y PAG.
 
-Los valores desconocidos no se descartan. Permanecen visibles o son agrupados en “Otros lugares activos”.
+## 6. Normalización y blindajes
 
-## 7. Estado actual de establecimientos
+Las búsquedas de texto aplican en SQL:
 
-### 7.1 Usuarios asignados
+- conversión a mayúscula;
+- eliminación de tildes y otros signos diacríticos;
+- corrección de secuencias mojibake conocidas;
+- conversión de espacios no separables;
+- compactación de espacios;
+- comparación por prefijo o contenido según el campo.
 
-Utiliza `tipo=all` y debe incluir todos los lugares activos:
-
-- ERON.
-- CDT.
-- URI.
-- Estaciones.
-- CAI.
-- Otros lugares de privación.
-
-Estado observado en la revisión:
-
-- 470 textos distintos.
-- 462 identidades después de homologación.
-
-### 7.2 Asignación PAG
-
-El consolidado SISIPEC de julio contiene:
-
-- 139.524 registros totales.
-- 84.335 condenados.
-- Exactamente 124 establecimientos distintos para condenados.
-- Los 124 tienen correspondencia en el catálogo oficial.
-
-El objetivo funcional es:
-
-```text
-124 establecimientos canónicos para condenados
-```
-
-Actualmente la implementación no utiliza directamente esa lista fija de 124. Construye el dropdown con los centros oficiales que tienen personas activas en la base actual y agrega una categoría “Otros lugares activos”.
-
-Con la homologación de Armenia, el estado observado es:
-
-- 120 centros oficiales presentes.
-- 97 identidades no oficiales.
-- Una categoría agrupada de “Otros”.
-- 121 opciones visibles.
-
-Diferencias pendientes:
-
-- Separar `CPMS MANIZALES` de `CPMSM MANIZALES`.
-- Homologar `CPMS VALLEDUPAR`.
-- Homologar `CPMS BARRANQUILLA (JYP)`.
-- Resolver la fusión de `CPOMS ACACIAS` con `CPMS ACACIAS`.
-
-Se encontraron además 44 etiquetas históricas que deberían cambiar a su nombre moderno. La búsqueda ya funciona mediante alias, pero el dropdown aún muestra el nombre anterior.
-
-La categoría “Otros lugares activos” puede conservarse para no excluir condenados ubicados en CDT, URI o estaciones, pero no debe contabilizarse como uno de los 124 establecimientos.
-
-## 8. Blindajes actuales
-
-### 8.1 Parámetros enlazados
-
-Los filtros se envían como binds:
+Ejemplo conceptual:
 
 ```sql
-:documentoPrefix
-:defensorId
-:nombreFilter
-:lugarFilter
-:departamentoFilter
-:municipioFilter
+normalized(s.DEPARTAMENTO) LIKE :departamentoFilter
 ```
 
-No se concatena el texto del usuario directamente en el SQL.
+Por esta razón `ATLANTICO`, `ATLÁNTICO` y variantes de codificación se consultan como una misma identidad textual. La lista visible se reduce mediante la misma clave normalizada.
 
-### 8.2 Valores inválidos
+Blindajes adicionales:
 
-Un ID o categoría inválidos generan:
+- documento y cédula se reducen a dígitos;
+- un identificador inválido produce `1 = 0` y nunca elimina silenciosamente el filtro;
+- defensor y establecimiento usan identificadores estables cuando existe catálogo;
+- Atención rechaza defensores que no pertenezcan a `DNDP.DEFENSORES`, incluso si se intenta enviar el nombre directamente al API;
+- un código de acción, estado o centro desconocido no devuelve resultados sin filtrar;
+- PAG aplica `ACTIVO = 1` de forma obligatoria;
+- el formulario bloquea la edición de situaciones inactivas;
+- los campos escribibles de ubicación rechazan al guardar cualquier valor que no pertenezca al catálogo;
+- CPMS y CPMSM se registran con identidades separadas en el catálogo.
+
+## 7. Índices y limitaciones
+
+Índices relevantes para el plan de consulta:
 
 ```sql
-1 = 0
+-- Selección de situación vigente
+CREATE INDEX IX_SC_PERSONA_FECHAS
+  ON DNDP.SITUACION_CARCELARIA
+     (ID_PERSONA, FECHA_CORTE, FECHA_REGISTRO, ID_SITUACION);
+
+-- Asignación activa por persona
+CREATE INDEX IX_ASIG_PERSONA_FIN_FECHA
+  ON DNDP.ASIGNACION
+     (ID_PERSONA, FECHA_FIN, FECHA_ASIGNACION, ID_ASIGNACION);
+
+-- Gestión vigente
+CREATE INDEX IX_GJ_SITUACION_FECHA
+  ON DNDP.GESTION_JURIDICA
+     (ID_SITUACION, FECHA_REGISTRO, ID_GESTION);
+
+-- Cruce excepcional con el valor original de SISIPEC
+CREATE INDEX IX_SISIPEC_NUMERO_ESTABLECIMIENTO
+  ON DNDP.SISIPEC (NUMERO, ESTABLECIMIENTO);
 ```
 
-Esto aplica para:
+La creación de índices requiere revisión del plan de ejecución, ventana de mantenimiento y autorización de administración de base de datos.
 
-- Defensor inválido.
-- Centro inexistente.
-- Estado desconocido.
-- Acción desconocida.
-- Categoría potencial inválida.
-- Documento sin dígitos.
+Limitaciones vigentes:
 
-### 8.3 Límites
-
-- Catálogos: máximo 2.000 opciones desde la ruta.
-- Usuarios asignados: 50 sin filtros y 100 filtrados.
-- PAG: 100 iniciales y 200 filtrados.
-- Backend: límite filtrado máximo de 200.
-- Usuarios asignados no permite una consulta `tipo=all` sin filtros.
-
-### 8.4 Caché
-
-- Frontend: cinco minutos.
-- Backend: cinco minutos para opciones.
-- Máximo 12 variantes de caché por ruta.
-- Consultas Oracle idénticas y simultáneas se agrupan.
-
-### 8.5 Actividad
-
-Los catálogos exigen situación vigente con `ACTIVO=1`.
-
-Sin embargo, la consulta principal sólo agrega explícitamente:
-
-```sql
-NVL(s.ACTIVO, 0) = 1
-```
-
-cuando existe un filtro de ubicación. Una consulta PAG sin departamento, municipio o establecimiento podría incluir una situación reciente inactiva si todavía cumple la condición textual de condenado. Debe aplicarse `ACTIVO=1` obligatoriamente a todo el universo PAG.
-
-## 9. Índices Oracle actuales
-
-| Tabla | Índices relevantes |
-|---|---|
-| `PERSONA` | `NUMERO`, `ID_PERSONA` |
-| `SITUACION_CARCELARIA` | `(ID_PERSONA, ACTIVO)`, `ID_SITUACION` |
-| `GESTION_JURIDICA` | `ID_SITUACION`, `ID_GESTION` |
-| `ASIGNACION` | `(CEDULA_DEFENSOR, FECHA_FIN)`, `(CEDULA_PAG, FECHA_FIN)`, asignación vigente por persona |
-| `DEFENSORES` | `CEDULA` |
-| `CALIFICACION_CONDUCTA` | Sólo clave primaria |
-
-No existen índices específicos para:
-
-- `PERSONA.NOMBRE`.
-- `SITUACION_CARCELARIA.ESTABLECIMIENTO`.
-- `DEPARTAMENTO`.
-- `MUNICIPIO`.
-- `CATEGORIZACION`.
-- Las expresiones normalizadas.
-- `CALIFICACION_CONDUCTA.ID_SITUACION`.
-
-### 9.1 Limitaciones de indexación
-
-La consulta transforma las columnas mediante:
-
-```sql
-UPPER
-TRIM
-TRANSLATE
-REGEXP_REPLACE
-REPLACE
-TO_CHAR
-```
-
-Esto impide aprovechar completamente los índices B-tree tradicionales. Además, una búsqueda como:
-
-```sql
-LIKE '%nombre%'
-```
-
-no puede utilizar eficientemente un índice B-tree normal.
-
-Mediciones observadas en la integración Oracle:
-
-- Defensor por ID: aproximadamente 56 ms.
-- Nombre: aproximadamente 3,2 segundos.
-- Lugar, departamento o municipio: entre 2 y 2,4 segundos.
-- Estado o acción calculada: entre 8 y 10 segundos.
-
-No existe actualmente Oracle Text, Elasticsearch ni otra indexación textual.
-
-## 10. Recomendaciones prioritarias
-
-1. Aplicar `ACTIVO=1` obligatoriamente a toda consulta PAG.
-2. Mover la separación Asignación/Reasignación al SQL antes del límite.
-3. Implementar paginación real para evitar que los topes de 100/200 oculten personas.
-4. Usar como referencia los 124 establecimientos de condenados del consolidado de julio.
-5. Mantener “Otros lugares activos” como categoría adicional sin contabilizarla como establecimiento.
-6. Completar la homologación de Manizales, Valledupar, Barranquilla JYP y Acacías.
-7. Actualizar las 44 etiquetas históricas conservándolas como alias.
-8. Incorporar `CENTRO_ID` al proceso de cargue SISIPEC.
-9. Convertir establecimiento, departamento y municipio del Formulario de atención en catálogos controlados.
-10. Crear columnas virtuales o persistentes normalizadas e indexarlas.
-11. Evaluar índices para:
-
-```sql
-SITUACION_CARCELARIA(
-    ID_PERSONA,
-    FECHA_CORTE,
-    FECHA_REGISTRO,
-    ID_SITUACION
-)
-
-ASIGNACION(
-    ID_PERSONA,
-    FECHA_FIN,
-    FECHA_ASIGNACION,
-    ID_ASIGNACION
-)
-
-CALIFICACION_CONDUCTA(ID_SITUACION)
-```
-
-12. Para búsqueda por nombre con coincidencia interna, evaluar Oracle Text o una columna de búsqueda normalizada.
-
-## 11. Conclusión
-
-La búsqueda ya está protegida contra diferencias de tildes, espacios, mayúsculas, errores de codificación y alias conocidos. También utiliza identidades estables para centros y defensores cuando estas están disponibles.
-
-Las principales limitaciones actuales son:
-
-- La separación tardía de las pestañas de Asignación y Reasignación PAG.
-- Los límites de resultados sin paginación.
-- La falta de índices sobre las expresiones normalizadas.
-- La posibilidad de incluir situaciones inactivas en PAG cuando no se filtra por ubicación.
-- Que el catálogo PAG todavía no está fijado a los 124 establecimientos de control del consolidado de julio.
-- Las homologaciones pendientes de Manizales, Valledupar, Barranquilla JYP y Acacías.
-
-La homologación ya aplicada para Armenia mantiene separadas las identidades `CPMS ARMENIA` y `CPMSM ARMENIA`, conservando sus nombres históricos como alias.
+- Las funciones de normalización sobre columnas pueden impedir el uso de índices convencionales. Índices basados en función o columnas normalizadas persistentes permitirían mejorar estas búsquedas.
+- El conteo exacto sigue recorriendo el conjunto filtrado. La ejecución paralela y la caché evitan repetirlo en cada página.
+- Los catálogos de ubicación dependen de la calidad del valor fuente. Los nombres desconocidos permanecen visibles en Usuarios asignados y Atención, pero no ingresan automáticamente a la lista oficial de 124 centros PAG.
+- La asociación histórica de Acacías requiere consultar `DNDP.SISIPEC` hasta corregir el dato consolidado de origen.
+- Los catálogos dependientes tienen un máximo de 2.000 valores por campo.
