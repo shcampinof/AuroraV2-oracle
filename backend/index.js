@@ -14,6 +14,7 @@ const defensoresRoutes = require('./routes/defensores');
 const adminCargasRoutes = require('./routes/adminCargas');
 const adminUsersRoutes = require('./routes/adminUsers');
 const healthRoutes = require('./routes/health');
+const reportesRoutes = require('./routes/reportes');
 const { requireAuth } = require('./middleware/auth');
 const { closePool } = require('./db/oraclePool');
 const { repairRegistryOnStartup, shutdownCargaJobs } = require('./services/cargaBdService');
@@ -143,6 +144,7 @@ app.use(
 app.use('/api/formatos', requireAuth, formatosRoutes);
 app.use('/api/ppl', requireAuth, pplRoutes);
 app.use('/api/defensores', requireAuth, defensoresRoutes);
+app.use('/api/reportes', requireAuth, reportesRoutes);
 app.use('/api/admin/cargas', requireAuth, adminCargasRoutes);
 app.use('/api/admin/users', requireAuth, adminUsersRoutes);
 

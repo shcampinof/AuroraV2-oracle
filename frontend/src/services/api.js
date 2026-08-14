@@ -411,6 +411,34 @@ export async function getDefensores() {
   return readJsonOrThrow(res, 'Error consultando defensores'); // { defensores }
 }
 
+export async function getReporteAtencionesDefensores({ fechaInicio, fechaFin, regional, defensorId }) {
+  const params = new URLSearchParams({
+    fechaInicio: String(fechaInicio || ''),
+    fechaFin: String(fechaFin || ''),
+    regional: String(regional || ''),
+    defensorId: String(defensorId || ''),
+  });
+  const res = await fetchJson(`${API_BASE}/reportes/atenciones-defensores?${params.toString()}`, {
+    cache: 'no-store',
+  });
+  const data = await readJsonOrThrow(res, 'Error generando el reporte de atenciones');
+  if (!res.ok) {
+    throw new Error(String(data?.message || 'No fue posible generar el reporte de atenciones.'));
+  }
+  return data;
+}
+
+export async function getReporteAtencionesOpciones() {
+  const res = await fetchJson(`${API_BASE}/reportes/atenciones-defensores/opciones`, {
+    cache: 'no-store',
+  });
+  const data = await readJsonOrThrow(res, 'Error consultando las opciones del reporte');
+  if (!res.ok) {
+    throw new Error(String(data?.message || 'No fue posible consultar regionales y defensores.'));
+  }
+  return data;
+}
+
 export async function getDefensoresCondenados() {
   const res = await fetchJson(`${API_BASE}/defensores?source=condenados`, { cache: 'no-store' });
   if (!res.ok) throw new Error('Error consultando defensores');
@@ -449,6 +477,8 @@ function normalizeDefensorOption(option) {
   return {
     id: id || nombre.toUpperCase().replace(/\s+/g, '_'),
     nombre,
+    regional: String(option.regional ?? '').trim(),
+    correo: String(option.correo ?? '').trim(),
   };
 }
 

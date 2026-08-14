@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aurora-shell-v5';
+const CACHE_NAME = 'aurora-shell-v6';
 const QUEUE_DB_NAME = 'aurora-pwa-v1';
 const QUEUE_STORE_NAME = 'offlineRequests';
 const QUEUE_SYNC_TAG = 'aurora-offline-sync';

@@ -168,6 +168,42 @@ async function testInactivePrisonRecordRejectsUpdates() {
   }
 }
 
+async function testBulkUnassignmentClosesOnlyEligibleActiveAssignments() {
+  const personaRepo = require('../repositories/oracle/personaRepository');
+  const asignacionRepo = require('../repositories/oracle/asignacionRepository');
+  const servicePath = require.resolve('../services/pplService');
+  const originalFindContext = personaRepo.findActiveContextByDocumento;
+  const originalEndAssignment = asignacionRepo.endActiveAssignmentByPersona;
+  const endedAssignments = [];
+
+  personaRepo.findActiveContextByDocumento = async (documento) => ({
+    111: { P_ID_PERSONA: 10, S_ID_SITUACION: 20, S_ACTIVO: 1 },
+    222: { P_ID_PERSONA: 11, S_ID_SITUACION: 21, S_ACTIVO: 0 },
+    333: { P_ID_PERSONA: 12, S_ID_SITUACION: null, S_ACTIVO: 1 },
+  }[documento] || null);
+  asignacionRepo.endActiveAssignmentByPersona = async (idPersona) => {
+    endedAssignments.push(idPersona);
+    return 1;
+  };
+  delete require.cache[servicePath];
+
+  try {
+    const service = require(servicePath);
+    const updated = await service.unassignDefensor(['111', '111', '222', '333', '']);
+
+    assert.strictEqual(updated, 1);
+    assert.deepStrictEqual(
+      endedAssignments,
+      [10],
+      'Solo debe cerrarse la asignación de una persona con situación activa.'
+    );
+  } finally {
+    personaRepo.findActiveContextByDocumento = originalFindContext;
+    asignacionRepo.endActiveAssignmentByPersona = originalEndAssignment;
+    delete require.cache[servicePath];
+  }
+}
+
 async function testNewActuacionAlwaysPersistsCanonicalAction() {
   const personaRepo = require('../repositories/oracle/personaRepository');
   const gestionRepo = require('../repositories/oracle/gestionRepository');
@@ -249,6 +285,7 @@ function testNewDefenderNameIsUppercaseAndAccentFree() {
   await testRepositoryUsesDatabaseClock();
   await testGenericDefenderChangeCreatesFreshAssignment();
   await testInactivePrisonRecordRejectsUpdates();
+  await testBulkUnassignmentClosesOnlyEligibleActiveAssignments();
   await testNewActuacionAlwaysPersistsCanonicalAction();
   testUpdatedLegalSituationHasPriority();
   testNewDefenderNameIsUppercaseAndAccentFree();

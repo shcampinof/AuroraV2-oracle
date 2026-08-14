@@ -101,6 +101,7 @@ const FIELD = {
   b5NormalRadicacion: 'Fecha de presentación de la solicitud a la autoridad',
   b5NormalDecision: 'Fecha de decisión de la autoridad',
   b5NormalSentidoResuelveSolicitud: 'Sentido de la decisión que resuelve la solicitud',
+  b5NormalNumeroInsistencias: 'Número de insistencias',
   b5NormalFechaInsistencia1: 'Fecha de insistencia 1',
   b5NormalFechaInsistencia2: 'Fecha de insistencia 2',
 } as const;
@@ -608,10 +609,10 @@ export const mandatoryByBlock: MandatoryByBlock = {
       optional: true,
     },
     { key: FIELD.b5NormalRadicacion, label: '45 Fecha de presentación de la solicitud a la autoridad' },
-    { key: FIELD.b5NormalDecision, label: '46 Fecha de decisión de la autoridad' },
-    { key: FIELD.q52, label: '47 Sentido de la decisión' },
-    { key: FIELD.b5NormalFechaInsistencia1, label: '48 Fecha de insistencia 1', optional: true },
-    { key: FIELD.b5NormalFechaInsistencia2, label: '49 Fecha de insistencia 2', optional: true },
+    { key: FIELD.b5NormalNumeroInsistencias, label: '46 Número de insistencias', optional: true },
+    { key: FIELD.b5NormalFechaInsistencia1, label: '47 Fechas de las insistencias', optional: true },
+    { key: FIELD.b5NormalDecision, label: '48 Fecha de decisión de la autoridad' },
+    { key: FIELD.q52, label: '49 Sentido de la decisión' },
     { key: FIELD.q53, label: '50 Motivo de la decisión negativa', optional: true },
     { key: FIELD.q54, label: '51 Se presenta recurso' },
     { key: FIELD.q55, label: '52 Fecha de recurso en caso desfavorable', optional: true },
@@ -716,11 +717,11 @@ export const dependencyRules: DependencyRule[] = [
     },
   },
   // Regla: AURORA.B5B.DEPENDENCIA.3
-  // En 5B el formulario muestra Q47; FIELD.q52 es la clave compartida de persistencia.
+  // En 5B el formulario muestra Q49; FIELD.q52 es la clave compartida de persistencia.
   {
     id: 'dep_q52_no_concede_subrogado_habilita_q53_q54_en_5b',
-    source: { key: FIELD.q52, label: '47 Sentido de la decisión' },
-    description: 'En 5B, si Q47 = No concede la solicitud, habilita motivo y recurso.',
+    source: { key: FIELD.q52, label: '49 Sentido de la decisión' },
+    description: 'En 5B, si Q49 = No concede la solicitud, habilita motivo y recurso.',
     when: (record) => !isUtilidadPublicaFlow(record) && isNoConcedeSubrogadoPenal(get(record, FIELD.q52)),
     effects: {
       enable: [FIELD.q53, FIELD.q54],
@@ -729,8 +730,8 @@ export const dependencyRules: DependencyRule[] = [
   // Regla: AURORA.B5B.DEPENDENCIA.4
   {
     id: 'dep_q52_no_concede_subrogado_deshabilita_q53_q54_q55_en_5b',
-    source: { key: FIELD.q52, label: '47 Sentido de la decisión' },
-    description: 'En 5B, si Q47 != No concede la solicitud, deshabilita motivo y campos de recurso.',
+    source: { key: FIELD.q52, label: '49 Sentido de la decisión' },
+    description: 'En 5B, si Q49 != No concede la solicitud, deshabilita motivo y campos de recurso.',
     when: (record) => !isUtilidadPublicaFlow(record) && !isNoConcedeSubrogadoPenal(get(record, FIELD.q52)),
     effects: {
       disable: [FIELD.q53, FIELD.q54, FIELD.q55, FIELD.b5NormalSentidoResuelveSolicitud],

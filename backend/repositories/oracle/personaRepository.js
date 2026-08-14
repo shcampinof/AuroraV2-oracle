@@ -496,17 +496,23 @@ function buildCondenadosSummaryWhereClause({
   filters = {},
   scopeDepartamentos = DEFAULT_SCOPE_DEPARTAMENTOS,
   includeUserFilters = true,
-  requireClosedHistoryEvidence = false,
+  includeAssignedUsersHistory = false,
 } = {}) {
   const binds = {};
   const clauses = [];
   const { clause: scopeClause, binds: scopeBinds } = buildScopeWhereClause('s.DEPARTAMENTO', 'dep', scopeDepartamentos);
   Object.assign(binds, scopeBinds);
   clauses.push(scopeClause);
-  // En Usuarios asignados, un histórico cerrado con gestión o defensor sigue
-  // siendo consultable aunque la fuente no haya informado SITUACION.
-  clauses.push(requireClosedHistoryEvidence ? '1=1' : buildTipoFilter(tipo));
+  // Usuarios asignados parte siempre del mismo universo. Así, aplicar un
+  // estado adicional solo reduce resultados y nunca habilita históricos que
+  // no estaban presentes en la consulta inicial.
+  clauses.push(includeAssignedUsersHistory ? '1=1' : buildTipoFilter(tipo));
   if (String(tipo || '').trim().toLowerCase() === 'condenado') {
+    clauses.push('NVL(s.ACTIVO, 0) = 1');
+  } else if (
+    String(tipo || '').trim().toLowerCase() === 'all' &&
+    !includeAssignedUsersHistory
+  ) {
     clauses.push('NVL(s.ACTIVO, 0) = 1');
   }
 
@@ -514,7 +520,7 @@ function buildCondenadosSummaryWhereClause({
     return { clause: clauses.join('\n      AND '), binds };
   }
 
-  if (requireClosedHistoryEvidence) {
+  if (includeAssignedUsersHistory) {
     clauses.push(`(
       NVL(s.ACTIVO, 0) = 1
       OR EXISTS (
@@ -551,9 +557,18 @@ function buildCondenadosSummaryWhereClause({
 
   const rawDefensorId = String(filters?.defensorId || '').trim();
   const defensorId = rawDefensorId.replace(/\D+/g, '');
+  const defensor = normalizeSearchText(filters?.defensor);
   if (defensorId) {
     binds.defensorId = defensorId;
-    clauses.push('TO_CHAR(a.CEDULA_DEFENSOR) = :defensorId');
+    if (defensor) {
+      binds.defensorFilter = `${defensor}%`;
+      clauses.push(`(
+        TO_CHAR(a.CEDULA_DEFENSOR) = :defensorId
+        OR ${normalizedMojibakeSqlExpr(DEFENSOR_ACTIVO_EXPR)} LIKE :defensorFilter
+      )`);
+    } else {
+      clauses.push('TO_CHAR(a.CEDULA_DEFENSOR) = :defensorId');
+    }
   } else if (rawDefensorId && !String(filters?.defensor || '').trim()) {
     clauses.push('1=0');
   }
@@ -660,14 +675,14 @@ function buildCondenadosSummaryFromAndWhere({
   filters = {},
   scopeDepartamentos = DEFAULT_SCOPE_DEPARTAMENTOS,
   includeUserFilters = true,
-  requireClosedHistoryEvidence = false,
+  includeAssignedUsersHistory = false,
 } = {}) {
   const { clause, binds } = buildCondenadosSummaryWhereClause({
     tipo,
     filters,
     scopeDepartamentos,
     includeUserFilters,
-    requireClosedHistoryEvidence,
+    includeAssignedUsersHistory,
   });
 
   const fromAndWhere = `
@@ -712,17 +727,11 @@ async function listCondenadosSummary({
   const accionCodigo = resolveAccionCodigo(rawAccionCodigo) || resolveAccionCodigo(rawAccionLegada);
   const hasAccionFilter = Boolean(rawAccionCodigo || rawAccionLegada);
   const accionCatalogada = getAccionByCodigo(accionCodigo);
-  const hasAdditionalUserFilters = Object.entries(filters || {}).some(([key, value]) => (
-    !['estadoCodigo', 'estado', 'accionCodigo', 'accion'].includes(key) &&
-    String(value || '').trim() !== ''
-  ));
-  const requireClosedHistoryEvidence =
+  const hasAssignedUsersIdentityFilter = ['documento', 'defensor', 'defensorId', 'nombre']
+    .some((key) => String(filters?.[key] || '').trim() !== '');
+  const includeAssignedUsersHistory =
     String(tipo || '').trim().toLowerCase() === 'all' &&
-    !hasAdditionalUserFilters &&
-    (
-      estadoCodigo === 'CASO_CERRADO' ||
-      accionCatalogada?.estadoCodigos?.includes('CASO_CERRADO')
-    );
+    hasAssignedUsersIdentityFilter;
   const repositoryFilters = {
     ...(filters && typeof filters === 'object' ? filters : {}),
     estadoCodigo: '',
@@ -762,7 +771,7 @@ async function listCondenadosSummary({
     filters: repositoryFilters,
     scopeDepartamentos,
     includeUserFilters: true,
-    requireClosedHistoryEvidence,
+    includeAssignedUsersHistory,
   });
 
   const baseSelectSql = `

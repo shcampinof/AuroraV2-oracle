@@ -13,6 +13,7 @@ import AdminCargasBD from './pages/AdminCargasBD.jsx';
 import AdminUsuarios from './pages/AdminUsuarios.jsx';
 import CajaHerramientas from './pages/CajaHerramientas.jsx';
 import ManualInteractivo from './pages/ManualInteractivo.jsx';
+import ReporteAtencionesDefensores from './pages/ReporteAtencionesDefensores.jsx';
 import { completeAzureAdRedirect, getAuthConfig, logout, refreshSession } from './services/auth.js';
 import { getCondenadosFilterOptions } from './services/api.js';
 import { FEATURE_FLAGS } from './config/featureFlags.js';
@@ -23,6 +24,7 @@ const VISTAS = new Set([
   'registros',
   'asignacion',
   'herramientas',
+  'reporte-atenciones',
   ...(FEATURE_FLAGS.manualInteractivo ? ['manual'] : []),
   'admin-cargas',
   'admin-usuarios',
@@ -232,11 +234,15 @@ function App() {
   }
 
   if (vistaActual === 'asignacion' && puedeAccederPag) {
-    contenido = <AsignacionDefensores isAdmin={puedeAdministrarUsuarios} />;
+    contenido = <AsignacionDefensores />;
   }
 
   if (vistaActual === 'herramientas') {
     contenido = <CajaHerramientas />;
+  }
+
+  if (vistaActual === 'reporte-atenciones') {
+    contenido = <ReporteAtencionesDefensores user={session.user} />;
   }
 
   if (FEATURE_FLAGS.manualInteractivo && vistaActual === 'manual') {

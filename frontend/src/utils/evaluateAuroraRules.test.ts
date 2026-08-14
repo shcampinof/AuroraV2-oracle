@@ -273,7 +273,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     );
   });
 
-  it('AURORA.B5B.DEPENDENCIA.4 - deshabilita motivo y recurso cuando Q47 != "No concede la solicitud"', () => {
+  it('AURORA.B5B.DEPENDENCIA.4 - deshabilita motivo y recurso cuando Q49 != "No concede la solicitud"', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -293,7 +293,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     );
   });
 
-  it('AURORA.B5B.DEPENDENCIA.2 - habilita campos de recurso cuando Q47 = "No concede la solicitud" y Q49 = "Si"', () => {
+  it('AURORA.B5B.DEPENDENCIA.2 - habilita campos de recurso cuando Q49 = "No concede la solicitud" y Q51 = "Si"', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -680,7 +680,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
-  it('AURORA.CIERRE.REGLA47.TRAMITE.1 - en trámite normal cierra el caso cuando Q47 (Sentido de la decisión) está diligenciada', () => {
+  it('AURORA.CIERRE.REGLA47.TRAMITE.1 - en trámite normal cierra el caso cuando Q49 (Sentido de la decisión) está diligenciada', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -691,7 +691,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
-  it('AURORA.ESTADO.RECURSO.TRAMITE.1 - si Q47 niega y Q49 está vacía, la acción es presentar recurso', () => {
+  it('AURORA.ESTADO.RECURSO.TRAMITE.1 - si Q49 niega y Q51 está vacía, la acción es presentar recurso', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -703,7 +703,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Presentar recurso');
   });
 
-  it('AURORA.ESTADO.RECURSO.TRAMITE.2 - si Q47 = "No concede la solicitud" y Q49 = "Sí", pasa a "Pendiente decisión"', () => {
+  it('AURORA.ESTADO.RECURSO.TRAMITE.2 - si Q49 = "No concede la solicitud" y Q51 = "Sí", pasa a "Pendiente decisión"', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -716,7 +716,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Pendiente decisión');
   });
 
-  it('AURORA.ESTADO.RECURSO.TRAMITE.2B - blinda Q47/Q48/Q49 aunque falten aliases de bloques previos', () => {
+  it('AURORA.ESTADO.RECURSO.TRAMITE.2B - blinda Q48/Q49/Q51 aunque falten aliases de bloques previos', () => {
     const answers = {
       [AURORA_FIELD_CATALOG.q52]: 'No concede la solicitud',
       [AURORA_FIELD_CATALOG.q53]: 'Porque no se demostró el arraigo familiar o social de la persona privada de la libertad',
@@ -728,7 +728,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Pendiente decisión');
   });
 
-  it('AURORA.ESTADO.B5B.DECISION_SIN_SENTIDO.1 - Q46 con fecha y Q47 en "-" queda Pendiente decisión', () => {
+  it('AURORA.ESTADO.B5B.DECISION_SIN_SENTIDO.1 - Q48 con fecha y Q49 en "-" queda Pendiente decisión', () => {
     const answers = {
       [AURORA_FIELD_CATALOG.b5NormalDecision]: '2026-05-01',
       [AURORA_FIELD_CATALOG.q52]: '-',

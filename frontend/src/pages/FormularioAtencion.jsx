@@ -1,6 +1,5 @@
 ﻿import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  createDefensor,
   createPplActuacion,
   getCondenadosFilterOptions,
   getDefensoresCatalogo,
@@ -35,6 +34,21 @@ const KEY_FECHA_PRESENTACION_RECURSO = 'Fecha de presentación del recurso';
 const KEY_FECHA_DECISION_RECURSO = 'Fecha de la decisión del recurso';
 const KEY_FECHA_INSISTENCIA_1 = 'Fecha de insistencia 1';
 const KEY_FECHA_INSISTENCIA_2 = 'Fecha de insistencia 2';
+// TODO: reemplazar estas claves temporales cuando estén definidos los nombres de las columnas en la BD.
+const KEY_NUMERO_INSISTENCIAS = 'Número de insistencias';
+const KEY_FECHAS_INSISTENCIA_EXPORT = '__fechasInsistenciaExport';
+const FRONT_ONLY_FECHA_INSISTENCIA_KEYS = [
+  'Fecha de insistencia 3',
+  'Fecha de insistencia 4',
+  'Fecha de insistencia 5',
+];
+const FECHA_INSISTENCIA_KEYS = [
+  KEY_FECHA_INSISTENCIA_1,
+  KEY_FECHA_INSISTENCIA_2,
+  ...FRONT_ONLY_FECHA_INSISTENCIA_KEYS,
+];
+const FRONT_ONLY_INSISTENCIA_KEYS = [KEY_NUMERO_INSISTENCIAS, ...FRONT_ONLY_FECHA_INSISTENCIA_KEYS];
+const OPCIONES_NUMERO_INSISTENCIAS = ['0', '1', '2', '3', '4', '5'];
 const ALIASES_SE_PRESENTA_RECURSO = [
   'Se presenta recurso',
   '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?',
@@ -65,10 +79,7 @@ const OPCIONES_GENERO_AURORA = [
   'Otra identidad',
 ];
 const OPCIONES_ENFOQUE_ETNICO = [
-  'Negro',
-  'Afrocolombiano (a) / Afrodescendiente',
-  'Raizal',
-  'Palenquero',
+  'NARP (Personas Negras, Afrocolombianas, Raizales y Palenqueras)',
   'Gitano (a) o Rrom',
   'Indígena',
   'Migrante',
@@ -118,14 +129,6 @@ function resolveControlledCatalogValue(value, options) {
   return matches.length === 1 ? matches[0] : '';
 }
 
-function normalizeDefensorNombre(value) {
-  return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 const OPCIONES_FASE_TRATAMIENTO = [
   { value: 'OBS', label: 'Observación' },
   { value: 'ALT', label: 'Alta' },
@@ -447,10 +450,10 @@ const EXPORT_FIELDS_AURORA_BLOQUE_5_TRAMITE = [
   },
   { label: '44. Fecha de solicitud de documentos al Inpec (si aplica)', key: 'Fecha de solicitud de documentos al Inpec (si aplica)', isDate: true },
   { label: '45. Fecha de presentación de la solicitud a la autoridad', key: 'Fecha de presentación de la solicitud a la autoridad', isDate: true },
-  { label: '46. Fecha de decisión de la autoridad', key: 'Fecha de decisión de la autoridad', isDate: true },
-  { label: '47. Sentido de la decisión', key: 'Sentido de la decisión' },
-  { label: '48. Fecha de insistencia 1', key: KEY_FECHA_INSISTENCIA_1, isDate: true },
-  { label: '49. Fecha de insistencia 2', key: KEY_FECHA_INSISTENCIA_2, isDate: true },
+  { label: '46. Número de insistencias', key: KEY_NUMERO_INSISTENCIAS },
+  { label: '47. Fechas de las insistencias', key: KEY_FECHAS_INSISTENCIA_EXPORT },
+  { label: '48. Fecha de decisión de la autoridad', key: 'Fecha de decisión de la autoridad', isDate: true },
+  { label: '49. Sentido de la decisión', key: 'Sentido de la decisión' },
   { label: '50. Motivo de la decisión negativa', key: 'Motivo de la decisión negativa' },
   { label: '51. Se presenta recurso', key: 'Se presenta recurso' },
   {
@@ -510,6 +513,32 @@ function isFilled(value) {
   if (!text) return false;
   const normalized = normalizeFieldName(text);
   return normalized !== '-' && normalized !== '--' && normalized !== 'null' && normalized !== 'undefined' && normalized !== 'seleccione' && normalized !== 'todos';
+}
+
+function getNumeroInsistencias(record) {
+  const rawValue = String(record?.[KEY_NUMERO_INSISTENCIAS] ?? '').trim();
+  if (rawValue !== '') {
+    const parsed = Number.parseInt(rawValue, 10);
+    if (Number.isFinite(parsed)) return Math.min(FECHA_INSISTENCIA_KEYS.length, Math.max(0, parsed));
+  }
+
+  return FECHA_INSISTENCIA_KEYS.reduce(
+    (count, key, index) => (String(record?.[key] ?? '').trim() ? index + 1 : count),
+    0
+  );
+}
+
+function getFrontendOnlyInsistencias(record) {
+  return FRONT_ONLY_INSISTENCIA_KEYS.reduce((draft, key) => {
+    if (Object.prototype.hasOwnProperty.call(record || {}, key)) draft[key] = record[key];
+    return draft;
+  }, {});
+}
+
+function withoutFrontendOnlyInsistencias(record) {
+  const next = { ...(record || {}) };
+  FRONT_ONLY_INSISTENCIA_KEYS.forEach((key) => delete next[key]);
+  return next;
 }
 
 function isCierreImposibilidadSeleccionado(value) {
@@ -1353,6 +1382,7 @@ const CAMPOS_LIMPIABLES_DESDE_BLOQUE_3 = new Set(
     'Sentido de la decisión',
     KEY_FECHA_INSISTENCIA_1,
     KEY_FECHA_INSISTENCIA_2,
+    ...FRONT_ONLY_FECHA_INSISTENCIA_KEYS,
     'Motivo de la decisión negativa',
     'Se presenta recurso',
     'Fecha de recurso en caso desfavorable',
@@ -1728,11 +1758,6 @@ export default function FormularioAtencion({ numeroInicial }) {
   const [creandoActuacion, setCreandoActuacion] = useState(false);
   const [mostrarFormularioDetalle, setMostrarFormularioDetalle] = useState(false);
   const [defensoresCatalogo, setDefensoresCatalogo] = useState([]);
-  const [mostrarCrearDefensor, setMostrarCrearDefensor] = useState(false);
-  const [crearDefensorCedula, setCrearDefensorCedula] = useState('');
-  const [crearDefensorNombre, setCrearDefensorNombre] = useState('');
-  const [crearDefensorEstado, setCrearDefensorEstado] = useState('');
-  const [guardandoDefensor, setGuardandoDefensor] = useState(false);
   const [ubicacionCatalogo, setUbicacionCatalogo] = useState({
     departamentos: [],
     municipios: [],
@@ -1868,116 +1893,6 @@ export default function FormularioAtencion({ numeroInicial }) {
     return Array.from(dedup).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
   }, [defensoresCatalogo, registro]);
 
-  async function guardarDefensorDesdeFormulario() {
-    const cedula = String(crearDefensorCedula || '').replace(/\D+/g, '');
-    const nombre = normalizeDefensorNombre(crearDefensorNombre);
-    setCrearDefensorEstado('');
-
-    if (!cedula) {
-      setCrearDefensorEstado('La cédula del defensor es obligatoria.');
-      return;
-    }
-    if (!nombre) {
-      setCrearDefensorEstado('El nombre del defensor es obligatorio.');
-      return;
-    }
-    if (!/^[A-Z\s]+$/.test(nombre)) {
-      setCrearDefensorEstado('El nombre solo puede contener letras y espacios.');
-      return;
-    }
-    if (opcionesDefensores.some((item) => normalizeDefensorNombre(item) === nombre)) {
-      setCrearDefensorEstado('El defensor ya existe en el catálogo.');
-      return;
-    }
-
-    setGuardandoDefensor(true);
-    try {
-      const data = await createDefensor({ cedula, nombre });
-      const creado = normalizeDefensorNombre(data?.opcion?.nombre || data?.defensor || nombre);
-      const opcion = {
-        id: String(data?.opcion?.id || cedula),
-        nombre: creado,
-      };
-      setDefensoresCatalogo((prev) => {
-        const restantes = (Array.isArray(prev) ? prev : []).filter(
-          (item) => normalizeDefensorNombre(item?.nombre) !== creado
-        );
-        return [...restantes, opcion];
-      });
-      handleChange('Defensor(a) Público(a) Asignado para tramitar la solicitud', creado);
-      setCrearDefensorCedula('');
-      setCrearDefensorNombre('');
-      setCrearDefensorEstado('Defensor creado y seleccionado.');
-      setMostrarCrearDefensor(false);
-      await cargarDefensoresFormulario({ force: true });
-      window.dispatchEvent(new CustomEvent('aurora:defensores-updated'));
-    } catch (e) {
-      reportError(e, 'formulario-entrevista:crear-defensor');
-      setCrearDefensorEstado(String(e?.message || 'No fue posible crear el defensor.'));
-    } finally {
-      setGuardandoDefensor(false);
-    }
-  }
-
-  function renderCrearDefensorCompacto() {
-    return (
-      <div className="defensor-create-inline">
-        <div className="defensor-create-inline__actions">
-          <button
-            className="secondary-button defensor-create-inline__toggle"
-            type="button"
-            onClick={() => {
-              setMostrarCrearDefensor((value) => !value);
-              setCrearDefensorEstado('');
-            }}
-          >
-            {mostrarCrearDefensor ? 'Cancelar' : 'Crear defensor'}
-          </button>
-          <button
-            className="secondary-button defensor-create-inline__toggle"
-            type="button"
-            onClick={handleLimpiarDefensor}
-            disabled={!getDefensorAsignadoValue(registro)}
-          >
-            Limpiar defensor
-          </button>
-        </div>
-        {mostrarCrearDefensor && (
-          <div className="defensor-create-inline__form">
-            <div className="form-field">
-              <label>Cédula</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={crearDefensorCedula}
-                onChange={(event) => setCrearDefensorCedula(String(event.target.value || '').replace(/\D+/g, ''))}
-                placeholder="Número de cédula"
-              />
-            </div>
-            <div className="form-field">
-              <label>Nombre completo</label>
-              <input
-                type="text"
-                value={crearDefensorNombre}
-                onChange={(event) => setCrearDefensorNombre(normalizeDefensorNombre(event.target.value))}
-                placeholder="NOMBRE EN MAYÚSCULA"
-              />
-            </div>
-            <button
-              className="primary-button defensor-create-inline__save"
-              type="button"
-              onClick={guardarDefensorDesdeFormulario}
-              disabled={guardandoDefensor}
-            >
-              {guardandoDefensor ? 'Guardando…' : 'Guardar defensor'}
-            </button>
-          </div>
-        )}
-        {crearDefensorEstado && <p className="hint-text">{crearDefensorEstado}</p>}
-      </div>
-    );
-  }
-
   const centroReclusionActual = String(registro?.[CAMPO_ESTABLECIMIENTO] ?? '').trim();
   const opcionesDepartamentosReclusion = useMemo(
     () => appendCurrentCatalogValue(ubicacionCatalogo.departamentos, departamentoReclusionActual),
@@ -2001,6 +1916,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   }, [departamentoReclusionActual, municipioReclusionActual, centroReclusionCanonico, ubicacionCatalogo.centros, ubicacionCatalogoDependiente.centros]);
 
   const flow = useMemo(() => (registro ? computeFlow(registro, tipoRegistro) : null), [registro, tipoRegistro]);
+  const numeroInsistencias = useMemo(() => getNumeroInsistencias(registro), [registro]);
   const personaFueraPrision = useMemo(() => Boolean(registro) && !isSituacionActiva(registro), [registro]);
   const cambioSituacionRegistrado = Boolean(
     registro?.__historialActivoInactivo ?? registro?.tieneHistorialActivoInactivo
@@ -2082,7 +1998,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   const buildUpdatePayload = useCallback(
     (nextData) => {
-      const payload = { data: nextData };
+      const payload = { data: withoutFrontendOnlyInsistencias(nextData) };
       const id = String(actuacionActivaId || '').trim();
       if (id) payload.actuacionId = id;
       return payload;
@@ -2173,6 +2089,17 @@ export default function FormularioAtencion({ numeroInicial }) {
       }
 
       const normalizedName = normalizeFieldName(name);
+      if (normalizedName === normalizeFieldName(KEY_NUMERO_INSISTENCIAS)) {
+        const nextCount = Math.min(
+          FECHA_INSISTENCIA_KEYS.length,
+          Math.max(0, Number.parseInt(String(value ?? ''), 10) || 0)
+        );
+        setFieldValueAcrossAliases(base, KEY_NUMERO_INSISTENCIAS, String(nextCount));
+        FECHA_INSISTENCIA_KEYS.slice(nextCount).forEach((key) => {
+          setFieldValueAcrossAliases(base, key, '');
+        });
+        return wrapRegistroForLookup(base);
+      }
       if (normalizedName === normalizeFieldName(CAMPO_DEPARTAMENTO_RECLUSION)) {
         setFieldValueAcrossAliases(base, CAMPO_DEPARTAMENTO_RECLUSION, value);
         setFieldValueAcrossAliases(base, CAMPO_MUNICIPIO_RECLUSION, '');
@@ -2249,22 +2176,6 @@ export default function FormularioAtencion({ numeroInicial }) {
       setFieldValueAcrossAliases(base, name, value);
       return wrapRegistroForLookup(base);
     });
-  }
-
-  function handleLimpiarDefensor() {
-    if (personaFueraPrision) return;
-    setRegistro((prev) => {
-      const base = { ...unwrapRegistro(prev) };
-      Object.keys(base).forEach((key) => {
-        if (isDefensorFieldName(key)) base[key] = '';
-      });
-      DEFENSOR_DIRECT_KEYS.forEach((key) => {
-        base[key] = '';
-      });
-      base.__desasignarDefensor = true;
-      return wrapRegistroForLookup(base);
-    });
-    setCrearDefensorEstado('Defensor eliminado del formulario. Guarde los cambios para desasignar el caso.');
   }
 
   function handleSeleccionarActuacion(actuacion) {
@@ -2563,7 +2474,7 @@ export default function FormularioAtencion({ numeroInicial }) {
         iso: toIsoDateString(fechaPresentacionSolicitudTramite),
       },
       {
-        label: '46. Fecha de decisión de la autoridad',
+        label: '48. Fecha de decisión de la autoridad',
         iso: toIsoDateString(fechaDecisionAutoridadBloque5),
       },
     ];
@@ -2745,11 +2656,11 @@ export default function FormularioAtencion({ numeroInicial }) {
       actuacionIncluyeUtilidadPublica &&
       isFilled(sentidoDecisionBloque5) &&
       norm(sentidoDecisionBloque5) !== norm('Niega utilidad pública');
-    const cierrePorQ47Tramite =
+    const cierrePorQ49Tramite =
       !actuacionIncluyeUtilidadPublica &&
       isFilled(sentidoDecisionBloque5) &&
       !isNoConcedeSubrogadoPenal(sentidoDecisionBloque5);
-    return cierrePorQ57 || cierrePorQ52Utilidad || cierrePorQ47Tramite;
+    return cierrePorQ57 || cierrePorQ52Utilidad || cierrePorQ49Tramite;
   }, [
     auroraActivo,
     cierreImposibilidadTramite,
@@ -2925,7 +2836,7 @@ export default function FormularioAtencion({ numeroInicial }) {
         isFilled(sentidoDecisionBloque5) &&
         !isNoConcedeSubrogadoPenal(sentidoDecisionBloque5)
       ) {
-        return `Caso cerrado por decisión de la autoridad (pregunta 47): ${sentidoDecisionBloque5}.`;
+        return `Caso cerrado por decisión de la autoridad (pregunta 49): ${sentidoDecisionBloque5}.`;
       }
       return 'Caso cerrado por resultado final del bloque 5.';
     }
@@ -2956,7 +2867,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
     if (auroraActivo && !actuacionIncluyeUtilidadPublica) {
       if (isFilled(sentidoDecisionBloque5) && !isNoConcedeSubrogadoPenal(sentidoDecisionBloque5)) {
-        return `Caso cerrado por decisión de la autoridad (pregunta 47): ${sentidoDecisionBloque5}.`;
+        return `Caso cerrado por decisión de la autoridad (pregunta 49): ${sentidoDecisionBloque5}.`;
       }
       if (recursoNoPresentadoBloque5) return 'Caso cerrado: no se presenta recurso.';
       if (sentidoResuelveSolicitudBloque5) {
@@ -3208,7 +3119,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   }, [registro, auroraActivo, actuacionIncluyeUtilidadPublica, habilitarNegativaUtilidadPublica]);
 
   useEffect(() => {
-    // Compatibilidad retroactiva: migra etiquetas históricas de Q47 a las nuevas.
+    // Compatibilidad retroactiva: migra etiquetas históricas del sentido de la decisión a las nuevas.
     if (!registro || !auroraActivo || actuacionIncluyeUtilidadPublica) return;
     const current = readRegistroTextByAliases(registro, ['Sentido de la decisión', 'Sentido de la decision']);
     const normalized = normalizeSentidoDecisionTramite(current);
@@ -3225,7 +3136,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   useEffect(() => {
     // Regla: AURORA.B5B.DEPENDENCIA.4
-    // Si en tramite normal Q47 != "No concede la solicitud", limpiar motivo y campos de recurso.
+    // Si en trámite normal Q49 != "No concede la solicitud", limpiar motivo y campos de recurso.
     if (!registro || !auroraActivo || actuacionIncluyeUtilidadPublica) return;
     if (habilitarNegativaTramiteNormal) return;
 
@@ -3461,6 +3372,16 @@ export default function FormularioAtencion({ numeroInicial }) {
           }
           if (field.key === 'Fecha de presentación de la solicitud a la autoridad') {
             return { ...field, value: fechaPresentacionSolicitudTramite };
+          }
+          if (field.key === KEY_NUMERO_INSISTENCIAS) {
+            return { ...field, value: String(numeroInsistencias) };
+          }
+          if (field.key === KEY_FECHAS_INSISTENCIA_EXPORT) {
+            const fechas = FECHA_INSISTENCIA_KEYS.slice(0, numeroInsistencias).map((key, index) => {
+              const fecha = String(registro?.[key] ?? '').trim();
+              return `Insistencia ${index + 1}: ${fecha ? formatDateForExport(fecha) : 'Sin dato'}`;
+            });
+            return { ...field, value: fechas.join('\n') };
           }
           return field;
         });
@@ -3788,7 +3709,13 @@ export default function FormularioAtencion({ numeroInicial }) {
       const nextTipo = String(updated?.tipo ?? tipoRegistro ?? '').trim();
       if (nextTipo) setTipoRegistro(nextTipo);
       if (updated?.registro && typeof updated.registro === 'object') {
-        setRegistro(wrapRegistroForLookup({ ...updated.registro, __tipoApi: nextTipo || tipoRegistro }));
+        setRegistro(
+          wrapRegistroForLookup({
+            ...updated.registro,
+            ...getFrontendOnlyInsistencias(payloadBase),
+            __tipoApi: nextTipo || tipoRegistro,
+          })
+        );
       }
 
       if (isQueuedResponse(updated)) {
@@ -4382,7 +4309,6 @@ export default function FormularioAtencion({ numeroInicial }) {
                     options={opcionesDefensores}
                     showObligatoria
                   />
-                  {renderCrearDefensorCompacto()}
                 </div>
 
                 <Campo
@@ -4805,7 +4731,36 @@ export default function FormularioAtencion({ numeroInicial }) {
                             disabled={bloquearBloque5}
                           />
                           <Campo
-                            label="46. Fecha de decisión de la autoridad"
+                            label="46. Número de insistencias"
+                            name={KEY_NUMERO_INSISTENCIAS}
+                            type="select"
+                            value={String(numeroInsistencias)}
+                            onChange={handleChange}
+                            options={OPCIONES_NUMERO_INSISTENCIAS}
+                            required={false}
+                            disabled={bloquearBloque5}
+                          />
+                          {numeroInsistencias > 0 && (
+                            <fieldset className="insistencias-fieldset">
+                              <legend>47. Fechas de las insistencias</legend>
+                              <div className="insistencias-fields-grid">
+                                {FECHA_INSISTENCIA_KEYS.slice(0, numeroInsistencias).map((key, index) => (
+                                  <Campo
+                                    key={key}
+                                    label={`Fecha de insistencia ${index + 1}`}
+                                    name={key}
+                                    type="date"
+                                    value={registro[key]}
+                                    onChange={handleChange}
+                                    required={false}
+                                    disabled={bloquearBloque5}
+                                  />
+                                ))}
+                              </div>
+                            </fieldset>
+                          )}
+                          <Campo
+                            label="48. Fecha de decisión de la autoridad"
                             name="Fecha de decisión de la autoridad"
                             type="date"
                             value={fechaDecisionAutoridadBloque5}
@@ -4816,7 +4771,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                             showObligatoria
                           />
                           <Campo
-                            label="47. Sentido de la decisión"
+                            label="49. Sentido de la decisión"
                             name="Sentido de la decisión"
                             type="select"
                             value={sentidoDecisionBloque5}
@@ -4824,24 +4779,6 @@ export default function FormularioAtencion({ numeroInicial }) {
                             options={OPCIONES_BLOQUE_5B_SENTIDO_DECISION}
                             disabled={bloquearBloque5}
                             showObligatoria
-                          />
-                          <Campo
-                            label="48. Fecha de insistencia 1"
-                            name={KEY_FECHA_INSISTENCIA_1}
-                            type="date"
-                            value={registro[KEY_FECHA_INSISTENCIA_1]}
-                            onChange={handleChange}
-                            required={false}
-                            disabled={bloquearBloque5}
-                          />
-                          <Campo
-                            label="49. Fecha de insistencia 2"
-                            name={KEY_FECHA_INSISTENCIA_2}
-                            type="date"
-                            value={registro[KEY_FECHA_INSISTENCIA_2]}
-                            onChange={handleChange}
-                            required={false}
-                            disabled={bloquearBloque5}
                           />
                           <Campo
                             label="50. Motivo de la decisión negativa"
@@ -4992,7 +4929,6 @@ export default function FormularioAtencion({ numeroInicial }) {
                         required
                         showObligatoria
                       />
-                      {renderCrearDefensorCompacto()}
                     </div>
                     <Campo
                       label="20. Fecha de an\u00e1lisis jur\u00eddico del caso"

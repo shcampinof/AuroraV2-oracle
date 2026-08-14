@@ -13,10 +13,10 @@ import {
 } from '../services/api.js';
 import Toast from '../components/Toast.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
-import PagUsuariosAdmin from '../components/PagUsuariosAdmin.jsx';
 import { getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
 import { displayOrDash } from '../utils/pplDisplay.js';
 import { reportError } from '../utils/reportError.js';
+import { buildAsignacionBackendFilters } from '../utils/asignacionDefensores.js';
 
 function tieneDefensor(value) {
   const cleaned = String(value ?? '').trim();
@@ -101,8 +101,8 @@ const AsignacionRow = memo(function AsignacionRow({ row, selected, onToggle }) {
   );
 });
 
-function AsignacionDefensores({ isAdmin = false }) {
-  const [tab, setTab] = useState('asignacion'); // 'asignacion' | 'reasignacion' | 'crearDefensor' | 'usuariosPag'
+function AsignacionDefensores() {
+  const [tab, setTab] = useState('asignacion'); // 'asignacion' | 'reasignacion' | 'eliminarAsignaciones' | 'crearDefensor'
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
   const [toastOpen, setToastOpen] = useState(false);
@@ -156,20 +156,8 @@ function AsignacionDefensores({ isAdmin = false }) {
   });
   const [metaConsulta, setMetaConsulta] = useState(null);
   const deferredNuevoDefensorInput = useDeferredValue(nuevoDefensorInput);
-
-  const buildBackendFilters = useCallback((currentTab, filtros) => {
-    const safe = filtros && typeof filtros === 'object' ? filtros : {};
-    return {
-      documento: String(safe.documento || '').trim(),
-      departamento: String(safe.departamento || '').trim(),
-      municipio: String(safe.municipio || '').trim(),
-      lugar: String(safe.lugar || '').trim(),
-      centroId: String(safe.centroId || '').trim(),
-      potencialSubrogado: String(safe.potencialSubrogado || '').trim(),
-      defensor: currentTab === 'reasignacion' ? String(safe.defensorActual || '').trim() : '',
-      asignacionEstado: currentTab === 'reasignacion' ? 'con_defensor' : 'sin_defensor',
-    };
-  }, []);
+  const tabGestionaAsignacionesExistentes =
+    tab === 'reasignacion' || tab === 'eliminarAsignaciones';
 
   const cargarPpl = useCallback(async (filtros = {}, currentTab = 'asignacion', nextPage = 1) => {
     setCargando(true);
@@ -179,7 +167,7 @@ function AsignacionDefensores({ isAdmin = false }) {
         tipo: 'condenado',
         page: nextPage,
         pageSize: PAGE_SIZE,
-        filters: buildBackendFilters(currentTab, filtros),
+        filters: buildAsignacionBackendFilters(currentTab, filtros),
       });
       setRows(Array.isArray(data?.rows) ? data.rows : []);
       setMetaConsulta(data?.meta || null);
@@ -195,7 +183,7 @@ function AsignacionDefensores({ isAdmin = false }) {
     } finally {
       setCargando(false);
     }
-  }, [buildBackendFilters]);
+  }, []);
 
   const cargarDefensoresActuales = useCallback(async () => {
     const normalizarLista = (catalogo) => {
@@ -423,7 +411,7 @@ function AsignacionDefensores({ isAdmin = false }) {
   }, [fDepartamento, fMunicipio, opcionesFiltroDependientes.centros, opcionesFiltro.centros]);
 
   const rowsTab = useMemo(() => {
-    if (tab === 'asignacion' || tab === 'reasignacion') return rows;
+    if (tab === 'asignacion' || tab === 'reasignacion' || tab === 'eliminarAsignaciones') return rows;
     return [];
   }, [rows, tab]);
 
@@ -439,7 +427,7 @@ function AsignacionDefensores({ isAdmin = false }) {
   }, [rowsTab]);
 
   const defensorActualSeleccionados = useMemo(() => {
-    if (tab !== 'reasignacion') return '-';
+    if (tab !== 'reasignacion' && tab !== 'eliminarAsignaciones') return '-';
     const current = Array.from(seleccionados)
       .map((doc) => rowsPorDocumento.get(String(doc)))
       .filter(Boolean)
@@ -468,7 +456,7 @@ function AsignacionDefensores({ isAdmin = false }) {
       lugar: String(fLugar || '').trim(),
       centroId,
       potencialSubrogado: String(fPotencialSubrogado || '').trim(),
-      defensorActual: tab === 'reasignacion' ? String(fDefensorActual || '').trim() : '',
+      defensorActual: tabGestionaAsignacionesExistentes ? String(fDefensorActual || '').trim() : '',
     };
 
     const hasUserFilter = [
@@ -623,9 +611,9 @@ function AsignacionDefensores({ isAdmin = false }) {
     }
   }
 
-  async function desasignarSeleccionados() {
+  async function eliminarAsignacionesSeleccionadas() {
     if (!pagValidado?.cedula) {
-      setError('Debe validar la cedula del PAG antes de desasignar.');
+      setError('Debe validar la cedula del PAG antes de eliminar asignaciones.');
       return;
     }
 
@@ -634,7 +622,10 @@ function AsignacionDefensores({ isAdmin = false }) {
       setError('Seleccione al menos un PPL.');
       return;
     }
-    if (!window.confirm(`¿Confirmar la desasignación de ${documentos.length} caso(s)?`)) return;
+    const confirmar = window.confirm(
+      `¿Eliminar la asignación del defensor en ${documentos.length} caso(s)? Los casos y su historial se conservarán.`
+    );
+    if (!confirmar) return;
 
     setCargando(true);
     setError('');
@@ -643,8 +634,8 @@ function AsignacionDefensores({ isAdmin = false }) {
       const data = await unassignDefensorPpl(documentos, { pagCedula: pagValidado.cedula });
       setToastMessage(
         isQueuedResponse(data)
-          ? 'Desasignación guardada en cola. Se sincronizará cuando vuelva la conexión.'
-          : 'Casos desasignados correctamente.'
+          ? 'Eliminación de asignaciones guardada en cola. Se sincronizará cuando vuelva la conexión.'
+          : `Se eliminaron ${Number(data?.updated || 0)} asignación(es) correctamente.`
       );
       setToastOpen(true);
       setSeleccionados(new Set());
@@ -653,8 +644,8 @@ function AsignacionDefensores({ isAdmin = false }) {
         await cargarDefensoresActuales();
       }
     } catch (e) {
-      reportError(e, 'asignacion-defensores:desasignar');
-      setError(String(e?.message || 'Error desasignando los casos.'));
+      reportError(e, 'asignacion-defensores:eliminar-asignaciones');
+      setError(String(e?.message || 'Error eliminando las asignaciones.'));
     } finally {
       setCargando(false);
     }
@@ -743,9 +734,11 @@ function AsignacionDefensores({ isAdmin = false }) {
     setPaginaDestino('1');
     setBusquedaRealizada(false);
 
-    if (nextTab === 'usuariosPag') return;
-
-    if (nextTab === 'asignacion' || nextTab === 'reasignacion') {
+    if (
+      nextTab === 'asignacion' ||
+      nextTab === 'reasignacion' ||
+      nextTab === 'eliminarAsignaciones'
+    ) {
       cargarDefensoresActuales();
     }
 
@@ -780,7 +773,7 @@ function AsignacionDefensores({ isAdmin = false }) {
     guardandoDefensor ||
     String(crearDefensorCedula || '').trim() === '' ||
     String(crearDefensorNombre || '').trim() === '';
-  const mostrarOverlayCarga = !['crearDefensor', 'usuariosPag'].includes(tab) && (cargando || validandoPag);
+  const mostrarOverlayCarga = tab !== 'crearDefensor' && (cargando || validandoPag);
   const mensajeOverlayCarga = 'Cargando información...';
 
   return (
@@ -793,13 +786,13 @@ function AsignacionDefensores({ isAdmin = false }) {
         onClose={() => setToastOpen(false)}
       />
 
-      {!['crearDefensor', 'usuariosPag'].includes(tab) && busquedaRealizada && metaConsulta && (
+      {tab !== 'crearDefensor' && busquedaRealizada && metaConsulta && (
         <p className="hint-text">
           Se encontraron {totalResultados} registros.
         </p>
       )}
 
-      {!['crearDefensor', 'usuariosPag'].includes(tab) && error && <p className="hint-text">{error}</p>}
+      {tab !== 'crearDefensor' && error && <p className="hint-text">{error}</p>}
       <div className="search-row" style={{ marginTop: '0.75rem' }}>
         <button
           className={`primary-button aurora-tab ${tab === 'asignacion' ? 'active' : ''}`}
@@ -818,6 +811,14 @@ function AsignacionDefensores({ isAdmin = false }) {
           Reasignación
         </button>
         <button
+          className={`primary-button aurora-tab ${tab === 'eliminarAsignaciones' ? 'active' : ''}`}
+          type="button"
+          aria-pressed={tab === 'eliminarAsignaciones'}
+          onClick={() => cambiarTab('eliminarAsignaciones')}
+        >
+          Eliminar asignaciones
+        </button>
+        <button
           className={`primary-button aurora-tab ${tab === 'crearDefensor' ? 'active' : ''}`}
           type="button"
           aria-pressed={tab === 'crearDefensor'}
@@ -825,16 +826,6 @@ function AsignacionDefensores({ isAdmin = false }) {
         >
           Crear defensor
         </button>
-        {isAdmin ? (
-          <button
-            className={`primary-button aurora-tab ${tab === 'usuariosPag' ? 'active' : ''}`}
-            type="button"
-            aria-pressed={tab === 'usuariosPag'}
-            onClick={() => cambiarTab('usuariosPag')}
-          >
-            Accesos PAG
-          </button>
-        ) : null}
       </div>
 
       {tab === 'crearDefensor' ? (
@@ -895,8 +886,6 @@ function AsignacionDefensores({ isAdmin = false }) {
             </button>
           </div>
         </div>
-      ) : tab === 'usuariosPag' && isAdmin ? (
-        <PagUsuariosAdmin />
       ) : (
         <>
       <div className="card" style={{ marginTop: '1rem' }}>
@@ -946,7 +935,7 @@ function AsignacionDefensores({ isAdmin = false }) {
         <h3 className="filter-title">Filtros</h3>
 
         <div className="grid-2" style={{ marginTop: '1rem' }}>
-          {tab === 'reasignacion' && (
+          {tabGestionaAsignacionesExistentes && (
             <div className="form-field">
               <label>Defensor público actual</label>
               <input
@@ -1069,10 +1058,10 @@ function AsignacionDefensores({ isAdmin = false }) {
           filtrosAplicados.lugar ||
           filtrosAplicados.documento ||
           filtrosAplicados.potencialSubrogado ||
-          (tab === 'reasignacion' && filtrosAplicados.defensorActual)) && (
+          (tabGestionaAsignacionesExistentes && filtrosAplicados.defensorActual)) && (
           <p className="hint-text" style={{ marginTop: '0.75rem' }}>
             Filtros aplicados:{' '}
-            {tab === 'reasignacion' ? `${filtrosAplicados.defensorActual || '-'} / ` : ''}
+            {tabGestionaAsignacionesExistentes ? `${filtrosAplicados.defensorActual || '-'} / ` : ''}
             {filtrosAplicados.departamento || '-'} / {filtrosAplicados.municipio || '-'} /{' '}
             {filtrosAplicados.lugar || '-'} / {filtrosAplicados.documento || '-'} /{' '}
             {filtrosAplicados.potencialSubrogado === 'potenciales_beneficiarios'
@@ -1090,61 +1079,73 @@ function AsignacionDefensores({ isAdmin = false }) {
 
       <div className="card" style={{ marginTop: '1rem' }}>
         <h3 className="block-title">
-          {tab === 'asignacion' ? 'Asignación de defensor' : 'Reasignación de defensor'}
+          {tab === 'asignacion'
+            ? 'Asignación de defensor'
+            : tab === 'reasignacion'
+              ? 'Reasignación de defensor'
+              : 'Eliminar asignaciones'}
         </h3>
 
-        {tab === 'reasignacion' && (
+        {tabGestionaAsignacionesExistentes && (
           <p className="hint-text">Defensor actual (seleccionados): {defensorActualSeleccionados}</p>
         )}
 
-        <div className="grid-2">
-          <div className="form-field">
-            <label>Nuevo defensor</label>
-            <input
-              list="pag-nuevo-defensor-list"
-              className="input-text"
-              placeholder="Escriba para buscar defensor"
-              value={nuevoDefensorInput}
-              onChange={(e) => {
-                const next = normalizeDefensorNombre(e.target.value);
-                setNuevoDefensorInput(next);
-                const hit = defensoresPorNombreNormalizado.get(normalizeDefensorNombre(next));
-                setNuevoDefensorId(hit?.id ? String(hit.id) : '');
-              }}
-            />
-            <datalist id="pag-nuevo-defensor-list">
-              {defensoresSugeridos.map((d) => (
-                <option key={d.id} value={d.nombre} />
-              ))}
-            </datalist>
-            {defensoresError && <p className="hint-text">{defensoresError}</p>}
-            {!defensoresError && defensoresOrdenados.length === 0 && (
-              <p className="hint-text">No hay defensores para mostrar.</p>
-            )}
-            <button
-              className="primary-button"
-              type="button"
-              onClick={cargarDefensoresActuales}
-              style={{ marginTop: '0.5rem' }}
-            >
-              Recargar defensores
-            </button>
+        {tab === 'eliminarAsignaciones' ? (
+          <p className="hint-text">
+            Seleccione los casos y elimine únicamente el vínculo con el defensor actual. Los casos y
+            su historial no se eliminarán.
+          </p>
+        ) : (
+          <div className="grid-2">
+            <div className="form-field">
+              <label>Nuevo defensor</label>
+              <input
+                list="pag-nuevo-defensor-list"
+                className="input-text"
+                placeholder="Escriba para buscar defensor"
+                value={nuevoDefensorInput}
+                onChange={(e) => {
+                  const next = normalizeDefensorNombre(e.target.value);
+                  setNuevoDefensorInput(next);
+                  const hit = defensoresPorNombreNormalizado.get(normalizeDefensorNombre(next));
+                  setNuevoDefensorId(hit?.id ? String(hit.id) : '');
+                }}
+              />
+              <datalist id="pag-nuevo-defensor-list">
+                {defensoresSugeridos.map((d) => (
+                  <option key={d.id} value={d.nombre} />
+                ))}
+              </datalist>
+              {defensoresError && <p className="hint-text">{defensoresError}</p>}
+              {!defensoresError && defensoresOrdenados.length === 0 && (
+                <p className="hint-text">No hay defensores para mostrar.</p>
+              )}
+              <button
+                className="primary-button"
+                type="button"
+                onClick={cargarDefensoresActuales}
+                style={{ marginTop: '0.5rem' }}
+              >
+                Recargar defensores
+              </button>
+            </div>
+            <div />
           </div>
-          <div />
-        </div>
+        )}
 
         <div className="actions-center">
-          <button className="save-button" onClick={guardarAsignacion} disabled={cargando || !pagValidado?.cedula}>
-            {tab === 'asignacion' ? 'GUARDAR ASIGNACIÓN' : 'GUARDAR REASIGNACIÓN'}
-          </button>
-          {tab === 'reasignacion' && (
+          {tab === 'eliminarAsignaciones' ? (
             <button
-              className="secondary-button"
+              className="danger-button"
               type="button"
-              onClick={desasignarSeleccionados}
-              disabled={cargando || !pagValidado?.cedula}
+              onClick={eliminarAsignacionesSeleccionadas}
+              disabled={cargando || !pagValidado?.cedula || seleccionados.size === 0}
             >
-              DESASIGNAR CASOS SELECCIONADOS
+              ELIMINAR ASIGNACIONES
+            </button>
+          ) : (
+            <button className="save-button" onClick={guardarAsignacion} disabled={cargando || !pagValidado?.cedula}>
+              {tab === 'asignacion' ? 'GUARDAR ASIGNACIÓN' : 'GUARDAR REASIGNACIÓN'}
             </button>
           )}
         </div>

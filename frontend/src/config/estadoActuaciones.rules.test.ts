@@ -91,7 +91,7 @@ describe('estadoActuaciones.rules', () => {
     expect(estado.claseFinal).toBe('estado--gris');
   });
 
-  it('ESTADO.CASO_CERRADO.2 - en trámite normal cierra cuando Q47 (Sentido de la decisión) está diligenciada', () => {
+  it('ESTADO.CASO_CERRADO.2 - en trámite normal cierra cuando Q49 (Sentido de la decisión) está diligenciada', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
       [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(1),
@@ -103,7 +103,7 @@ describe('estadoActuaciones.rules', () => {
     expect(estado.claseFinal).toBe('estado--gris');
   });
 
-  it('ESTADO.RECURSO.TRAMITE.1 - con Q47 negativa y Q49 vacía, queda Presentar recurso', () => {
+  it('ESTADO.RECURSO.TRAMITE.1 - con Q49 negativa y Q51 vacía, queda Presentar recurso', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
       [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(1),
@@ -116,7 +116,7 @@ describe('estadoActuaciones.rules', () => {
     expect(estado.claseFinal).toBe('estado--rojo');
   });
 
-  it('ESTADO.RECURSO.TRAMITE.2 - con Q47 = "No concede la solicitud" y Q49 = "Sí", queda Pendiente decisión', () => {
+  it('ESTADO.RECURSO.TRAMITE.2 - con Q49 = "No concede la solicitud" y Q51 = "Sí", queda Pendiente decisión', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
       [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(1),

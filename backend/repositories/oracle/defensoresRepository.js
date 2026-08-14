@@ -55,13 +55,18 @@ function toOptions(items = []) {
         const count = (ids.get(baseId) || 0) + 1;
         ids.set(baseId, count);
         const id = count === 1 ? baseId : `${baseId}_${count}`;
-        return { id, nombre: displayNombre };
+        return { id, nombre: displayNombre, regional: '', correo: '' };
       }
 
       const nombre = String(item?.nombre ?? item?.NOMBRE ?? '').replace(/\s+/g, ' ').trim();
       if (!nombre) return null;
       const cedula = String(item?.cedula ?? item?.CEDULA ?? item?.id ?? '').trim();
-      return { id: cedula || buildDefensorIdFromNombre(nombre), nombre };
+      return {
+        id: cedula || buildDefensorIdFromNombre(nombre),
+        nombre,
+        regional: String(item?.regional ?? item?.REGIONAL ?? '').trim(),
+        correo: String(item?.correo ?? item?.CORREO ?? '').trim(),
+      };
     })
     .filter(Boolean);
 }

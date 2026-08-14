@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node scripts/auth-config.test.js && node scripts/pag-access.test.js && node scripts/user-csv-import.test.js && node scripts/carga-bd-service.test.js && node scripts/actuacion-cleanup-service.test.js && node scripts/asignacion-safety.test.js && node scripts/fecha-insistencia.test.js && node scripts/mojibake-search.test.js && node scripts/text-normalization.test.js && node scripts/catalogos-homologacion.test.js && node scripts/homologation-audit.test.js && node scripts/condenados-filter-state.test.js && node scripts/assigned-users-contract.test.js",
+    "test": "node scripts/auth-config.test.js && node scripts/pag-access.test.js && node scripts/user-csv-import.test.js && node scripts/carga-bd-service.test.js && node scripts/actuacion-cleanup-service.test.js && node scripts/asignacion-safety.test.js && node scripts/fecha-insistencia.test.js && node scripts/mojibake-search.test.js && node scripts/text-normalization.test.js && node scripts/catalogos-homologacion.test.js && node scripts/homologation-audit.test.js && node scripts/condenados-filter-state.test.js && node scripts/assigned-users-contract.test.js && node scripts/reporte-atenciones.test.js",
     "start": "node index.js",
     "start:prod": "node index.js",
     "dev": "nodemon index.js",
