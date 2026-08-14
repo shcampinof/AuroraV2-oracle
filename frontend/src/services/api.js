@@ -537,8 +537,10 @@ export async function assignDefensorPpl(documento, defensor, options = {}) {
     }),
   });
 
-  if (!res.ok) throw new Error('Error guardando la asignacion de defensor');
   const data = await readJsonOrThrow(res, 'Error guardando la asignacion de defensor');
+  if (!res.ok) {
+    throw new Error(String(data?.message || 'Error guardando la asignación de defensor'));
+  }
   invalidateCondenadosClientCache();
   return normalizeQueuedResponse(data, { documentos, defensor: defensorNombre });
 }

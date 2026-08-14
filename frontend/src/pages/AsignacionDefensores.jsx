@@ -595,7 +595,9 @@ function AsignacionDefensores() {
       setToastMessage(
         isQueuedResponse(data)
           ? 'Asignacion guardada en cola. Se sincronizara cuando vuelva la conexion.'
-          : 'Aurora - Cambios guardados correctamente'
+          : Number(data?.updated || 0) < documentos.length
+            ? `Se actualizaron ${Number(data?.updated || 0)} de ${documentos.length} asignación(es). Recargue y revise los casos pendientes.`
+            : `Se actualizaron ${Number(data?.updated || 0)} asignación(es) correctamente.`
       );
       setToastOpen(true);
       setSeleccionados(new Set());
@@ -635,7 +637,9 @@ function AsignacionDefensores() {
       setToastMessage(
         isQueuedResponse(data)
           ? 'Eliminación de asignaciones guardada en cola. Se sincronizará cuando vuelva la conexión.'
-          : `Se eliminaron ${Number(data?.updated || 0)} asignación(es) correctamente.`
+          : Number(data?.updated || 0) < documentos.length
+            ? `Se eliminaron ${Number(data?.updated || 0)} de ${documentos.length} asignación(es). Recargue y revise los casos pendientes.`
+            : `Se eliminaron ${Number(data?.updated || 0)} asignación(es) correctamente.`
       );
       setToastOpen(true);
       setSeleccionados(new Set());

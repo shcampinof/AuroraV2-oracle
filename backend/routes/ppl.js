@@ -1132,9 +1132,19 @@ router.post('/asignar-defensor', requirePag, async (req, res) => {
       pagCedula: pag.cedula,
       defensorCedula,
     });
+    const requested = new Set(documentos).size;
+    if (updated === 0) {
+      return res.status(409).json({
+        ok: false,
+        updated,
+        requested,
+        message: 'No se modificó ninguna asignación. Recargue el listado y verifique que el caso siga activo.',
+      });
+    }
     return res.json({
       ok: true,
       updated,
+      requested,
       documentos: Array.from(new Set(documentos)),
       defensor: defensorNombre,
       defensorCedula,
@@ -1169,9 +1179,19 @@ router.post('/desasignar-defensor', requirePag, async (req, res) => {
     }
 
     const updated = await consolidado.unassignDefensor(documentos);
+    const requested = new Set(documentos).size;
+    if (updated === 0) {
+      return res.status(409).json({
+        ok: false,
+        updated,
+        requested,
+        message: 'No se eliminó ninguna asignación. Recargue el listado y verifique el defensor actual.',
+      });
+    }
     return res.json({
       ok: true,
       updated,
+      requested,
       documentos: Array.from(new Set(documentos)),
       pag,
     });
