@@ -32,7 +32,7 @@ function run() {
   );
   assert.strictEqual(normalizeDefensorName('  José   Pérez '), 'JOSE PEREZ');
   assert.strictEqual(EVENT_UNIONS.filter(([type]) => type === 'solicitud').length, 3);
-  assert.strictEqual(EVENT_UNIONS.filter(([type]) => type === 'reiteracion').length, 2);
+  assert.strictEqual(EVENT_UNIONS.filter(([type]) => type === 'reiteracion').length, 5);
   const defensorOptions = buildDefensorOptions([
     { CEDULA: null, NOMBRE: 'NANCY LANUZA', REGIONAL: null, CORREO: null },
     { CEDULA: '1234', NOMBRE: 'DEFENSOR CON CATÁLOGO', REGIONAL: 'MAGDALENA', CORREO: 'd@example.test' },
@@ -89,6 +89,7 @@ function run() {
   assert.strictEqual(report.resumen.personasAsignadas, 2);
   assert.strictEqual(report.resumen.personasActivas, 1);
   assert.strictEqual(report.resumen.personasActivasConGestion, 0);
+  assert.strictEqual(report.resumen.totalPersonasConCasosCerrados, 1);
   assert.strictEqual(report.detalles.casosAnalizados[0].fecha, '2026-08-05');
 
   console.log('OK reporte-atenciones.test');

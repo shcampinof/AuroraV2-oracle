@@ -96,8 +96,12 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
 
   it('AURORA.B5B.INSISTENCIAS.1 - las fechas de insistencia no alteran el flujo ni el estado', () => {
     const fechasInsistencia = {
+      [AURORA_FIELD_CATALOG.b5NormalNumeroInsistencias]: '5',
       [AURORA_FIELD_CATALOG.b5NormalFechaInsistencia1]: '2026-08-01',
       [AURORA_FIELD_CATALOG.b5NormalFechaInsistencia2]: '2026-08-08',
+      [AURORA_FIELD_CATALOG.b5NormalFechaInsistencia3]: '2026-08-15',
+      [AURORA_FIELD_CATALOG.b5NormalFechaInsistencia4]: '2026-08-22',
+      [AURORA_FIELD_CATALOG.b5NormalFechaInsistencia5]: '2026-08-29',
     };
 
     expect(evaluateAuroraRules({ answers: fechasInsistencia })).toEqual(

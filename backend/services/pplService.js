@@ -83,8 +83,12 @@ const LEGACY_COLUMNS = [
   'Fecha de decisión de la autoridad',
   'Fecha de radicación de solicitud de utilidad pública',
   'Sentido de la decisión',
+  'Número de insistencias',
   'Fecha de insistencia 1',
   'Fecha de insistencia 2',
+  'Fecha de insistencia 3',
+  'Fecha de insistencia 4',
+  'Fecha de insistencia 5',
   'Motivo de la decisión negativa',
   'Se presenta recurso',
   'Fecha de recurso en caso desfavorable',
@@ -126,6 +130,9 @@ const DATE_FIELDS = new Set([
   'FECHA_REALIZACION_AUDIENCIA',
   'FECHA_PRESENTACION_SOLICITUD_AUTORIDAD',
   'FECHA_DECISION_AUTORIDAD',
+  'FECHA_INSISTENCIA_3',
+  'FECHA_INSISTENCIA_4',
+  'FECHA_INSISTENCIA_5',
   'FECHA_INSISTENCIA_1',
   'FECHA_INSISTENCIA_2',
   'FECHA_RECURSO_DESFAVORABLE',
@@ -159,6 +166,7 @@ const NUMERIC_FIELDS = new Set([
   'CEDULA_PAG',
   'DIAS_PRISION',
   'DIAS_LIBERTAD',
+  'INSISTENCIAS',
 ]);
 
 function normalizeText(value) {
@@ -493,8 +501,12 @@ bind(
   'FECHA_RADICACION_UTILIDAD'
 );
 bind(['Sentido de la decisión', 'Sentido de la decision'], 'GESTION', 'SENTIDO_DECISION');
+bind(['Número de insistencias', 'Numero de insistencias'], 'GESTION', 'INSISTENCIAS');
 bind(['Fecha de insistencia 1'], 'GESTION', 'FECHA_INSISTENCIA_1');
 bind(['Fecha de insistencia 2'], 'GESTION', 'FECHA_INSISTENCIA_2');
+bind(['Fecha de insistencia 3'], 'GESTION', 'FECHA_INSISTENCIA_3');
+bind(['Fecha de insistencia 4'], 'GESTION', 'FECHA_INSISTENCIA_4');
+bind(['Fecha de insistencia 5'], 'GESTION', 'FECHA_INSISTENCIA_5');
 bind(['Motivo de la decisión negativa', 'Motivo de la decision negativa'], 'GESTION', 'MOTIVO_DECISION_NEGATIVA');
 bind(
   [
@@ -636,8 +648,12 @@ function toLegacyRecord(raw = {}) {
     'Fecha de radicación de la solicitud de utilidad pública': toIsoDate(raw.G_FECHA_RADICACION_UTILIDAD),
     'Fecha de decisión de la autoridad': toIsoDate(raw.G_FECHA_DECISION_AUTORIDAD),
     'Sentido de la decisión': String(raw.G_SENTIDO_DECISION ?? ''),
+    'Número de insistencias': String(raw.G_INSISTENCIAS ?? ''),
     'Fecha de insistencia 1': toIsoDate(raw.G_FECHA_INSISTENCIA_1),
     'Fecha de insistencia 2': toIsoDate(raw.G_FECHA_INSISTENCIA_2),
+    'Fecha de insistencia 3': toIsoDate(raw.G_FECHA_INSISTENCIA_3),
+    'Fecha de insistencia 4': toIsoDate(raw.G_FECHA_INSISTENCIA_4),
+    'Fecha de insistencia 5': toIsoDate(raw.G_FECHA_INSISTENCIA_5),
     'Motivo de la decisión negativa': String(raw.G_MOTIVO_DECISION_NEGATIVA ?? ''),
     'Se presenta recurso': String(raw.G_SE_PRESENTA_RECURSO ?? ''),
     '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?': String(raw.G_SE_PRESENTA_RECURSO ?? ''),

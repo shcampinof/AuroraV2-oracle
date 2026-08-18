@@ -103,12 +103,19 @@ function buildDocument(pdf, report, logos) {
   const metadataRows = [
     ['Defensoría Regional', report.metadata.regional],
     ['Defensor(a) Público(a)', report.metadata.defensor],
-    ['Periodo analizado', ''],
-    ['Fecha inicio reporte', formatReportDate(report.metadata.fechaInicio)],
-    ['Fecha final reporte', formatReportDate(report.metadata.fechaFin)],
   ];
   const metaLeft = 150;
   metadataRows.forEach(([label, value]) => {
+    addCell(pdf, label, margin, y, metaLeft, 21, { bold: true, fill: LIGHT_BLUE, size: 8.5 });
+    addCell(pdf, value, margin + metaLeft, y, contentWidth - metaLeft, 21, { size: 8.5 });
+    y += 21;
+  });
+  addCell(pdf, 'Periodo analizado', margin, y, contentWidth, 21, { bold: true, fill: LIGHT_BLUE, size: 8.5 });
+  y += 21;
+  [
+    ['Fecha inicio reporte', formatReportDate(report.metadata.fechaInicio)],
+    ['Fecha final reporte', formatReportDate(report.metadata.fechaFin)],
+  ].forEach(([label, value]) => {
     addCell(pdf, label, margin, y, metaLeft, 21, { bold: true, fill: LIGHT_BLUE, size: 8.5 });
     addCell(pdf, value, margin + metaLeft, y, contentWidth - metaLeft, 21, { size: 8.5 });
     y += 21;
@@ -136,6 +143,7 @@ function buildDocument(pdf, report, logos) {
     ['2.2. Número de personas activas (asignadas que aún no se han cerrado)', report.resumen.personasActivas],
     ['2.3. Número de personas activas que reportan alguna gestión de atención jurídica durante el periodo', report.resumen.personasActivasConGestion],
     ['2.4. Número de personas a quienes se les cerró el caso durante el periodo', report.resumen.personasConCasoCerrado],
+    ['2.6. Número total de personas con casos cerrados', report.resumen.totalPersonasConCasosCerrados],
   ];
   summaryRows.forEach(([label, value], index) => {
     const heading = index === 0 || index === 8;

@@ -34,20 +34,15 @@ const KEY_FECHA_PRESENTACION_RECURSO = 'Fecha de presentación del recurso';
 const KEY_FECHA_DECISION_RECURSO = 'Fecha de la decisión del recurso';
 const KEY_FECHA_INSISTENCIA_1 = 'Fecha de insistencia 1';
 const KEY_FECHA_INSISTENCIA_2 = 'Fecha de insistencia 2';
-// TODO: reemplazar estas claves temporales cuando estén definidos los nombres de las columnas en la BD.
 const KEY_NUMERO_INSISTENCIAS = 'Número de insistencias';
 const KEY_FECHAS_INSISTENCIA_EXPORT = '__fechasInsistenciaExport';
-const FRONT_ONLY_FECHA_INSISTENCIA_KEYS = [
+const FECHA_INSISTENCIA_KEYS = [
+  KEY_FECHA_INSISTENCIA_1,
+  KEY_FECHA_INSISTENCIA_2,
   'Fecha de insistencia 3',
   'Fecha de insistencia 4',
   'Fecha de insistencia 5',
 ];
-const FECHA_INSISTENCIA_KEYS = [
-  KEY_FECHA_INSISTENCIA_1,
-  KEY_FECHA_INSISTENCIA_2,
-  ...FRONT_ONLY_FECHA_INSISTENCIA_KEYS,
-];
-const FRONT_ONLY_INSISTENCIA_KEYS = [KEY_NUMERO_INSISTENCIAS, ...FRONT_ONLY_FECHA_INSISTENCIA_KEYS];
 const OPCIONES_NUMERO_INSISTENCIAS = ['0', '1', '2', '3', '4', '5'];
 const ALIASES_SE_PRESENTA_RECURSO = [
   'Se presenta recurso',
@@ -526,19 +521,6 @@ function getNumeroInsistencias(record) {
     (count, key, index) => (String(record?.[key] ?? '').trim() ? index + 1 : count),
     0
   );
-}
-
-function getFrontendOnlyInsistencias(record) {
-  return FRONT_ONLY_INSISTENCIA_KEYS.reduce((draft, key) => {
-    if (Object.prototype.hasOwnProperty.call(record || {}, key)) draft[key] = record[key];
-    return draft;
-  }, {});
-}
-
-function withoutFrontendOnlyInsistencias(record) {
-  const next = { ...(record || {}) };
-  FRONT_ONLY_INSISTENCIA_KEYS.forEach((key) => delete next[key]);
-  return next;
 }
 
 function isCierreImposibilidadSeleccionado(value) {
@@ -1382,7 +1364,7 @@ const CAMPOS_LIMPIABLES_DESDE_BLOQUE_3 = new Set(
     'Sentido de la decisión',
     KEY_FECHA_INSISTENCIA_1,
     KEY_FECHA_INSISTENCIA_2,
-    ...FRONT_ONLY_FECHA_INSISTENCIA_KEYS,
+    ...FECHA_INSISTENCIA_KEYS.slice(2),
     'Motivo de la decisión negativa',
     'Se presenta recurso',
     'Fecha de recurso en caso desfavorable',
@@ -1998,7 +1980,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   const buildUpdatePayload = useCallback(
     (nextData) => {
-      const payload = { data: withoutFrontendOnlyInsistencias(nextData) };
+      const payload = { data: nextData };
       const id = String(actuacionActivaId || '').trim();
       if (id) payload.actuacionId = id;
       return payload;
@@ -3709,13 +3691,7 @@ export default function FormularioAtencion({ numeroInicial }) {
       const nextTipo = String(updated?.tipo ?? tipoRegistro ?? '').trim();
       if (nextTipo) setTipoRegistro(nextTipo);
       if (updated?.registro && typeof updated.registro === 'object') {
-        setRegistro(
-          wrapRegistroForLookup({
-            ...updated.registro,
-            ...getFrontendOnlyInsistencias(payloadBase),
-            __tipoApi: nextTipo || tipoRegistro,
-          })
-        );
+        setRegistro(wrapRegistroForLookup({ ...updated.registro, __tipoApi: nextTipo || tipoRegistro }));
       }
 
       if (isQueuedResponse(updated)) {

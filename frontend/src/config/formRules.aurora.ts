@@ -104,6 +104,9 @@ const FIELD = {
   b5NormalNumeroInsistencias: 'Número de insistencias',
   b5NormalFechaInsistencia1: 'Fecha de insistencia 1',
   b5NormalFechaInsistencia2: 'Fecha de insistencia 2',
+  b5NormalFechaInsistencia3: 'Fecha de insistencia 3',
+  b5NormalFechaInsistencia4: 'Fecha de insistencia 4',
+  b5NormalFechaInsistencia5: 'Fecha de insistencia 5',
 } as const;
 
 // Transitional catalog: keeps stable IDs aligned with current text keys.

@@ -157,6 +157,7 @@ function ReporteAtencionesDefensores({ user }) {
         ['Casos cerrados', report.resumen.casosCerrados],
         ['Total actuaciones', report.resumen.totalActuaciones],
         ['Personas activas con gestión', report.resumen.personasActivasConGestion],
+        ['Total personas con casos cerrados', report.resumen.totalPersonasConCasosCerrados],
       ]
     : [];
 

@@ -130,6 +130,10 @@ function buildReport({ defensor, fechaInicio, fechaFin, eventRows = [], assigned
 
   const assignedCases = assignedRows.map(mapAssignedCase);
   const activeCases = assignedCases.filter((item) => item.activo);
+  const closedAssignedPeopleCount = uniqueCount(
+    assignedCases.filter((item) => !item.activo),
+    'idPersona'
+  );
   const peopleWithEvents = new Set(
     EVENT_KEYS.flatMap((key) => details[key]).map((item) => item.idPersona).filter(Boolean)
   );
@@ -164,6 +168,7 @@ function buildReport({ defensor, fechaInicio, fechaFin, eventRows = [], assigned
       personasActivas: activeCases.length,
       personasActivasConGestion: activeWithEvents.length,
       personasConCasoCerrado: closedPeopleCount,
+      totalPersonasConCasosCerrados: closedAssignedPeopleCount,
     },
     detalles: {
       casosAnalizados: details.analisis,
