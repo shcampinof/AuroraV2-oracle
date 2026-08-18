@@ -1,0 +1,15 @@
+services:
+  aurora:
+    image: aurora-app:dev
+    restart: "no"
+    ports: !override
+      - "127.0.0.1:${DEV_HOST_PORT:-17860}:${PORT:-7860}"
+    volumes: !override
+      - aurora_certs:/app/backend/certs:ro
+      - aurora_auth_users:/app/backend/storage/auth
+      - aurora_cargas_bd:/app/backend/storage/cargas_bd
+
+volumes:
+  aurora_certs:
+    name: aurora-prod_aurora_certs
+    external: true

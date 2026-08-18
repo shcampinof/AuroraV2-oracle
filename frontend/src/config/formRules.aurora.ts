@@ -58,6 +58,7 @@ export type DerivedStatus =
   | 'Analizar el caso'
   | 'Entrevistar al usuario'
   | 'Presentar solicitud'
+  | 'Presentar recurso'
   | 'Pendiente decisión'
   | 'Caso cerrado';
 
@@ -100,6 +101,12 @@ const FIELD = {
   b5NormalRadicacion: 'Fecha de presentación de la solicitud a la autoridad',
   b5NormalDecision: 'Fecha de decisión de la autoridad',
   b5NormalSentidoResuelveSolicitud: 'Sentido de la decisión que resuelve la solicitud',
+  b5NormalNumeroInsistencias: 'Número de insistencias',
+  b5NormalFechaInsistencia1: 'Fecha de insistencia 1',
+  b5NormalFechaInsistencia2: 'Fecha de insistencia 2',
+  b5NormalFechaInsistencia3: 'Fecha de insistencia 3',
+  b5NormalFechaInsistencia4: 'Fecha de insistencia 4',
+  b5NormalFechaInsistencia5: 'Fecha de insistencia 5',
 } as const;
 
 // Transitional catalog: keeps stable IDs aligned with current text keys.
@@ -197,6 +204,7 @@ function getAny(record: FormRecord, keys: string[]): string {
 }
 
 const FECHA_ANALISIS_ALIASES = [
+  AURORA_FIELD_IDS.B3_FECHA_ANALISIS,
   'Fecha de análisis jurídico del caso',
   'Fecha de analisis juridico del caso',
   'Fecha de análisis jurídico del caso',
@@ -260,8 +268,13 @@ function equalsAnyInsensitive(value: unknown, expectedValues: string[]): boolean
   return expectedValues.some((expected) => equalsInsensitive(value, expected));
 }
 
+function normalizeProcedencia(value: unknown): string {
+  // Tolera valores históricos que guardaron el número visible de la opción.
+  return normalize(value).replace(/^\d+\s*[.)-]?\s*/, '');
+}
+
 function isNegativeProcedencia(value: unknown): boolean {
-  const v = normalize(value);
+  const v = normalizeProcedencia(value);
   if (!v) return false;
   if (v === 'no') return true;
   if (v.startsWith('no aplica')) return true;
@@ -269,37 +282,90 @@ function isNegativeProcedencia(value: unknown): boolean {
   return false;
 }
 
+function isAffirmativeProcedencia(value: unknown): boolean {
+  return normalizeProcedencia(value).startsWith('si');
+}
+
 function areAllNegativeInProcedencias30a34(record: FormRecord): boolean {
-  const values = [
+  const requiredValues = [
     get(record, FIELD.q30),
     get(record, FIELD.q31),
-    get(record, FIELD.q32),
     get(record, FIELD.q33),
     get(record, FIELD.q34),
   ];
-  if (!values.every((v) => isFilled(v))) return false;
-  return values.every((v) => isNegativeProcedencia(v));
+  if (!requiredValues.every((v) => isFilled(v) && isNegativeProcedencia(v))) return false;
+
+  // Utilidad pública es opcional: si se diligencia debe ser negativa para esta
+  // regla de cierre; si queda vacía no bloquea el cálculo de la acción.
+  const utilidadPublica = get(record, FIELD.q32);
+  return !isFilled(utilidadPublica) || isNegativeProcedencia(utilidadPublica);
 }
 
-function hasPositiveP36Request(record: FormRecord): boolean {
-  const raw = String(get(record, FIELD.q36) ?? '').trim();
+function hasExplicitNingunaInP36(record: FormRecord): boolean {
+  const raw = String(getAny(record, [
+    FIELD.q36,
+    AURORA_FIELD_IDS.B3_ANALISIS_ACTUACION,
+    AURORA_FIELD_IDS.B3_OTRAS_SOLICITUDES,
+  ]) ?? '').trim();
   if (!raw) return false;
 
   const selections = raw
     .split(/\r?\n|\s*\|\s*|\s*;\s*/g)
-    .map((item) => String(item ?? '').trim())
-    .filter(Boolean)
     .map((item) => normalize(item))
-    .filter(
-      (item) =>
-        item &&
-        !(
-          (item.includes('mas de una') && item.includes('opci')) ||
-          (item.includes('resumen') && item.includes('opci'))
-        )
-    );
+    .filter(Boolean);
 
-  return selections.some((item) => item !== 'ninguna');
+  return selections.length === 1 && selections[0] === 'ninguna';
+}
+
+function hasPositiveP36Request(record: FormRecord): boolean {
+  const raw = String(getAny(record, [
+    FIELD.q36,
+    AURORA_FIELD_IDS.B3_ANALISIS_ACTUACION,
+    AURORA_FIELD_IDS.B3_OTRAS_SOLICITUDES,
+  ]) ?? '').trim();
+  if (!raw) return false;
+
+  return raw
+    .split(/\r?\n|\s*\|\s*|\s*;\s*/g)
+    .map((item) => normalize(item))
+    .filter(Boolean)
+    .some((item) =>
+      item !== 'ninguna' &&
+      !(item.includes('mas de una') && item.includes('opci')) &&
+      !(item.includes('resumen') && item.includes('opci'))
+    );
+}
+
+function hasPositiveAnalysisOutcome(record: FormRecord): boolean {
+  const procedencias = [
+    [FIELD.q30, AURORA_FIELD_IDS.B3_PROCEDENCIA_LIBERTAD_CONDICIONAL],
+    [FIELD.q31, AURORA_FIELD_IDS.B3_PROCEDENCIA_PRISION_DOMICILIARIA],
+    [FIELD.q32, AURORA_FIELD_IDS.B3_PROCEDENCIA_UTILIDAD_PUBLICA],
+    [FIELD.q33, AURORA_FIELD_IDS.B3_PROCEDENCIA_PENA_CUMPLIDA],
+    [FIELD.q34, AURORA_FIELD_IDS.B3_PROCEDENCIA_ACUMULACION_PENAS],
+  ];
+  return procedencias.some((keys) => isAffirmativeProcedencia(getAny(record, keys))) || hasPositiveP36Request(record);
+}
+
+function isBlock5Reachable(record: FormRecord): boolean {
+  return (
+    hasPositiveAnalysisOutcome(record) &&
+    areMandatoryFieldsFilled(record, 'bloque3') &&
+    areMandatoryFieldsFilled(record, 'bloque4')
+  );
+}
+
+function hasStartedBlock3(record: FormRecord): boolean {
+  const fields = mandatoryByBlock?.bloque3 || [];
+  return fields.some((field) =>
+    isFilled(field.id ? getAny(record, [field.id, field.key]) : get(record, field.key))
+  );
+}
+
+function canEvaluateBlock5State(record: FormRecord): boolean {
+  // Los registros históricos que solo traen Bloque 5 conservan su estado.
+  // Si el Bloque 3 actual ya fue iniciado, Bloque 5 solo influye al ser alcanzable.
+  return isBlock5Reachable(record) || !hasStartedBlock3(record);
 }
 
 function isUtilidadPublicaFlow(record: FormRecord): boolean {
@@ -373,7 +439,9 @@ function hasBloque5Data(record: FormRecord): boolean {
 function decisionUsuarioPermiteContinuar(value: unknown): boolean {
   const v = normalize(value);
   if (!v) return false;
-  return v.includes('desea que el defensor') && v.includes('avance con la solicitud');
+  // Las dos opciones afirmativas del formulario permiten continuar: tanto la
+  // solicitud impulsada directamente por el defensor como la suscrita por la PPL.
+  return v.startsWith('si');
 }
 
 function isNoConcedeSubrogadoPenal(value: unknown): boolean {
@@ -396,12 +464,19 @@ function isRecursoPresentado(value: unknown): boolean {
   return equalsAnyInsensitive(value, ['Sí', 'Si', 'S?']);
 }
 
-function hasDecisionRecurso(record: FormRecord): boolean {
+function isRecursoNoPresentado(value: unknown): boolean {
+  return equalsInsensitive(value, 'No');
+}
+
+function hasSentidoDecisionRecurso(record: FormRecord): boolean {
   return (
-    isFilled(get(record, FIELD.fechaDecisionRecurso)) ||
     isFilled(get(record, FIELD.q56)) ||
     isFilled(get(record, FIELD.b5NormalSentidoResuelveSolicitud))
   );
+}
+
+function hasFechaDecisionRecursoSinSentido(record: FormRecord): boolean {
+  return isFilled(get(record, FIELD.fechaDecisionRecurso)) && !hasSentidoDecisionRecurso(record);
 }
 
 function isFormularioBloqueado(record: FormRecord): boolean {
@@ -417,19 +492,28 @@ function isCasoCerrado(record: FormRecord): boolean {
   const q54 = get(record, FIELD.q54);
   const isUtilidad = isUtilidadPublicaFlow(record);
 
-  if (areAllNegativeInProcedencias30a34(record) && !hasPositiveP36Request(record)) return true;
-  if (decisionUsuario && !decisionUsuarioPermiteContinuar(decisionUsuario)) {
+  if (
+    areAllNegativeInProcedencias30a34(record) &&
+    hasExplicitNingunaInP36(record) &&
+    isFilled(getAny(record, FECHA_ANALISIS_ALIASES))
+  ) return true;
+  // Los registros históricos usan "-"/"--" como marcador de campo vacío.
+  // Solo una respuesta real y negativa puede cerrar el caso.
+  if (isFilled(decisionUsuario) && !decisionUsuarioPermiteContinuar(decisionUsuario)) {
     return true;
   }
   if (includesAnyInsensitive(actuacion, ['ninguna', 'no procede nada'])) return true;
+  // Ignora datos históricos de Bloque 5 cuando el flujo actual todavía no
+  // ha completado los bloques 3 y 4. Evita cierres y mensajes automáticos prematuros.
+  if (!canEvaluateBlock5State(record)) return false;
   if (equalsInsensitive(q44, 'No') || equalsInsensitive(q45, 'No')) return true;
   if (isDecisionNegativa(record)) {
-    if (isRecursoPresentado(q54)) return hasDecisionRecurso(record);
-    return true;
+    if (isRecursoPresentado(q54)) return hasSentidoDecisionRecurso(record);
+    return isRecursoNoPresentado(q54);
   }
   if (!isUtilidad && isFilled(q52) && !isNoConcedeSubrogadoPenal(q52)) return true;
   if (isUtilidad && isFilled(q52) && !isUtilidadPublicaNiega(record)) return true;
-  if (hasDecisionRecurso(record)) return true;
+  if (hasSentidoDecisionRecurso(record)) return true;
   return false;
 }
 
@@ -500,11 +584,11 @@ export const mandatoryByBlock: MandatoryByBlock = {
     },
   ],
   bloque4: [
-    { key: FIELD.q38, label: '38 Fecha de la entrevista', optional: true },
+    { key: FIELD.q38, label: '38 Fecha de la entrevista' },
     { key: FIELD.q39, label: '39 Decisión del usuario' },
     { key: FIELD.q40, label: '40 Actuación a adelantar' },
-    { key: 'Requiere pruebas', label: '41 Requiere pruebas', optional: true },
-    { key: 'Poder en caso de avanzar con la solicitud', label: '42 Poder en caso de avanzar con la solicitud', optional: true },
+    { key: 'Requiere pruebas', label: '41 Requiere pruebas' },
+    { key: 'Poder en caso de avanzar con la solicitud', label: '42 Poder en caso de avanzar con la solicitud' },
   ],
   bloque5UtilidadPublica: [
     { key: FIELD.q43, label: '43 Fecha de entrevista psicosocial' },
@@ -528,12 +612,14 @@ export const mandatoryByBlock: MandatoryByBlock = {
       optional: true,
     },
     { key: FIELD.b5NormalRadicacion, label: '45 Fecha de presentación de la solicitud a la autoridad' },
-    { key: FIELD.b5NormalDecision, label: '46 Fecha de decisión de la autoridad' },
-    { key: FIELD.q52, label: '47 Sentido de la decisión' },
-    { key: FIELD.q53, label: '48 Motivo de la decisión negativa', optional: true },
-    { key: FIELD.q54, label: '49 Se presenta recurso' },
-    { key: FIELD.q55, label: '50 Fecha de recurso en caso desfavorable', optional: true },
-    { key: FIELD.b5NormalSentidoResuelveSolicitud, label: '51 Sentido de la decisión que resuelve la solicitud' },
+    { key: FIELD.b5NormalNumeroInsistencias, label: '46 Número de insistencias', optional: true },
+    { key: FIELD.b5NormalFechaInsistencia1, label: '47 Fechas de las insistencias', optional: true },
+    { key: FIELD.b5NormalDecision, label: '48 Fecha de decisión de la autoridad' },
+    { key: FIELD.q52, label: '49 Sentido de la decisión' },
+    { key: FIELD.q53, label: '50 Motivo de la decisión negativa', optional: true },
+    { key: FIELD.q54, label: '51 Se presenta recurso' },
+    { key: FIELD.q55, label: '52 Fecha de recurso en caso desfavorable', optional: true },
+    { key: FIELD.b5NormalSentidoResuelveSolicitud, label: '54 Sentido de la decisión que resuelve la solicitud' },
   ],
 };
 
@@ -634,11 +720,11 @@ export const dependencyRules: DependencyRule[] = [
     },
   },
   // Regla: AURORA.B5B.DEPENDENCIA.3
-  // TODO(matriz): confirmar nomenclatura Q47/Q52 para el campo "Sentido de la decision" en 5B.
+  // En 5B el formulario muestra Q49; FIELD.q52 es la clave compartida de persistencia.
   {
     id: 'dep_q52_no_concede_subrogado_habilita_q53_q54_en_5b',
-    source: { key: FIELD.q52, label: '47 Sentido de la decisión' },
-    description: 'En 5B, si Q47 = No concede la solicitud, habilita motivo y recurso.',
+    source: { key: FIELD.q52, label: '49 Sentido de la decisión' },
+    description: 'En 5B, si Q49 = No concede la solicitud, habilita motivo y recurso.',
     when: (record) => !isUtilidadPublicaFlow(record) && isNoConcedeSubrogadoPenal(get(record, FIELD.q52)),
     effects: {
       enable: [FIELD.q53, FIELD.q54],
@@ -647,8 +733,8 @@ export const dependencyRules: DependencyRule[] = [
   // Regla: AURORA.B5B.DEPENDENCIA.4
   {
     id: 'dep_q52_no_concede_subrogado_deshabilita_q53_q54_q55_en_5b',
-    source: { key: FIELD.q52, label: '47 Sentido de la decisión' },
-    description: 'En 5B, si Q47 != No concede la solicitud, deshabilita motivo y campos de recurso.',
+    source: { key: FIELD.q52, label: '49 Sentido de la decisión' },
+    description: 'En 5B, si Q49 != No concede la solicitud, deshabilita motivo y campos de recurso.',
     when: (record) => !isUtilidadPublicaFlow(record) && !isNoConcedeSubrogadoPenal(get(record, FIELD.q52)),
     effects: {
       disable: [FIELD.q53, FIELD.q54, FIELD.q55, FIELD.b5NormalSentidoResuelveSolicitud],
@@ -657,8 +743,8 @@ export const dependencyRules: DependencyRule[] = [
   // Regla: AURORA.B5B.DEPENDENCIA.1
   {
     id: 'dep_q49_no_deshabilita_q50_q51_en_5b',
-    source: { key: FIELD.q54, label: '49 Se presenta recurso' },
-    description: 'En 5B, si Q49 != Sí, deshabilita Q50 y Q51.',
+    source: { key: FIELD.q54, label: '51 Se presenta recurso' },
+    description: 'En 5B, si Q51 != Sí, deshabilita Q52 y Q54.',
     when: (record) =>
       !isUtilidadPublicaFlow(record) &&
       isNoConcedeSubrogadoPenal(get(record, FIELD.q52)) &&
@@ -670,8 +756,8 @@ export const dependencyRules: DependencyRule[] = [
   // Regla: AURORA.B5B.DEPENDENCIA.2
   {
     id: 'dep_q49_si_habilita_q50_q51_en_5b',
-    source: { key: FIELD.q54, label: '49 Se presenta recurso' },
-    description: 'En 5B, si Q49 = Sí, habilita Q50 y Q51.',
+    source: { key: FIELD.q54, label: '51 Se presenta recurso' },
+    description: 'En 5B, si Q51 = Sí, habilita Q52 y Q54.',
     when: (record) =>
       !isUtilidadPublicaFlow(record) &&
       isNoConcedeSubrogadoPenal(get(record, FIELD.q52)) &&
@@ -692,20 +778,36 @@ export const derivedStatusRules: DerivedStatusRule[] = [
     id: 'estado_pendiente_decision_recurso',
     status: 'Pendiente decisi\u00f3n',
     when: (record) => {
+      if (!canEvaluateBlock5State(record)) return false;
       if (!isDecisionNegativa(record)) return false;
       if (!isRecursoPresentado(get(record, FIELD.q54))) return false;
-      return !hasDecisionRecurso(record);
+      return !hasSentidoDecisionRecurso(record);
+    },
+  },
+  {
+    id: 'estado_pendiente_sentido_decision_recurso',
+    status: 'Pendiente decisi\u00f3n',
+    when: (record) => canEvaluateBlock5State(record) && hasFechaDecisionRecursoSinSentido(record),
+  },
+  {
+    id: 'estado_presentar_recurso',
+    status: 'Presentar recurso',
+    when: (record) => {
+      if (!canEvaluateBlock5State(record)) return false;
+      const recurso = get(record, FIELD.q54);
+      return isDecisionNegativa(record) && !isRecursoPresentado(recurso) && !isRecursoNoPresentado(recurso);
     },
   },
   {
     id: 'estado_pendiente_sentido_decision',
     status: 'Pendiente decisi\u00f3n',
-    when: (record) => hasFechaDecisionSinSentido(record),
+    when: (record) => canEvaluateBlock5State(record) && hasFechaDecisionSinSentido(record),
   },
   {
     id: 'estado_pendiente_decision',
     status: 'Pendiente decisi\u00f3n',
     when: (record) => {
+      if (!canEvaluateBlock5State(record)) return false;
       const tieneRadicacion = isFilled(getFechaRadicacion(record));
       const tieneDecision = isFilled(getFechaDecision(record));
       return tieneRadicacion && !tieneDecision;
@@ -714,12 +816,14 @@ export const derivedStatusRules: DerivedStatusRule[] = [
   {
     id: 'estado_presentar_solicitud_bloque5_iniciado',
     status: 'Presentar solicitud',
-    when: (record) => hasBloque5Data(record) && !isFilled(getFechaRadicacion(record)),
+    when: (record) =>
+      canEvaluateBlock5State(record) && hasBloque5Data(record) && !isFilled(getFechaRadicacion(record)),
   },
   {
     id: 'estado_presentar_solicitud',
     status: 'Presentar solicitud',
     when: (record) => {
+      if (!isBlock5Reachable(record)) return false;
       if (!hasAnalisisCompleto(record)) return false;
       if (!hasBloque4Base(record)) return false;
       return !isFilled(getFechaRadicacion(record));
@@ -730,6 +834,9 @@ export const derivedStatusRules: DerivedStatusRule[] = [
     status: 'Entrevistar al usuario',
     when: (record) => {
       if (!hasAnalisisCompleto(record)) return false;
+      // Solo corresponde entrevistar si el análisis encontró una actuación
+      // viable. Respuestas pendientes o "Revisión suspendida" siguen en análisis.
+      if (!hasPositiveAnalysisOutcome(record)) return false;
       return !hasBloque4Base(record);
     },
   },
@@ -742,7 +849,10 @@ export const derivedStatusRules: DerivedStatusRule[] = [
 
 function areMandatoryFieldsFilled(record: FormRecord, blockId: AuroraBlockId): boolean {
   const fields = mandatoryByBlock[blockId] || [];
-  return fields.every((f) => f.optional || isFilled(get(record, f.key)));
+  return fields.every((f) => {
+    if (f.optional) return true;
+    return isFilled(f.id ? getAny(record, [f.id, f.key]) : get(record, f.key));
+  });
 }
 
 function getSelectedBlock5Variant(record: FormRecord): AuroraBlockId {

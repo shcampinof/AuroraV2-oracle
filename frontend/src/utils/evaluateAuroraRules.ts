@@ -127,7 +127,7 @@ export function isFilled(value: unknown): boolean {
 function isAffirmativeProcedencia(value: unknown): boolean {
   if (!isFilled(value)) return false;
   if (normalizeYesNo(value) === 'si') return true;
-  return normalizeText(value).startsWith('si');
+  return normalizeText(value).replace(/^\d+\s*[.)-]?\s*/, '').startsWith('si');
 }
 
 function parseOtrasSolicitudesSelection(value: unknown): string[] {
@@ -259,6 +259,7 @@ function normalizeDerivedStatus(status: string): DerivedStatus {
   if (n.includes('analizar el caso')) return 'Analizar el caso';
   if (n.includes('entrevistar al usuario')) return 'Entrevistar al usuario';
   if (n.includes('presentar solicitud')) return 'Presentar solicitud';
+  if (n.includes('presentar recurso')) return 'Presentar recurso';
   if (n.includes('pendiente')) return 'Pendiente decisión';
   return 'Analizar el caso';
 }
@@ -292,5 +293,3 @@ export function evaluateAuroraRules({ answers }: EvaluateAuroraRulesInput): Eval
 }
 
 export default evaluateAuroraRules;
-
-

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AURORA_FIELD_CATALOG } from './formRules.aurora';
 import {
+  getEstadoClassForRecord,
   getEstadoDisplayInfo,
   getSemaforoClassByDays,
   obtenerEstadoActuacion,
@@ -51,6 +52,16 @@ describe('estadoActuaciones.rules', () => {
     expect(estado.etiqueta).toBe('Entrevistar al usuario');
   });
 
+  it('ESTADO.FLUJO.1 - la situación jurídica actualizada prevalece sobre la situación histórica', () => {
+    const estado = obtenerEstadoActuacion({
+      'Situación Jurídica': 'Sindicado',
+      'Situación Jurídica actualizada (de conformidad con la rama judicial)': 'Condenado',
+      ...buildBloque3Base(),
+    });
+
+    expect(estado.etiqueta).toBe('Entrevistar al usuario');
+  });
+
   it('ESTADO.SOLICITUD.1 - etiqueta Presentar solicitud cuando bloque base esta completo y falta radicacion', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
@@ -80,7 +91,7 @@ describe('estadoActuaciones.rules', () => {
     expect(estado.claseFinal).toBe('estado--gris');
   });
 
-  it('ESTADO.CASO_CERRADO.2 - en trámite normal cierra cuando Q47 (Sentido de la decisión) está diligenciada', () => {
+  it('ESTADO.CASO_CERRADO.2 - en trámite normal cierra cuando Q49 (Sentido de la decisión) está diligenciada', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
       [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(1),
@@ -92,7 +103,7 @@ describe('estadoActuaciones.rules', () => {
     expect(estado.claseFinal).toBe('estado--gris');
   });
 
-  it('ESTADO.RECURSO.TRAMITE.1 - con Q47 = "No concede la solicitud" y Q49 vacía, queda Caso cerrado', () => {
+  it('ESTADO.RECURSO.TRAMITE.1 - con Q49 negativa y Q51 vacía, queda Presentar recurso', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
       [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(1),
@@ -101,11 +112,11 @@ describe('estadoActuaciones.rules', () => {
       [AURORA_FIELD_CATALOG.q52]: 'No concede la solicitud',
       [AURORA_FIELD_CATALOG.q54]: '',
     });
-    expect(estado.etiqueta).toBe('Caso cerrado');
-    expect(estado.claseFinal).toBe('estado--gris');
+    expect(estado.etiqueta).toBe('Presentar recurso');
+    expect(estado.claseFinal).toBe('estado--rojo');
   });
 
-  it('ESTADO.RECURSO.TRAMITE.2 - con Q47 = "No concede la solicitud" y Q49 = "Sí", queda Pendiente decisión', () => {
+  it('ESTADO.RECURSO.TRAMITE.2 - con Q49 = "No concede la solicitud" y Q51 = "Sí", queda Pendiente decisión', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
       [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(1),
@@ -154,6 +165,17 @@ describe('estadoActuaciones.rules', () => {
 
   it('ESTADO.SEMAFORO.ROJO.1 - dias > 30 retorna rojo', () => {
     expect(getSemaforoClassByDays(31)).toBe('estado--rojo');
+  });
+
+  it('ESTADO.SEMAFORO.CANONICO.1 - colorea Entrevistar con su fecha aunque otros datos históricos sugieran cierre', () => {
+    const row = {
+      estadoEtiqueta: 'Entrevistar al usuario',
+      estadoSource: {
+        'Fecha de análisis jurídico del caso': formatDateDaysAgo(31),
+        'Sentido de la decisión': 'Concede la solicitud',
+      },
+    };
+    expect(getEstadoClassForRecord(row, row.estadoEtiqueta)).toBe('estado--rojo');
   });
 
   it('ESTADO.PAG.RESUMEN.1 - fila resumida de PAG resuelve Analizar el caso', () => {
@@ -299,7 +321,7 @@ describe('estadoActuaciones.rules', () => {
     expect(display.label).toBe('Entrevistar al usuario');
   });
 
-  it('ESTADO.SINDICADO.2 - con Q24/Q25 diligenciadas, Q26 niega y sin recurso, muestra Caso cerrado', () => {
+  it('ESTADO.SINDICADO.2 - con Q26 negativa y recurso sin definir, muestra Presentar recurso', () => {
     const display = getEstadoDisplayInfo({
       estadoSource: {
         'Situación Jurídica': 'Sindicado',
@@ -314,8 +336,8 @@ describe('estadoActuaciones.rules', () => {
         'SENTIDO DE LA DECISIÓN': 'Niega la solicitud',
       },
     });
-    expect(display.label).toBe('Caso cerrado');
-    expect(display.className).toBe('estado--gris');
+    expect(display.label).toBe('Presentar recurso');
+    expect(display.className).toBe('estado--rojo');
   });
 
   it('ESTADO.SINDICADO.RESUMEN.1 - fila resumida con aliases Oracle cierra con decision de recurso', () => {

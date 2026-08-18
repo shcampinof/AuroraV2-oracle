@@ -17,6 +17,8 @@ const LEGACY_COLUMNS = [
   'Tipo de indentificación',
   'Número de identificación',
   'Situación Jurídica',
+  'Fuente de información',
+  'Fecha de corte',
   'Género',
   'Enfoque Étnico/Racial/Cultural',
   'Nacionalidad',
@@ -47,6 +49,7 @@ const LEGACY_COLUMNS = [
   'Calificación de conducta',
   'PAG',
   'Defensor(a) Público(a) Asignado para tramitar la solicitud',
+  'Acción a impulsar',
   'Acción a realizar',
   'Fecha de análisis jurídico del caso',
   'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS',
@@ -80,6 +83,12 @@ const LEGACY_COLUMNS = [
   'Fecha de decisión de la autoridad',
   'Fecha de radicación de solicitud de utilidad pública',
   'Sentido de la decisión',
+  'Número de insistencias',
+  'Fecha de insistencia 1',
+  'Fecha de insistencia 2',
+  'Fecha de insistencia 3',
+  'Fecha de insistencia 4',
+  'Fecha de insistencia 5',
   'Motivo de la decisión negativa',
   'Se presenta recurso',
   'Fecha de recurso en caso desfavorable',
@@ -121,6 +130,11 @@ const DATE_FIELDS = new Set([
   'FECHA_REALIZACION_AUDIENCIA',
   'FECHA_PRESENTACION_SOLICITUD_AUTORIDAD',
   'FECHA_DECISION_AUTORIDAD',
+  'FECHA_INSISTENCIA_3',
+  'FECHA_INSISTENCIA_4',
+  'FECHA_INSISTENCIA_5',
+  'FECHA_INSISTENCIA_1',
+  'FECHA_INSISTENCIA_2',
   'FECHA_RECURSO_DESFAVORABLE',
   'FECHA_RADICACION_UTILIDAD',
   'FECHA_PRESENTACION_RECURSO',
@@ -152,6 +166,7 @@ const NUMERIC_FIELDS = new Set([
   'CEDULA_PAG',
   'DIAS_PRISION',
   'DIAS_LIBERTAD',
+  'INSISTENCIAS',
 ]);
 
 function normalizeText(value) {
@@ -165,6 +180,15 @@ function normalizeText(value) {
 
 function normalizeDocumento(value) {
   return String(value ?? '').replace(/\D+/g, '');
+}
+
+async function resolveDefensorCatalogado(nombre) {
+  const defensor = await defensoresRepo.findUniqueByNombre(nombre);
+  if (defensor) return defensor;
+  const err = new Error('Seleccione un defensor válido del catálogo.');
+  err.code = 'DEFENSOR_NOT_IN_CATALOG';
+  err.status = 400;
+  throw err;
 }
 
 function parseLooseDate(value) {
@@ -414,7 +438,11 @@ bind(['Categorización', 'Categorizacion'], 'SITUACION', 'CATEGORIZACION');
 bind(['Dias_Prision', 'Días restantes para cumplir requisito temporal de prisión domiciliaria'], 'SITUACION', 'DIAS_PRISION');
 bind(['Dias_libertad', 'Días restantes para cumplir requisito temporal de libertad condicional'], 'SITUACION', 'DIAS_LIBERTAD');
 
-bind(['Acción a realizar', 'Accion a realizar'], 'GESTION', 'ACCION_REALIZAR');
+bind(
+  ['Acción a impulsar', 'Accion a impulsar', 'Acción a realizar', 'Accion a realizar'],
+  'GESTION',
+  'ACCION_REALIZAR'
+);
 bind(['Fecha de análisis jurídico del caso', 'Fecha de analisis juridico del caso', 'Fecha analisis'], 'GESTION', 'FECHA_ANALISIS');
 bind(['Vencimiento de terminos'], 'GESTION', 'VENCIMIENTO_TERMINOS');
 bind(['Procedencia de utilidad pública (solo para mujeres)', 'Utilidad publica'], 'GESTION', 'UTILIDAD_PUBLICA');
@@ -473,6 +501,12 @@ bind(
   'FECHA_RADICACION_UTILIDAD'
 );
 bind(['Sentido de la decisión', 'Sentido de la decision'], 'GESTION', 'SENTIDO_DECISION');
+bind(['Número de insistencias', 'Numero de insistencias'], 'GESTION', 'INSISTENCIAS');
+bind(['Fecha de insistencia 1'], 'GESTION', 'FECHA_INSISTENCIA_1');
+bind(['Fecha de insistencia 2'], 'GESTION', 'FECHA_INSISTENCIA_2');
+bind(['Fecha de insistencia 3'], 'GESTION', 'FECHA_INSISTENCIA_3');
+bind(['Fecha de insistencia 4'], 'GESTION', 'FECHA_INSISTENCIA_4');
+bind(['Fecha de insistencia 5'], 'GESTION', 'FECHA_INSISTENCIA_5');
 bind(['Motivo de la decisión negativa', 'Motivo de la decision negativa'], 'GESTION', 'MOTIVO_DECISION_NEGATIVA');
 bind(
   [
@@ -511,6 +545,7 @@ bind(
 function toLegacyRecord(raw = {}) {
   const numero = coalesce(raw.P_NUMERO, '');
   const numeroText = numero === '' ? '' : String(numero);
+  const situacionActiva = Number(raw.S_ACTIVO) === 1;
 
   const record = {
     Nombre: String(raw.P_NOMBRE ?? ''),
@@ -521,6 +556,8 @@ function toLegacyRecord(raw = {}) {
     numeroIdentificacion: numeroText,
     'Situación Jurídica': String(raw.S_SITUACION ?? ''),
     situacion: String(raw.S_SITUACION ?? ''),
+    'Fuente de información': String(raw.S_FUENTE ?? ''),
+    'Fecha de corte': toIsoDate(raw.S_FECHA_CORTE),
     'Género': String(raw.P_GENERO ?? ''),
     'Enfoque Étnico/Racial/Cultural': String(raw.S_ENFOQUE ?? ''),
     Nacionalidad: String(raw.P_NACIONALIDAD ?? ''),
@@ -570,7 +607,13 @@ function toLegacyRecord(raw = {}) {
     Defensor: String(raw.G_DEFENSOR ?? ''),
     defensorAsignado: String(raw.G_DEFENSOR ?? ''),
 
-    'Acción a realizar': String(raw.G_ACCION_REALIZAR ?? ''),
+    'Acción a impulsar': situacionActiva
+      ? String(raw.G_ACCION_REALIZAR ?? '')
+      : 'Caso cerrado',
+    // Alias legado para actuaciones creadas antes de unificar la terminología.
+    'Acción a realizar': situacionActiva
+      ? String(raw.G_ACCION_REALIZAR ?? '')
+      : 'Caso cerrado',
     'Fecha de análisis jurídico del caso': toIsoDate(raw.G_FECHA_ANALISIS),
     'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS': String(raw.G_ACTUACION_ADELANTAR ?? raw.G_VENCIMIENTO_TERMINOS ?? ''),
     'Procedencia de utilidad pública (solo para mujeres)': String(raw.G_UTILIDAD_PUBLICA ?? ''),
@@ -605,6 +648,12 @@ function toLegacyRecord(raw = {}) {
     'Fecha de radicación de la solicitud de utilidad pública': toIsoDate(raw.G_FECHA_RADICACION_UTILIDAD),
     'Fecha de decisión de la autoridad': toIsoDate(raw.G_FECHA_DECISION_AUTORIDAD),
     'Sentido de la decisión': String(raw.G_SENTIDO_DECISION ?? ''),
+    'Número de insistencias': String(raw.G_INSISTENCIAS ?? ''),
+    'Fecha de insistencia 1': toIsoDate(raw.G_FECHA_INSISTENCIA_1),
+    'Fecha de insistencia 2': toIsoDate(raw.G_FECHA_INSISTENCIA_2),
+    'Fecha de insistencia 3': toIsoDate(raw.G_FECHA_INSISTENCIA_3),
+    'Fecha de insistencia 4': toIsoDate(raw.G_FECHA_INSISTENCIA_4),
+    'Fecha de insistencia 5': toIsoDate(raw.G_FECHA_INSISTENCIA_5),
     'Motivo de la decisión negativa': String(raw.G_MOTIVO_DECISION_NEGATIVA ?? ''),
     'Se presenta recurso': String(raw.G_SE_PRESENTA_RECURSO ?? ''),
     '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?': String(raw.G_SE_PRESENTA_RECURSO ?? ''),
@@ -616,14 +665,19 @@ function toLegacyRecord(raw = {}) {
     'Cierre del caso por imposibilidad de avanzar (si aplica)': String(raw.G_CIERRE_CASO ?? ''),
     'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública': String(raw.G_CIERRE_CASO ?? ''),
     'Sentido de la decisión que resuelve la solicitud': String(raw.G_SENTIDO_DECISION_RESUELVE_RECURSO ?? ''),
-    'Estado del caso': '',
-    'Estado del trámite': '',
+    'Estado del caso': situacionActiva ? '' : 'Caso cerrado',
+    'Estado del trámite': situacionActiva ? '' : 'Caso cerrado',
     posibleActuacionJudicial: String(raw.G_ACTUACION_ADELANTAR ?? ''),
 
     __oracleIdPersona: raw.P_ID_PERSONA == null ? null : Number(raw.P_ID_PERSONA),
     __oracleIdSituacion: raw.S_ID_SITUACION == null ? null : Number(raw.S_ID_SITUACION),
     __oracleIdGestion: raw.G_ID_GESTION == null ? null : Number(raw.G_ID_GESTION),
     __oracleCedulaDefensor: raw.G_CEDULA_DEFENSOR == null ? null : String(raw.G_CEDULA_DEFENSOR),
+    __situacionActiva: situacionActiva,
+    __activoSituacion: raw.S_ACTIVO == null ? null : Number(raw.S_ACTIVO),
+    __totalSituaciones: Number(raw.S_TOTAL_SITUACIONES || 0),
+    __historialActivoInactivo:
+      Number(raw.S_MIN_ACTIVO_HISTORICO) === 0 && Number(raw.S_MAX_ACTIVO_HISTORICO) === 1,
   };
 
   return record;
@@ -632,7 +686,9 @@ function toLegacyRecord(raw = {}) {
 function computeTipo(record) {
   const updated = normalizeText(record?.['Situación Jurídica actualizada (de conformidad con la rama judicial)']);
   const base = normalizeText(record?.['Situación Jurídica']);
-  if (updated.includes('condenad') || base.includes('condenad')) return 'condenado';
+  if (updated.includes('condenad')) return 'condenado';
+  if (updated.includes('sindicad')) return 'sindicado';
+  if (base.includes('condenad')) return 'condenado';
   return 'sindicado';
 }
 
@@ -685,7 +741,7 @@ function normalizePayload(payload) {
 
 function stripControlKeys(source) {
   const out = { ...(source || {}) };
-  ['caseId', 'casos', 'activeCaseId', 'tipo', 'tipoPpl', 'data', 'rowIndex', 'actuacionId', '__calificacionesConducta'].forEach((key) => {
+  ['caseId', 'casos', 'activeCaseId', 'tipo', 'tipoPpl', 'data', 'rowIndex', 'actuacionId', '__calificacionesConducta', '__desasignarDefensor'].forEach((key) => {
     delete out[key];
   });
   return out;
@@ -713,11 +769,17 @@ function normalizeCalificacionesPayload(payload) {
 function splitUpdatesByTable(payload, { allowBaseUpdates = false } = {}) {
   const clean = stripControlKeys(normalizePayload(payload));
   const grouped = { PERSONA: {}, SITUACION: {}, GESTION: {} };
+  const accionImpulsarKey = Object.keys(clean).find(
+    (key) => normalizeText(key) === normalizeText('Acción a impulsar')
+  );
 
   Object.entries(clean).forEach(([key, value]) => {
     const binding = UPDATE_BINDINGS.get(normalizeText(key));
     if (!binding) return;
-    if (!allowBaseUpdates && (binding.table === 'PERSONA' || binding.table === 'SITUACION')) return;
+    if (!allowBaseUpdates && binding.table === 'PERSONA') return;
+    // El formulario puede corregir el enfoque diferencial, pero los demás
+    // campos base de la situación siguen siendo de solo lectura para esta API.
+    if (!allowBaseUpdates && binding.table === 'SITUACION' && binding.column !== 'ENFOQUE') return;
     const dbValue = toTypedDbValue(binding.column, value);
     if (
       dbValue == null &&
@@ -728,6 +790,11 @@ function splitUpdatesByTable(payload, { allowBaseUpdates = false } = {}) {
     }
     grouped[binding.table][binding.column] = dbValue;
   });
+
+  // El nombre canónico prevalece si un cliente envía también el alias legado.
+  if (accionImpulsarKey) {
+    grouped.GESTION.ACCION_REALIZAR = toTypedDbValue('ACCION_REALIZAR', clean[accionImpulsarKey]);
+  }
 
   return grouped;
 }
@@ -806,6 +873,15 @@ async function getActuacionesByDocumento(documento) {
 function hasMeaningfulUpdates(grouped) {
   return Object.keys(grouped.PERSONA).length > 0 || Object.keys(grouped.SITUACION).length > 0 || Object.keys(grouped.GESTION).length > 0;
 }
+
+function assertSituacionEditable(context) {
+  if (!Object.prototype.hasOwnProperty.call(context || {}, 'S_ACTIVO') || Number(context?.S_ACTIVO) === 1) return;
+  const err = new Error('La persona figura fuera de prisión. El registro es histórico y está disponible solo para consulta.');
+  err.code = 'PPL_SITUACION_INACTIVA';
+  err.status = 409;
+  throw err;
+}
+
 async function createActuacionByDocumento(documento, payload) {
   const doc = normalizeDocumento(documento);
   if (!doc) return null;
@@ -814,8 +890,12 @@ async function createActuacionByDocumento(documento, payload) {
     scopeDepartamentos: SCOPE_DEPARTAMENTOS,
   });
   if (!context?.S_ID_SITUACION) return null;
+  assertSituacionEditable(context);
 
   const updates = splitUpdatesByTable(payload);
+  if (!String(updates.GESTION.ACCION_REALIZAR ?? '').trim()) {
+    updates.GESTION.ACCION_REALIZAR = 'Analizar el caso';
+  }
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
   const normalizedPayload = normalizePayload(payload);
   if (Object.keys(updates.PERSONA).length) {
@@ -836,8 +916,10 @@ async function createActuacionByDocumento(documento, payload) {
     const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
     const currentDefensor = String(context.G_DEFENSOR || '').trim();
     if (nextDefensor && normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
+      const defensorCatalogado = await resolveDefensorCatalogado(nextDefensor);
       await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
-        defensorNombre: nextDefensor,
+        defensorNombre: defensorCatalogado.nombre,
+        defensorCedula: defensorCatalogado.cedula,
         pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
         pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
       });
@@ -869,6 +951,7 @@ async function updateByDocumento(documento, payload) {
     scopeDepartamentos: SCOPE_DEPARTAMENTOS,
   });
   if (!context?.S_ID_SITUACION) return null;
+  assertSituacionEditable(context);
 
   const updates = splitUpdatesByTable(payload);
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
@@ -896,6 +979,16 @@ async function updateByDocumento(documento, payload) {
     targetGestionId = Number(latest?.ID_GESTION || 0) || null;
   }
 
+  if (
+    Object.keys(updates.GESTION).length > 0 &&
+    !Object.prototype.hasOwnProperty.call(updates.GESTION, 'ACCION_REALIZAR')
+  ) {
+    const currentGestion = targetGestionId ? await gestionRepo.getById(targetGestionId, context.S_ID_SITUACION) : null;
+    if (!String(currentGestion?.ACCION_REALIZAR ?? '').trim()) {
+      updates.GESTION.ACCION_REALIZAR = 'Analizar el caso';
+    }
+  }
+
   if (Object.keys(updates.GESTION).length) {
     if (targetGestionId) {
       const affected = await gestionRepo.updateGestionById(targetGestionId, updates.GESTION);
@@ -911,12 +1004,17 @@ async function updateByDocumento(documento, payload) {
     }
   }
 
-  if (payloadHasDefensorField(normalizedPayload)) {
+  if (normalizedPayload.__desasignarDefensor === true) {
+    const affected = await asignacionRepo.endActiveAssignmentByPersona(context.P_ID_PERSONA);
+    if (affected > 0) dataVersion += 1;
+  } else if (payloadHasDefensorField(normalizedPayload)) {
     const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
     const currentDefensor = String(context.G_DEFENSOR || '').trim();
     if (nextDefensor && normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
+      const defensorCatalogado = await resolveDefensorCatalogado(nextDefensor);
       await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
-        defensorNombre: nextDefensor,
+        defensorNombre: defensorCatalogado.nombre,
+        defensorCedula: defensorCatalogado.cedula,
         pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
         pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
       });
@@ -978,6 +1076,7 @@ async function assignDefensor(documentos, defensor, options = {}) {
       scopeDepartamentos: SCOPE_DEPARTAMENTOS,
     });
     if (!context?.S_ID_SITUACION) continue;
+    if (Object.prototype.hasOwnProperty.call(context, 'S_ACTIVO') && Number(context.S_ACTIVO) !== 1) continue;
 
     const affected = await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
       defensorNombre,
@@ -986,6 +1085,25 @@ async function assignDefensor(documentos, defensor, options = {}) {
       defensorCedula,
     });
     if (affected > 0) updated += affected;
+  }
+
+  if (updated > 0) dataVersion += 1;
+  return updated;
+}
+
+async function unassignDefensor(documentos) {
+  const docs = Array.from(new Set((documentos || []).map((item) => normalizeDocumento(item)).filter(Boolean)));
+  if (!docs.length) return 0;
+
+  let updated = 0;
+  for (const doc of docs) {
+    const context = await personaRepo.findActiveContextByDocumento(doc, {
+      scopeDepartamentos: SCOPE_DEPARTAMENTOS,
+    });
+    if (!context?.S_ID_SITUACION) continue;
+    if (Object.prototype.hasOwnProperty.call(context, 'S_ACTIVO') && Number(context.S_ACTIVO) !== 1) continue;
+
+    updated += await asignacionRepo.endActiveAssignmentByPersona(context.P_ID_PERSONA);
   }
 
   if (updated > 0) dataVersion += 1;
@@ -1013,6 +1131,7 @@ module.exports = {
   createActuacionByDocumento,
   updateByDocumento,
   assignDefensor,
+  unassignDefensor,
   getDefensoresDistinct,
   computeTipo,
   getDataVersion,

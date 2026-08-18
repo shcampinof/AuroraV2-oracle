@@ -56,7 +56,14 @@ function CajaHerramientas() {
       {!cargando && (
         <div className="tools-grid">
           {formatos.map((f) => (
-            <div key={f.id} className="tool-card">
+            <div
+              key={f.id}
+              className={`tool-card ${
+                f.categoria === 'utilidad-publica'
+                  ? 'tool-card--utilidad-publica'
+                  : 'tool-card--general'
+              }`}
+            >
               <button
                 type="button"
                 className="tool-logo-button"

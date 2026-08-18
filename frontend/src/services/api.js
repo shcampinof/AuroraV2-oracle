@@ -221,7 +221,7 @@ export async function getPplByDocumento(documento) {
   return readJsonOrThrow(res, 'Registro no encontrado'); // { tipo, registro }
 }
 
-// UPDATE (mock unificado)
+// ACTUALIZACIÓN UNIFICADA
 // PUT /api/ppl/:documento
 export async function updatePpl(documento, payload) {
   const res = await fetchJson(`${API_BASE}/ppl/${encodeURIComponent(documento)}`, {
@@ -229,8 +229,8 @@ export async function updatePpl(documento, payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error('Error actualizando registro');
   const data = await readJsonOrThrow(res, 'Error actualizando registro');
+  if (!res.ok) throw new Error(String(data?.message || 'Error actualizando registro'));
   invalidateCondenadosClientCache();
   return normalizeQueuedResponse(data, {
     registro: payload?.data && typeof payload.data === 'object' ? payload.data : null,
@@ -245,8 +245,8 @@ export async function createPplActuacion(documento, payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload || {}),
   });
-  if (!res.ok) throw new Error('Error creando actuacion');
   const data = await readJsonOrThrow(res, 'Error creando actuacion');
+  if (!res.ok) throw new Error(String(data?.message || 'Error creando actuación'));
   invalidateCondenadosClientCache();
   return normalizeQueuedResponse(data, { documento }); // { documento, actuacion, registro }
 }
@@ -284,7 +284,7 @@ export async function getFormatoDownloadTarget(id) {
 // =====================
 // Asignacion de defensores (condenados)
 // =====================
-function getCondenadosRequest(options = 1000) {
+export function getCondenadosRequest(options = 1000) {
   const isLegacyNumeric = typeof options === 'number' || typeof options === 'string';
   const source = isLegacyNumeric ? { limit: options } : options && typeof options === 'object' ? options : {};
   const rawTipo = String(source?.tipo || '').trim().toLowerCase();
@@ -297,22 +297,37 @@ function getCondenadosRequest(options = 1000) {
   const safeFilteredLimit = Number.isFinite(Number(source?.filteredLimit))
     ? Math.max(1, Math.min(200, Number(source.filteredLimit)))
     : 200;
+  const safePage = Number.isFinite(Number(source?.page))
+    ? Math.max(1, Math.trunc(Number(source.page)))
+    : 1;
+  const safePageSize = Number.isFinite(Number(source?.pageSize))
+    ? Math.max(1, Math.min(200, Math.trunc(Number(source.pageSize))))
+    : null;
 
   const filters = source?.filters && typeof source.filters === 'object' ? source.filters : {};
   const params = new URLSearchParams();
   if (safeTipo) params.set('tipo', safeTipo);
   params.set('limit', String(safeLimit));
+  params.set('page', String(safePage));
+  if (safePageSize) params.set('pageSize', String(safePageSize));
 
   const filterKeys = [
     'defensor',
+    'defensorId',
     'nombre',
     'documento',
     'lugar',
+    'centroId',
     'departamento',
     'municipio',
     'estadoAccion',
+    'estadoCodigo',
     'estado',
+    'accionCodigo',
+    'accion',
     'potencialSubrogado',
+    'asignacionEstado',
+    'incluirFueraPrision',
   ];
   let hasFilters = false;
   filterKeys.forEach((key) => {
@@ -351,7 +366,7 @@ export async function getCondenados(options = 1000) {
   );
 }
 
-function getCondenadosFilterOptionsRequest(options = {}) {
+export function getCondenadosFilterOptionsRequest(options = {}) {
   const source = options && typeof options === 'object' ? options : {};
   const rawTipo = String(source?.tipo || '').trim().toLowerCase();
   const safeTipo =
@@ -361,7 +376,7 @@ function getCondenadosFilterOptionsRequest(options = {}) {
   const params = new URLSearchParams();
   params.set('tipo', safeTipo);
 
-  ['departamento', 'municipio', 'defensor'].forEach((key) => {
+  ['departamento', 'municipio', 'defensor', 'defensorId', 'centroId'].forEach((key) => {
     const value = String(filters?.[key] ?? '').trim();
     if (value) params.set(key, value);
   });
@@ -395,6 +410,34 @@ export async function getDefensores() {
   const res = await fetchJson(`${API_BASE}/defensores`, { cache: 'no-store' });
   if (!res.ok) throw new Error('Error consultando defensores');
   return readJsonOrThrow(res, 'Error consultando defensores'); // { defensores }
+}
+
+export async function getReporteAtencionesDefensores({ fechaInicio, fechaFin, regional, defensorId }) {
+  const params = new URLSearchParams({
+    fechaInicio: String(fechaInicio || ''),
+    fechaFin: String(fechaFin || ''),
+    regional: String(regional || ''),
+    defensorId: String(defensorId || ''),
+  });
+  const res = await fetchJson(`${API_BASE}/reportes/atenciones-defensores?${params.toString()}`, {
+    cache: 'no-store',
+  });
+  const data = await readJsonOrThrow(res, 'Error generando el reporte de atenciones');
+  if (!res.ok) {
+    throw new Error(String(data?.message || 'No fue posible generar el reporte de atenciones.'));
+  }
+  return data;
+}
+
+export async function getReporteAtencionesOpciones() {
+  const res = await fetchJson(`${API_BASE}/reportes/atenciones-defensores/opciones`, {
+    cache: 'no-store',
+  });
+  const data = await readJsonOrThrow(res, 'Error consultando las opciones del reporte');
+  if (!res.ok) {
+    throw new Error(String(data?.message || 'No fue posible consultar regionales y defensores.'));
+  }
+  return data;
 }
 
 export async function getDefensoresCondenados() {
@@ -435,6 +478,8 @@ function normalizeDefensorOption(option) {
   return {
     id: id || nombre.toUpperCase().replace(/\s+/g, '_'),
     nombre,
+    regional: String(option.regional ?? '').trim(),
+    correo: String(option.correo ?? '').trim(),
   };
 }
 
@@ -493,10 +538,30 @@ export async function assignDefensorPpl(documento, defensor, options = {}) {
     }),
   });
 
-  if (!res.ok) throw new Error('Error guardando la asignacion de defensor');
   const data = await readJsonOrThrow(res, 'Error guardando la asignacion de defensor');
+  if (!res.ok) {
+    throw new Error(String(data?.message || 'Error guardando la asignación de defensor'));
+  }
   invalidateCondenadosClientCache();
   return normalizeQueuedResponse(data, { documentos, defensor: defensorNombre });
+}
+
+export async function unassignDefensorPpl(documento, options = {}) {
+  const documentos = Array.isArray(documento)
+    ? documento.map((d) => String(d || '').trim()).filter(Boolean)
+    : [String(documento || '').trim()].filter(Boolean);
+  if (!documentos.length) throw new Error('No hay documentos para desasignar.');
+
+  const res = await fetchJson(`${API_BASE}/ppl/desasignar-defensor`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documentos, ...(options || {}) }),
+  });
+
+  const data = await readJsonOrThrow(res, 'Error desasignando el defensor');
+  if (!res.ok) throw new Error(String(data?.message || 'Error desasignando el defensor'));
+  invalidateCondenadosClientCache();
+  return normalizeQueuedResponse(data, { documentos });
 }
 
 // =====================

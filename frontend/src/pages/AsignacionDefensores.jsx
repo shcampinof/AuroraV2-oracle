@@ -8,14 +8,15 @@ import {
   getDefensoresCatalogo,
   extractDefensoresCatalogo,
   isQueuedResponse,
+  unassignDefensorPpl,
   validatePagCedula,
 } from '../services/api.js';
 import Toast from '../components/Toast.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
-import PagUsuariosAdmin from '../components/PagUsuariosAdmin.jsx';
 import { getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
 import { displayOrDash } from '../utils/pplDisplay.js';
 import { reportError } from '../utils/reportError.js';
+import { buildAsignacionBackendFilters } from '../utils/asignacionDefensores.js';
 
 function tieneDefensor(value) {
   const cleaned = String(value ?? '').trim();
@@ -28,9 +29,34 @@ function normalizeDocumento(value) {
 
 function normalizeDefensorNombre(value) {
   return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase()
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeLugar(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+function resolveCentroId(value, options) {
+  const key = normalizeLugar(value);
+  if (!key) return '';
+  const ids = new Set();
+  (Array.isArray(options) ? options : []).forEach((option) => {
+    const labels = [option?.label, ...(Array.isArray(option?.valoresOriginales) ? option.valoresOriginales : [])];
+    if (labels.some((label) => normalizeLugar(label) === key)) {
+      const id = String(option?.id || '').trim();
+      if (id) ids.add(id);
+    }
+  });
+  return ids.size === 1 ? Array.from(ids)[0] : '';
 }
 
 function isNombreDefensorValido(value) {
@@ -38,12 +64,13 @@ function isNombreDefensorValido(value) {
 }
 
 function getAccionImpulsarDisplay(row) {
+  const accionApi = String(row?.accionPendiente?.etiqueta || '').trim();
+  if (accionApi) return accionApi;
   const estadoInfo = getEstadoDisplayInfo(row);
   return String(estadoInfo?.label || row?.accionImpulsar || '').trim();
 }
 
-const DEFAULT_INITIAL_LIMIT = 100;
-const DEFAULT_FILTERED_LIMIT = 200;
+const PAGE_SIZE = 50;
 const MAX_DEFENSOR_SUGGESTIONS = 80;
 
 const AsignacionRow = memo(function AsignacionRow({ row, selected, onToggle }) {
@@ -74,14 +101,17 @@ const AsignacionRow = memo(function AsignacionRow({ row, selected, onToggle }) {
   );
 });
 
-function AsignacionDefensores({ isAdmin = false }) {
-  const [tab, setTab] = useState('asignacion'); // 'asignacion' | 'reasignacion' | 'crearDefensor' | 'usuariosPag'
+function AsignacionDefensores() {
+  const [tab, setTab] = useState('asignacion'); // 'asignacion' | 'reasignacion' | 'eliminarAsignaciones' | 'crearDefensor'
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
   const [toastOpen, setToastOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState('Aurora - Cambios guardados correctamente');
 
   const [rows, setRows] = useState([]);
+  const [pagina, setPagina] = useState(1);
+  const [paginaDestino, setPaginaDestino] = useState('1');
+  const [busquedaRealizada, setBusquedaRealizada] = useState(false);
   const [seleccionados, setSeleccionados] = useState(new Set());
 
   const [defensores, setDefensores] = useState([]);
@@ -89,10 +119,13 @@ function AsignacionDefensores({ isAdmin = false }) {
     departamentos: [],
     municipios: [],
     lugares: [],
+    centros: [],
+    defensores: [],
   });
   const [opcionesFiltroDependientes, setOpcionesFiltroDependientes] = useState({
     municipios: [],
     lugares: [],
+    centros: [],
   });
   const [defensoresError, setDefensoresError] = useState('');
   const [nuevoDefensorId, setNuevoDefensorId] = useState('');
@@ -117,51 +150,47 @@ function AsignacionDefensores({ isAdmin = false }) {
     departamento: '',
     municipio: '',
     lugar: '',
+    centroId: '',
     potencialSubrogado: '',
     defensorActual: '',
   });
   const [metaConsulta, setMetaConsulta] = useState(null);
   const deferredNuevoDefensorInput = useDeferredValue(nuevoDefensorInput);
+  const tabGestionaAsignacionesExistentes =
+    tab === 'reasignacion' || tab === 'eliminarAsignaciones';
 
-  const buildBackendFilters = useCallback((currentTab, filtros) => {
-    const safe = filtros && typeof filtros === 'object' ? filtros : {};
-    return {
-      documento: String(safe.documento || '').trim(),
-      departamento: String(safe.departamento || '').trim(),
-      municipio: String(safe.municipio || '').trim(),
-      lugar: String(safe.lugar || '').trim(),
-      potencialSubrogado: String(safe.potencialSubrogado || '').trim(),
-      defensor: currentTab === 'reasignacion' ? String(safe.defensorActual || '').trim() : '',
-    };
-  }, []);
-
-  const cargarPpl = useCallback(async (filtros = {}, currentTab = 'asignacion') => {
+  const cargarPpl = useCallback(async (filtros = {}, currentTab = 'asignacion', nextPage = 1) => {
     setCargando(true);
     setError('');
     try {
       const data = await getCondenados({
-        limit: DEFAULT_INITIAL_LIMIT,
-        filteredLimit: DEFAULT_FILTERED_LIMIT,
-        filters: buildBackendFilters(currentTab, filtros),
+        tipo: 'condenado',
+        page: nextPage,
+        pageSize: PAGE_SIZE,
+        filters: buildAsignacionBackendFilters(currentTab, filtros),
       });
       setRows(Array.isArray(data?.rows) ? data.rows : []);
       setMetaConsulta(data?.meta || null);
+      setPagina(nextPage);
+      setPaginaDestino(String(nextPage));
+      setBusquedaRealizada(true);
     } catch (e) {
       reportError(e, 'asignacion-defensores:cargar-ppl');
       setError(String(e?.message || 'Error cargando PPL.'));
       setRows([]);
       setMetaConsulta(null);
+      setBusquedaRealizada(true);
     } finally {
       setCargando(false);
     }
-  }, [buildBackendFilters]);
+  }, []);
 
   const cargarDefensoresActuales = useCallback(async () => {
     const normalizarLista = (catalogo) => {
       const map = new Map();
       (Array.isArray(catalogo) ? catalogo : []).forEach((item) => {
         const id = String(item?.id || '').trim();
-        const nombre = String(item?.nombre || '').trim();
+        const nombre = normalizeDefensorNombre(item?.nombre);
         if (!id || !nombre) return;
         if (!map.has(id)) map.set(id, { id, nombre });
       });
@@ -216,6 +245,20 @@ function AsignacionDefensores({ isAdmin = false }) {
   }, [cargarDefensoresActuales]);
 
   useEffect(() => {
+    const refrescarDefensores = () => cargarDefensoresActuales();
+    const refrescarSiVisible = () => {
+      if (document.visibilityState === 'visible') refrescarDefensores();
+    };
+
+    window.addEventListener('focus', refrescarDefensores);
+    document.addEventListener('visibilitychange', refrescarSiVisible);
+    return () => {
+      window.removeEventListener('focus', refrescarDefensores);
+      document.removeEventListener('visibilitychange', refrescarSiVisible);
+    };
+  }, [cargarDefensoresActuales]);
+
+  useEffect(() => {
     let active = true;
     cargarOpcionesFiltro().then((data) => {
       if (!active) return;
@@ -223,6 +266,8 @@ function AsignacionDefensores({ isAdmin = false }) {
         departamentos: Array.isArray(data?.departamentos) ? data.departamentos : [],
         municipios: Array.isArray(data?.municipios) ? data.municipios : [],
         lugares: Array.isArray(data?.lugares) ? data.lugares : [],
+        centros: Array.isArray(data?.centros) ? data.centros : [],
+        defensores: Array.isArray(data?.defensores) ? data.defensores : [],
       });
     });
     return () => {
@@ -235,6 +280,7 @@ function AsignacionDefensores({ isAdmin = false }) {
     setOpcionesFiltroDependientes({
       municipios: [],
       lugares: [],
+      centros: [],
     });
 
     const timeoutId = setTimeout(() => {
@@ -250,6 +296,7 @@ function AsignacionDefensores({ isAdmin = false }) {
         setOpcionesFiltroDependientes({
           municipios: Array.isArray(data?.municipios) ? data.municipios : [],
           lugares: Array.isArray(data?.lugares) ? data.lugares : [],
+          centros: Array.isArray(data?.centros) ? data.centros : [],
         });
       });
     }, 250);
@@ -259,11 +306,6 @@ function AsignacionDefensores({ isAdmin = false }) {
       clearTimeout(timeoutId);
     };
   }, [cargarOpcionesFiltro, fDepartamento, fMunicipio]);
-
-  useEffect(() => {
-    if (!pagValidado?.cedula) return;
-    cargarPpl({}, 'asignacion');
-  }, [cargarPpl, pagValidado?.cedula]);
 
   const defensoresOrdenados = useMemo(() => {
     return [...defensores].sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -315,14 +357,10 @@ function AsignacionDefensores({ isAdmin = false }) {
   }, [defensores]);
 
   const defensoresActualesOrdenados = useMemo(() => {
-    const set = new Set();
-    rows.forEach((row) => {
-      const nombre = String(row?.defensorAsignado || '').trim();
-      if (!nombre || nombre === '-') return;
-      set.add(nombre);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
+    return Array.from(
+      new Set((opcionesFiltro.defensores || []).map(normalizeDefensorNombre).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b));
+  }, [opcionesFiltro.defensores]);
 
   const rowsPorDocumento = useMemo(() => {
     const map = new Map();
@@ -360,20 +398,25 @@ function AsignacionDefensores({ isAdmin = false }) {
     if (String(fDepartamento || '').trim() || String(fMunicipio || '').trim()) {
       return opcionesFiltroDependientes.lugares;
     }
-    if (opcionesFiltro.lugares.length) return opcionesFiltro.lugares;
-    const set = new Set();
-    rows.forEach((r) => {
-      const val = String(r?.lugarReclusion || '').trim();
-      if (val) set.add(val);
-    });
-    return Array.from(set).sort();
-  }, [fDepartamento, fMunicipio, opcionesFiltroDependientes.lugares, opcionesFiltro.lugares, rows]);
+    // El catálogo del backend está limitado a situaciones ACTIVO = 1. Evitar
+    // un fallback con filas históricas que vuelva a mostrar centros inactivos.
+    return opcionesFiltro.lugares;
+  }, [fDepartamento, fMunicipio, opcionesFiltroDependientes.lugares, opcionesFiltro.lugares]);
+
+  const centrosDisponibles = useMemo(() => {
+    if (String(fDepartamento || '').trim() || String(fMunicipio || '').trim()) {
+      return opcionesFiltroDependientes.centros;
+    }
+    return opcionesFiltro.centros;
+  }, [fDepartamento, fMunicipio, opcionesFiltroDependientes.centros, opcionesFiltro.centros]);
 
   const rowsTab = useMemo(() => {
-    if (tab === 'asignacion') return rows.filter((r) => !tieneDefensor(r?.defensorAsignado));
-    if (tab === 'reasignacion') return rows.filter((r) => tieneDefensor(r?.defensorAsignado));
+    if (tab === 'asignacion' || tab === 'reasignacion' || tab === 'eliminarAsignaciones') return rows;
     return [];
   }, [rows, tab]);
+
+  const totalResultados = Number(metaConsulta?.totalMatched || 0);
+  const totalPaginas = Math.max(1, Number(metaConsulta?.totalPages || Math.ceil(totalResultados / PAGE_SIZE) || 1));
 
   const rowsFiltradas = useMemo(() => {
     return rowsTab.map((row, idx) => ({
@@ -383,22 +426,8 @@ function AsignacionDefensores({ isAdmin = false }) {
     }));
   }, [rowsTab]);
 
-  const sugerenciaReasignacion = useMemo(() => {
-    if (tab !== 'asignacion') return '';
-    const needle = normalizeDocumento(filtrosAplicados.documento);
-    if (!needle) return '';
-
-    const hit = rows.find((r) => {
-      const doc = normalizeDocumento(r?.numeroIdentificacion);
-      return doc.startsWith(needle) && tieneDefensor(r?.defensorAsignado);
-    });
-
-    if (!hit) return '';
-    return `El documento ${hit.numeroIdentificacion} ya tiene defensor (${hit.defensorAsignado}). Use la pestaña Reasignación.`;
-  }, [tab, rows, filtrosAplicados.documento]);
-
   const defensorActualSeleccionados = useMemo(() => {
-    if (tab !== 'reasignacion') return '-';
+    if (tab !== 'reasignacion' && tab !== 'eliminarAsignaciones') return '-';
     const current = Array.from(seleccionados)
       .map((doc) => rowsPorDocumento.get(String(doc)))
       .filter(Boolean)
@@ -419,20 +448,38 @@ function AsignacionDefensores({ isAdmin = false }) {
   }, []);
 
   async function aplicarFiltros() {
+    const centroId = resolveCentroId(fLugar, centrosDisponibles);
     const nextFiltros = {
       documento: String(fDocumento || '').trim(),
       departamento: String(fDepartamento || '').trim(),
       municipio: String(fMunicipio || '').trim(),
       lugar: String(fLugar || '').trim(),
+      centroId,
       potencialSubrogado: String(fPotencialSubrogado || '').trim(),
-      defensorActual: tab === 'reasignacion' ? String(fDefensorActual || '').trim() : '',
+      defensorActual: tabGestionaAsignacionesExistentes ? String(fDefensorActual || '').trim() : '',
     };
+
+    const hasUserFilter = [
+      nextFiltros.documento,
+      nextFiltros.departamento,
+      nextFiltros.municipio,
+      nextFiltros.lugar,
+      nextFiltros.potencialSubrogado,
+      nextFiltros.defensorActual,
+    ].some((value) => String(value || '').trim());
+    if (!hasUserFilter) {
+      setError('Seleccione al menos un filtro antes de consultar.');
+      setRows([]);
+      setMetaConsulta(null);
+      setBusquedaRealizada(false);
+      return;
+    }
 
     setError('');
     setToastOpen(false);
     setSeleccionados(new Set());
     setFiltrosAplicados(nextFiltros);
-    await cargarPpl(nextFiltros, tab);
+    await cargarPpl(nextFiltros, tab, 1);
   }
 
   async function limpiarFiltros() {
@@ -441,6 +488,7 @@ function AsignacionDefensores({ isAdmin = false }) {
       departamento: '',
       municipio: '',
       lugar: '',
+      centroId: '',
       potencialSubrogado: '',
       defensorActual: '',
     };
@@ -454,7 +502,11 @@ function AsignacionDefensores({ isAdmin = false }) {
     setSeleccionados(new Set());
     setError('');
     setToastOpen(false);
-    await cargarPpl(emptyFiltros, tab);
+    setRows([]);
+    setMetaConsulta(null);
+    setPagina(1);
+    setPaginaDestino('1');
+    setBusquedaRealizada(false);
   }
 
   async function validarPag() {
@@ -471,6 +523,11 @@ function AsignacionDefensores({ isAdmin = false }) {
       const pag = await validatePagCedula(cedula);
       setPagCedula(cedula);
       setPagValidado(pag || { cedula });
+      setRows([]);
+      setMetaConsulta(null);
+      setPagina(1);
+      setPaginaDestino('1');
+      setBusquedaRealizada(false);
     } catch (e) {
       reportError(e, 'asignacion-defensores:validar-pag');
       setPagValidado(null);
@@ -538,17 +595,61 @@ function AsignacionDefensores({ isAdmin = false }) {
       setToastMessage(
         isQueuedResponse(data)
           ? 'Asignacion guardada en cola. Se sincronizara cuando vuelva la conexion.'
-          : 'Aurora - Cambios guardados correctamente'
+          : Number(data?.updated || 0) < documentos.length
+            ? `Se actualizaron ${Number(data?.updated || 0)} de ${documentos.length} asignación(es). Recargue y revise los casos pendientes.`
+            : `Se actualizaron ${Number(data?.updated || 0)} asignación(es) correctamente.`
       );
       setToastOpen(true);
       setSeleccionados(new Set());
       if (!isQueuedResponse(data)) {
-        await cargarPpl(filtrosAplicados, tab);
+        await cargarPpl(filtrosAplicados, tab, pagina);
         await cargarDefensoresActuales();
       }
     } catch (e) {
       reportError(e, 'asignacion-defensores:guardar');
       setError(String(e?.message || 'Error guardando la asignación.'));
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  async function eliminarAsignacionesSeleccionadas() {
+    if (!pagValidado?.cedula) {
+      setError('Debe validar la cedula del PAG antes de eliminar asignaciones.');
+      return;
+    }
+
+    const documentos = Array.from(seleccionados);
+    if (!documentos.length) {
+      setError('Seleccione al menos un PPL.');
+      return;
+    }
+    const confirmar = window.confirm(
+      `¿Eliminar la asignación del defensor en ${documentos.length} caso(s)? Los casos y su historial se conservarán.`
+    );
+    if (!confirmar) return;
+
+    setCargando(true);
+    setError('');
+    setToastOpen(false);
+    try {
+      const data = await unassignDefensorPpl(documentos, { pagCedula: pagValidado.cedula });
+      setToastMessage(
+        isQueuedResponse(data)
+          ? 'Eliminación de asignaciones guardada en cola. Se sincronizará cuando vuelva la conexión.'
+          : Number(data?.updated || 0) < documentos.length
+            ? `Se eliminaron ${Number(data?.updated || 0)} de ${documentos.length} asignación(es). Recargue y revise los casos pendientes.`
+            : `Se eliminaron ${Number(data?.updated || 0)} asignación(es) correctamente.`
+      );
+      setToastOpen(true);
+      setSeleccionados(new Set());
+      if (!isQueuedResponse(data)) {
+        await cargarPpl(filtrosAplicados, tab, pagina);
+        await cargarDefensoresActuales();
+      }
+    } catch (e) {
+      reportError(e, 'asignacion-defensores:eliminar-asignaciones');
+      setError(String(e?.message || 'Error eliminando las asignaciones.'));
     } finally {
       setCargando(false);
     }
@@ -584,17 +685,21 @@ function AsignacionDefensores({ isAdmin = false }) {
       const data = await createDefensor({ cedula, nombre });
       const creado = normalizeDefensorNombre(data?.defensor || nombre);
       const opcionCreada = data?.opcion;
+      const opcionNormalizada = {
+        id: String(opcionCreada?.id || cedula),
+        nombre: normalizeDefensorNombre(opcionCreada?.nombre || creado),
+      };
 
-      if (opcionCreada?.id) {
-        setNuevoDefensorId(String(opcionCreada.id));
-        setNuevoDefensorInput(String(opcionCreada?.nombre || creado));
-      } else {
-        const hit = defensores.find((item) => normalizeDefensorNombre(item?.nombre) === creado);
-        if (hit?.id) {
-          setNuevoDefensorId(String(hit.id));
-          setNuevoDefensorInput(String(hit.nombre || creado));
-        }
-      }
+      setDefensores((prev) => {
+        const sinDuplicado = prev.filter(
+          (item) =>
+            String(item?.id || '') !== opcionNormalizada.id &&
+            normalizeDefensorNombre(item?.nombre) !== normalizeDefensorNombre(opcionNormalizada.nombre)
+        );
+        return [...sinDuplicado, opcionNormalizada];
+      });
+      setNuevoDefensorId(opcionNormalizada.id);
+      setNuevoDefensorInput(opcionNormalizada.nombre);
       setCrearDefensorCedula('');
       setCrearDefensorNombre('');
       setCrearDefensorSuccess(
@@ -604,6 +709,10 @@ function AsignacionDefensores({ isAdmin = false }) {
       );
       if (!isQueuedResponse(data)) {
         await cargarDefensoresActuales();
+        setDefensores((prev) => {
+          if (prev.some((item) => String(item?.id || '') === opcionNormalizada.id)) return prev;
+          return [...prev, opcionNormalizada];
+        });
         window.dispatchEvent(new CustomEvent('aurora:defensores-updated'));
       }
     } catch (e) {
@@ -623,25 +732,52 @@ function AsignacionDefensores({ isAdmin = false }) {
     setCrearDefensorSuccess('');
     setNuevoDefensorId('');
     setNuevoDefensorInput('');
+    setRows([]);
+    setMetaConsulta(null);
+    setPagina(1);
+    setPaginaDestino('1');
+    setBusquedaRealizada(false);
 
-    if (nextTab === 'usuariosPag') return;
+    if (
+      nextTab === 'asignacion' ||
+      nextTab === 'reasignacion' ||
+      nextTab === 'eliminarAsignaciones'
+    ) {
+      cargarDefensoresActuales();
+    }
 
     if (nextTab === 'asignacion') {
       setFDefensorActual('');
       const nextFiltros = { ...(filtrosAplicados || {}), defensorActual: '' };
       setFiltrosAplicados(nextFiltros);
-      if (pagValidado?.cedula) cargarPpl(nextFiltros, nextTab);
       return;
     }
+  }
 
-    if (pagValidado?.cedula) cargarPpl(filtrosAplicados, nextTab);
+  async function cambiarPagina(nextPage) {
+    const boundedPage = Math.max(1, Math.min(totalPaginas, nextPage));
+    if (boundedPage === pagina || cargando) {
+      setPaginaDestino(String(pagina));
+      return;
+    }
+    setSeleccionados(new Set());
+    await cargarPpl(filtrosAplicados, tab, boundedPage);
+  }
+
+  async function irAPaginaSolicitada() {
+    const requested = Number.parseInt(String(paginaDestino || ''), 10);
+    if (!Number.isFinite(requested)) {
+      setPaginaDestino(String(pagina));
+      return;
+    }
+    await cambiarPagina(requested);
   }
 
   const botonGuardarDefensorDeshabilitado =
     guardandoDefensor ||
     String(crearDefensorCedula || '').trim() === '' ||
     String(crearDefensorNombre || '').trim() === '';
-  const mostrarOverlayCarga = !['crearDefensor', 'usuariosPag'].includes(tab) && (cargando || validandoPag);
+  const mostrarOverlayCarga = tab !== 'crearDefensor' && (cargando || validandoPag);
   const mensajeOverlayCarga = 'Cargando información...';
 
   return (
@@ -654,21 +790,13 @@ function AsignacionDefensores({ isAdmin = false }) {
         onClose={() => setToastOpen(false)}
       />
 
-      {!['crearDefensor', 'usuariosPag'].includes(tab) && metaConsulta?.filtered && (
+      {tab !== 'crearDefensor' && busquedaRealizada && metaConsulta && (
         <p className="hint-text">
-          {metaConsulta?.truncated
-            ? metaConsulta?.totalMatchedExact === false
-              ? `Se muestran los primeros ${metaConsulta?.returned || 0} registros. Hay más resultados; ajuste los filtros para precisar la búsqueda.`
-              : `Se encontraron ${metaConsulta?.totalMatched || 0} registros y se muestran los primeros ${metaConsulta?.returned || 0}.`
-            : `Se encontraron ${metaConsulta?.returned || metaConsulta?.totalMatched || 0} registros.`}
+          Se encontraron {totalResultados} registros.
         </p>
       )}
 
-      {!['crearDefensor', 'usuariosPag'].includes(tab) && error && <p className="hint-text">{error}</p>}
-      {!['crearDefensor', 'usuariosPag'].includes(tab) && sugerenciaReasignacion && (
-        <p className="hint-text">{sugerenciaReasignacion}</p>
-      )}
-
+      {tab !== 'crearDefensor' && error && <p className="hint-text">{error}</p>}
       <div className="search-row" style={{ marginTop: '0.75rem' }}>
         <button
           className={`primary-button aurora-tab ${tab === 'asignacion' ? 'active' : ''}`}
@@ -687,6 +815,14 @@ function AsignacionDefensores({ isAdmin = false }) {
           Reasignación
         </button>
         <button
+          className={`primary-button aurora-tab ${tab === 'eliminarAsignaciones' ? 'active' : ''}`}
+          type="button"
+          aria-pressed={tab === 'eliminarAsignaciones'}
+          onClick={() => cambiarTab('eliminarAsignaciones')}
+        >
+          Eliminar asignaciones
+        </button>
+        <button
           className={`primary-button aurora-tab ${tab === 'crearDefensor' ? 'active' : ''}`}
           type="button"
           aria-pressed={tab === 'crearDefensor'}
@@ -694,16 +830,6 @@ function AsignacionDefensores({ isAdmin = false }) {
         >
           Crear defensor
         </button>
-        {isAdmin ? (
-          <button
-            className={`primary-button aurora-tab ${tab === 'usuariosPag' ? 'active' : ''}`}
-            type="button"
-            aria-pressed={tab === 'usuariosPag'}
-            onClick={() => cambiarTab('usuariosPag')}
-          >
-            Accesos PAG
-          </button>
-        ) : null}
       </div>
 
       {tab === 'crearDefensor' ? (
@@ -736,7 +862,7 @@ function AsignacionDefensores({ isAdmin = false }) {
                 placeholder="Ingrese nombre completo en MAYÚSCULA"
                 value={crearDefensorNombre}
                 onChange={(e) => {
-                  setCrearDefensorNombre(String(e.target.value || '').toUpperCase());
+                  setCrearDefensorNombre(normalizeDefensorNombre(e.target.value));
                   if (crearDefensorError) setCrearDefensorError('');
                   if (crearDefensorSuccess) setCrearDefensorSuccess('');
                 }}
@@ -764,8 +890,6 @@ function AsignacionDefensores({ isAdmin = false }) {
             </button>
           </div>
         </div>
-      ) : tab === 'usuariosPag' && isAdmin ? (
-        <PagUsuariosAdmin />
       ) : (
         <>
       <div className="card" style={{ marginTop: '1rem' }}>
@@ -815,7 +939,7 @@ function AsignacionDefensores({ isAdmin = false }) {
         <h3 className="filter-title">Filtros</h3>
 
         <div className="grid-2" style={{ marginTop: '1rem' }}>
-          {tab === 'reasignacion' && (
+          {tabGestionaAsignacionesExistentes && (
             <div className="form-field">
               <label>Defensor público actual</label>
               <input
@@ -938,10 +1062,10 @@ function AsignacionDefensores({ isAdmin = false }) {
           filtrosAplicados.lugar ||
           filtrosAplicados.documento ||
           filtrosAplicados.potencialSubrogado ||
-          (tab === 'reasignacion' && filtrosAplicados.defensorActual)) && (
+          (tabGestionaAsignacionesExistentes && filtrosAplicados.defensorActual)) && (
           <p className="hint-text" style={{ marginTop: '0.75rem' }}>
             Filtros aplicados:{' '}
-            {tab === 'reasignacion' ? `${filtrosAplicados.defensorActual || '-'} / ` : ''}
+            {tabGestionaAsignacionesExistentes ? `${filtrosAplicados.defensorActual || '-'} / ` : ''}
             {filtrosAplicados.departamento || '-'} / {filtrosAplicados.municipio || '-'} /{' '}
             {filtrosAplicados.lugar || '-'} / {filtrosAplicados.documento || '-'} /{' '}
             {filtrosAplicados.potencialSubrogado === 'potenciales_beneficiarios'
@@ -959,56 +1083,79 @@ function AsignacionDefensores({ isAdmin = false }) {
 
       <div className="card" style={{ marginTop: '1rem' }}>
         <h3 className="block-title">
-          {tab === 'asignacion' ? 'Asignación de defensor' : 'Reasignación de defensor'}
+          {tab === 'asignacion'
+            ? 'Asignación de defensor'
+            : tab === 'reasignacion'
+              ? 'Reasignación de defensor'
+              : 'Eliminar asignaciones'}
         </h3>
 
-        {tab === 'reasignacion' && (
+        {tabGestionaAsignacionesExistentes && (
           <p className="hint-text">Defensor actual (seleccionados): {defensorActualSeleccionados}</p>
         )}
 
-        <div className="grid-2">
-          <div className="form-field">
-            <label>Nuevo defensor</label>
-            <input
-              list="pag-nuevo-defensor-list"
-              className="input-text"
-              placeholder="Escriba para buscar defensor"
-              value={nuevoDefensorInput}
-              onChange={(e) => {
-                const next = String(e.target.value || '');
-                setNuevoDefensorInput(next);
-                const hit = defensoresPorNombreNormalizado.get(normalizeDefensorNombre(next));
-                setNuevoDefensorId(hit?.id ? String(hit.id) : '');
-              }}
-            />
-            <datalist id="pag-nuevo-defensor-list">
-              {defensoresSugeridos.map((d) => (
-                <option key={d.id} value={d.nombre} />
-              ))}
-            </datalist>
-            {defensoresError && <p className="hint-text">{defensoresError}</p>}
-            {!defensoresError && defensoresOrdenados.length === 0 && (
-              <p className="hint-text">No hay defensores para mostrar.</p>
-            )}
-            <button
-              className="primary-button"
-              type="button"
-              onClick={cargarDefensoresActuales}
-              style={{ marginTop: '0.5rem' }}
-            >
-              Recargar defensores
-            </button>
+        {tab === 'eliminarAsignaciones' ? (
+          <p className="hint-text">
+            Seleccione los casos y elimine únicamente el vínculo con el defensor actual. Los casos y
+            su historial no se eliminarán.
+          </p>
+        ) : (
+          <div className="grid-2">
+            <div className="form-field">
+              <label>Nuevo defensor</label>
+              <input
+                list="pag-nuevo-defensor-list"
+                className="input-text"
+                placeholder="Escriba para buscar defensor"
+                value={nuevoDefensorInput}
+                onChange={(e) => {
+                  const next = normalizeDefensorNombre(e.target.value);
+                  setNuevoDefensorInput(next);
+                  const hit = defensoresPorNombreNormalizado.get(normalizeDefensorNombre(next));
+                  setNuevoDefensorId(hit?.id ? String(hit.id) : '');
+                }}
+              />
+              <datalist id="pag-nuevo-defensor-list">
+                {defensoresSugeridos.map((d) => (
+                  <option key={d.id} value={d.nombre} />
+                ))}
+              </datalist>
+              {defensoresError && <p className="hint-text">{defensoresError}</p>}
+              {!defensoresError && defensoresOrdenados.length === 0 && (
+                <p className="hint-text">No hay defensores para mostrar.</p>
+              )}
+              <button
+                className="primary-button"
+                type="button"
+                onClick={cargarDefensoresActuales}
+                style={{ marginTop: '0.5rem' }}
+              >
+                Recargar defensores
+              </button>
+            </div>
+            <div />
           </div>
-          <div />
-        </div>
+        )}
 
         <div className="actions-center">
-          <button className="save-button" onClick={guardarAsignacion} disabled={cargando || !pagValidado?.cedula}>
-            {tab === 'asignacion' ? 'GUARDAR ASIGNACIÓN' : 'GUARDAR REASIGNACIÓN'}
-          </button>
+          {tab === 'eliminarAsignaciones' ? (
+            <button
+              className="danger-button"
+              type="button"
+              onClick={eliminarAsignacionesSeleccionadas}
+              disabled={cargando || !pagValidado?.cedula || seleccionados.size === 0}
+            >
+              ELIMINAR ASIGNACIONES
+            </button>
+          ) : (
+            <button className="save-button" onClick={guardarAsignacion} disabled={cargando || !pagValidado?.cedula}>
+              {tab === 'asignacion' ? 'GUARDAR ASIGNACIÓN' : 'GUARDAR REASIGNACIÓN'}
+            </button>
+          )}
         </div>
       </div>
 
+      {busquedaRealizada && (
       <div className="pag-layout" style={{ marginTop: '1rem' }}>
         <div className="pag-table-shell">
           <div className="table-container tall tabla-asignacion-wrapper pag-table-container">
@@ -1053,6 +1200,49 @@ function AsignacionDefensores({ isAdmin = false }) {
           </div>
         </div>
       </div>
+      )}
+      {busquedaRealizada && totalResultados > 0 && (
+        <div className="search-row" style={{ marginTop: '0.75rem', justifyContent: 'space-between' }}>
+          <p className="hint-text" style={{ margin: 0 }}>
+            Registros {(pagina - 1) * PAGE_SIZE + 1}–{Math.min((pagina - 1) * PAGE_SIZE + rowsFiltradas.length, totalResultados)} de {totalResultados}. Página {pagina} de {totalPaginas}.
+          </p>
+          <div className="search-row" style={{ gap: '0.5rem' }}>
+            <button className="secondary-button" type="button" onClick={() => cambiarPagina(1)} disabled={pagina <= 1 || cargando}>
+              Primera
+            </button>
+            <button className="primary-button" type="button" onClick={() => cambiarPagina(pagina - 1)} disabled={pagina <= 1 || cargando}>
+              Anterior
+            </button>
+            <label className="pag-page-picker">
+              <span>Página</span>
+              <input
+                type="number"
+                min="1"
+                max={totalPaginas}
+                value={paginaDestino}
+                onChange={(event) => setPaginaDestino(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    irAPaginaSolicitada();
+                  }
+                }}
+                aria-label={`Página, máximo ${totalPaginas}`}
+              />
+              <span>de {totalPaginas}</span>
+            </label>
+            <button className="secondary-button" type="button" onClick={irAPaginaSolicitada} disabled={cargando}>
+              Ir
+            </button>
+            <button className="primary-button" type="button" onClick={() => cambiarPagina(pagina + 1)} disabled={pagina >= totalPaginas || cargando}>
+              Siguiente
+            </button>
+            <button className="secondary-button" type="button" onClick={() => cambiarPagina(totalPaginas)} disabled={pagina >= totalPaginas || cargando}>
+              Última
+            </button>
+          </div>
+        </div>
+      )}
         </>
       ) : (
         <p className="hint-text" style={{ marginTop: '0.75rem' }}>

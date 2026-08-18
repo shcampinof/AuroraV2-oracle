@@ -7,7 +7,20 @@ import {
 } from '../services/api.js';
 import { pickActiveCaseData } from '../utils/entrevistaEstado.js';
 import { displayOrDash } from '../utils/pplDisplay.js';
-import { getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
+import {
+  ESTADOS_TRAMITE_OPTIONS,
+  buildAssignedUsersFilters,
+  normalizeFilterOptions,
+  resolveCentroByLabel,
+  resolveDefensorIdByLabel,
+} from '../utils/asignadosCatalogs.js';
+import {
+  SITUACION_JURIDICA_INACTIVA,
+  isSituacionActiva,
+} from '../utils/pplStatus.js';
+import {
+  getEstadoClassForRecord,
+} from '../config/estadoActuaciones.rules.ts';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
 
 function prettifyHeader(key) {
@@ -20,21 +33,8 @@ function prettifyHeader(key) {
 }
 
 const EXTRA_COLUMNS = ['actuacionJudicial'];
-const ROWS_PER_PAGE = 25;
-const DEFAULT_INITIAL_LIMIT = 50;
-const DEFAULT_FILTERED_LIMIT = 100;
+const PAGE_SIZE = 50;
 const INITIAL_FILTER_OPTIONS_QUERY = { tipo: 'all' };
-const ESTADOS_TRAMITE_OPTIONS = [
-  'Analizar el caso',
-  'Entrevistar al usuario',
-  'Presentar solicitud',
-  'Pendiente audiencia',
-  'Pendiente decisi\u00f3n de audiencia',
-  'Pendiente decisi\u00f3n',
-  'Presentar recurso',
-  'Caso cerrado',
-];
-
 const HEADER_LABELS = {
   Title: 'N\u00famero de identificaci\u00f3n',
   TITLE: 'N\u00famero de identificaci\u00f3n',
@@ -172,7 +172,7 @@ function distinctSorted(rows, getter) {
   (rows || []).forEach((row) => {
     const val = String(getter(row) || '').trim();
     if (!val) return;
-    const key = val.toLowerCase();
+    const key = normalize(val);
     if (!map.has(key)) map.set(key, val);
   });
   return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
@@ -195,15 +195,6 @@ function normalizeRowsPayload(data) {
     if (!columns.includes(extra)) columns.push(extra);
   }
   return { columns, rows, meta: data?.meta || null };
-}
-
-function normalizeFilterOptions(data) {
-  return {
-    defensores: Array.isArray(data?.defensores) ? data.defensores : [],
-    departamentos: Array.isArray(data?.departamentos) ? data.departamentos : [],
-    municipios: Array.isArray(data?.municipios) ? data.municipios : [],
-    lugares: Array.isArray(data?.lugares) ? data.lugares : [],
-  };
 }
 
 function DropdownField({ label, value, onChange, options, searchable = false, listId }) {
@@ -274,7 +265,19 @@ function InputField({
   inputMode,
   pattern,
 }) {
-  const normalizedOptions = (Array.isArray(options) ? options : []).map((opt) => String(opt ?? '').trim()).filter(Boolean);
+  const normalizedOptions = (Array.isArray(options) ? options : [])
+    .map((opt) => {
+      if (opt && typeof opt === 'object') {
+        return {
+          value: String(opt.label ?? opt.value ?? '').trim(),
+          label: String(opt.label ?? opt.value ?? '').trim(),
+          key: String(opt.id ?? opt.value ?? opt.label ?? '').trim(),
+        };
+      }
+      const value = String(opt ?? '').trim();
+      return { value, label: value, key: value };
+    })
+    .filter((opt) => opt.value);
   return (
     <div className="form-field">
       <label>{label}</label>
@@ -291,7 +294,7 @@ function InputField({
       {listId && normalizedOptions.length > 0 && (
         <datalist id={listId}>
           {normalizedOptions.map((opt) => (
-            <option key={opt} value={opt} />
+            <option key={opt.key} value={opt.value}>{opt.label}</option>
           ))}
         </datalist>
       )}
@@ -306,7 +309,9 @@ function getColumnWidth(col) {
     __nombreUsuario__: 145,
     __defensor__: 120,
     __lugarPrivacion__: 155,
-    __estadoTramite__: 130,
+    __accionPendiente__: 165,
+    __fuenteInformacion__: 120,
+    __fechaCorte__: 115,
     __departamentoReclusion__: 140,
     __municipioReclusion__: 130,
   };
@@ -327,21 +332,29 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   const [mostrarFiltros, setMostrarFiltros] = useState(true);
   const [filtrosDraft, setFiltrosDraft] = useState({
     defensor: '',
+    defensorId: '',
     nombre: '',
     documento: '',
     lugar: '',
+    centroId: '',
     departamento: '',
     municipio: '',
-    estado: '',
+    estadoCodigo: '',
+    accionCodigo: '',
+    incluirFueraPrision: false,
   });
   const [filtrosAplicados, setFiltrosAplicados] = useState({
     defensor: '',
+    defensorId: '',
     nombre: '',
     documento: '',
     lugar: '',
+    centroId: '',
     departamento: '',
     municipio: '',
-    estado: '',
+    estadoCodigo: '',
+    accionCodigo: '',
+    incluirFueraPrision: false,
   });
   const [metaConsulta, setMetaConsulta] = useState(null);
   const [filtroAdicionalSeleccionado, setFiltroAdicionalSeleccionado] = useState('');
@@ -350,7 +363,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   const [defensores, setDefensores] = useState(() => initialOptions.defensores);
   const [opcionesFiltro, setOpcionesFiltro] = useState(() => initialOptions);
   const isDev = typeof import.meta !== 'undefined' && import.meta?.env?.DEV;
-  const estadoInfoCacheRef = useRef(new WeakMap());
   const tableScrollRef = useRef(null);
   const stickyScrollRef = useRef(null);
   const syncingHorizontalScrollRef = useRef(false);
@@ -376,6 +388,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
   function getSituacionJuridicaValue(obj) {
     const data = pickActiveCaseData(obj);
+    if (!isSituacionActiva(data)) return SITUACION_JURIDICA_INACTIVA;
     return (
       data?.['Situaci\u00f3n jur\u00eddica actualizada (de conformidad con la rama judicial)'] ??
       data?.['Situacion juridica actualizada (de conformidad con la rama judicial)'] ??
@@ -434,17 +447,20 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     );
   }
 
-  function getEstadoDisplayInfoMemo(obj) {
-    if (!obj || typeof obj !== 'object') return getEstadoDisplayInfo(obj);
-    const cached = estadoInfoCacheRef.current.get(obj);
-    if (cached) return cached;
-    const computed = getEstadoDisplayInfo(obj);
-    estadoInfoCacheRef.current.set(obj, computed);
-    return computed;
-  }
-
   function setFiltroDraft(key, value) {
     setFiltrosDraft((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function setDefensorDraft(value) {
+    const defensor = String(value || '');
+    const defensorId = resolveDefensorIdByLabel(defensor, opcionesFiltro.defensorOptions);
+    setFiltrosDraft((prev) => ({ ...prev, defensor, defensorId }));
+  }
+
+  function setCentroDraft(value) {
+    const lugar = String(value || '');
+    const centro = resolveCentroByLabel(lugar, opcionesFiltro.centros);
+    setFiltrosDraft((prev) => ({ ...prev, lugar, centroId: centro?.id || '' }));
   }
 
   function seleccionarFiltroAdicional(value) {
@@ -454,6 +470,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       ...prev,
       nombre: selected === 'nombre' ? prev.nombre : '',
       lugar: selected === 'lugar' ? prev.lugar : '',
+      centroId: selected === 'lugar' ? prev.centroId : '',
       departamento: selected === 'departamento' ? prev.departamento : '',
       municipio: selected === 'municipio' ? prev.municipio : '',
     }));
@@ -461,30 +478,18 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       ...prev,
       nombre: selected === 'nombre' ? prev.nombre : '',
       lugar: selected === 'lugar' ? prev.lugar : '',
+      centroId: selected === 'lugar' ? prev.centroId : '',
       departamento: selected === 'departamento' ? prev.departamento : '',
       municipio: selected === 'municipio' ? prev.municipio : '',
     }));
   }
 
-  function buildBackendFilters(filters) {
-    const safe = filters && typeof filters === 'object' ? filters : {};
-    return {
-      defensor: String(safe.defensor || '').trim(),
-      nombre: String(safe.nombre || '').trim(),
-      documento: String(safe.documento || '').trim(),
-      lugar: String(safe.lugar || '').trim(),
-      departamento: String(safe.departamento || '').trim(),
-      municipio: String(safe.municipio || '').trim(),
-      estado: String(safe.estado || '').trim(),
-    };
-  }
-
-  const cargarRowsFromBackend = useCallback(async (nextFiltros = {}) => {
+  const cargarRowsFromBackend = useCallback(async (nextFiltros = {}, nextPage = 1) => {
     const request = {
       tipo: 'all',
-      limit: DEFAULT_INITIAL_LIMIT,
-      filteredLimit: DEFAULT_FILTERED_LIMIT,
-      filters: buildBackendFilters(nextFiltros),
+      page: nextPage,
+      pageSize: PAGE_SIZE,
+      filters: buildAssignedUsersFilters(nextFiltros),
     };
     const hasCachedRows = Boolean(getCachedCondenados(request));
     setCargando(!hasCachedRows);
@@ -494,7 +499,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       setColumns(normalized?.columns || []);
       setRows(normalized?.rows || []);
       setMetaConsulta(normalized?.meta || null);
-      setPagina(1);
+      setPagina(nextPage);
     } catch (e) {
       console.error(e);
       setErrorCarga(String(e?.message || 'No fue posible cargar los usuarios asignados.'));
@@ -516,7 +521,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
         [...(Array.isArray(prev) ? prev : []), ...next.defensores].forEach((value) => {
           const text = String(value || '').trim();
           if (!text) return;
-          const key = text.toLowerCase();
+          const key = normalize(text);
           if (!merged.has(key)) merged.set(key, text);
         });
         return Array.from(merged.values()).sort((a, b) => a.localeCompare(b));
@@ -531,19 +536,15 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   }, [cargarOpcionesFiltro]);
 
   useEffect(() => {
-    estadoInfoCacheRef.current = new WeakMap();
-  }, [rows]);
-
-  useEffect(() => {
     setDefensores((prev) => {
       const base = Array.isArray(prev) ? prev : [];
-      const set = new Set(base.map((d) => String(d || '').trim()).filter(Boolean).map((d) => d.toLowerCase()));
+      const set = new Set(base.map((d) => normalize(d)).filter(Boolean));
       const merged = [...base];
 
       rows.forEach((r) => {
         const val = String(getDefensorValue(r) || '').trim();
         if (!val) return;
-        const key = val.toLowerCase();
+        const key = normalize(val);
         if (set.has(key)) return;
         set.add(key);
         merged.push(val);
@@ -562,8 +563,10 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
   const lugaresDisponibles = useMemo(() => {
     if (filtroAdicionalSeleccionado !== 'lugar') return [];
-    return opcionesFiltro.lugares.length ? opcionesFiltro.lugares : distinctSorted(rows, getLugarPrivacionValue);
-  }, [opcionesFiltro.lugares, rows, filtroAdicionalSeleccionado]);
+    // No reconstruir este catálogo desde las filas de resultados: estas pueden
+    // contener casos históricos/inactivos. El backend garantiza ACTIVO = 1.
+    return opcionesFiltro.centros;
+  }, [opcionesFiltro.centros, filtroAdicionalSeleccionado]);
   const departamentosDisponibles = useMemo(() => {
     if (filtroAdicionalSeleccionado !== 'departamento' && filtroAdicionalSeleccionado !== 'municipio') return [];
     return opcionesFiltro.departamentos.length
@@ -571,8 +574,10 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       : distinctSorted(rows, getDepartamentoPrivacionValue);
   }, [opcionesFiltro.departamentos, rows, filtroAdicionalSeleccionado]);
 
-  const estadosDisponibles = useMemo(() => ESTADOS_TRAMITE_OPTIONS, []);
-
+  const estadosDisponibles = useMemo(
+    () => (opcionesFiltro.estados.length ? opcionesFiltro.estados : ESTADOS_TRAMITE_OPTIONS),
+    [opcionesFiltro.estados]
+  );
   const municipiosDisponiblesDraft = useMemo(() => {
     if (filtroAdicionalSeleccionado !== 'municipio') return [];
     const depNeedle = normalize(filtrosDraft.departamento);
@@ -583,33 +588,21 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     return distinctSorted(candidates, getMunicipioPrivacionValue);
   }, [opcionesFiltro.municipios, rows, filtrosDraft.departamento, filtroAdicionalSeleccionado]);
 
-  const rowsFiltradas = useMemo(() => {
-    const estadoNeedle = normalize(filtrosAplicados.estado);
-    if (!estadoNeedle) return rows;
-    return rows.filter((row) => normalize(getEstadoDisplayInfoMemo(row).label) === estadoNeedle);
-  }, [rows, filtrosAplicados.estado]);
+  // Todos los filtros, incluidos estado y acción, se aplican en Oracle antes
+  // de contar y paginar. La interfaz muestra la página recibida sin recortarla.
+  const rowsFiltradas = rows;
 
-  const totalPaginas = useMemo(() => Math.max(1, Math.ceil(rowsFiltradas.length / ROWS_PER_PAGE)), [rowsFiltradas.length]);
+  const totalResultados = Number(metaConsulta?.totalMatched || 0);
+  const totalPaginas = Math.max(
+    1,
+    Number(metaConsulta?.totalPages || Math.ceil(totalResultados / PAGE_SIZE) || 1)
+  );
   const paginaActual = Math.min(pagina, totalPaginas);
-
-  const rowsPaginaActual = useMemo(() => {
-    const inicio = (paginaActual - 1) * ROWS_PER_PAGE;
-    return rowsFiltradas.slice(inicio, inicio + ROWS_PER_PAGE);
-  }, [rowsFiltradas, paginaActual]);
+  const rowsPaginaActual = rowsFiltradas;
 
   useEffect(() => {
     if (!isDev) return;
   }, [isDev, rowsFiltradas.length, rowsPaginaActual.length]);
-
-  useEffect(() => {
-    setPagina(1);
-  }, [filtrosAplicados, rows]);
-
-  useEffect(() => {
-    if (pagina > totalPaginas) {
-      setPagina(totalPaginas);
-    }
-  }, [pagina, totalPaginas]);
 
   const syncStickyMetrics = useCallback(() => {
     const container = tableScrollRef.current;
@@ -626,7 +619,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       sticky.scrollLeft = container.scrollLeft;
       syncingHorizontalScrollRef.current = false;
     }
-  }, []);
+  }, [setShowStickyScroll, setStickyScrollWidth]);
 
   useEffect(() => {
     const container = tableScrollRef.current;
@@ -685,18 +678,27 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   }
 
   async function aplicarFiltros() {
+    const defensor = String(filtrosDraft.defensor || '').trim();
+    const lugar = String(filtrosDraft.lugar || '').trim();
+    const centro = resolveCentroByLabel(lugar, opcionesFiltro.centros);
     const next = {
-      defensor: String(filtrosDraft.defensor || '').trim(),
+      defensor,
+      defensorId: resolveDefensorIdByLabel(defensor, opcionesFiltro.defensorOptions),
       nombre: String(filtrosDraft.nombre || '').trim(),
       documento: String(filtrosDraft.documento || '').trim(),
-      lugar: String(filtrosDraft.lugar || '').trim(),
+      lugar,
+      centroId: centro?.id || '',
       departamento: String(filtrosDraft.departamento || '').trim(),
       municipio: String(filtrosDraft.municipio || '').trim(),
-      estado: String(filtrosDraft.estado || '').trim(),
+      estadoCodigo: String(filtrosDraft.estadoCodigo || '').trim(),
+      accionCodigo: String(filtrosDraft.accionCodigo || '').trim(),
+      incluirFueraPrision: filtrosDraft.incluirFueraPrision === true,
     };
 
     setFiltrosDraft(next);
-    if (!Object.values(next).some((value) => String(value || '').trim() !== '')) {
+    if (!Object.entries(next).some(([key, value]) =>
+      key === 'incluirFueraPrision' ? value === true : String(value || '').trim() !== ''
+    )) {
       setFiltrosAplicados(next);
       setBusquedaRealizada(false);
       setErrorCarga('Ingrese al menos un filtro antes de buscar.');
@@ -709,18 +711,28 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
     setFiltrosAplicados(next);
     setBusquedaRealizada(true);
-    await cargarRowsFromBackend(next);
+    await cargarRowsFromBackend(next, 1);
+  }
+
+  async function cambiarPagina(nextPage) {
+    const boundedPage = Math.max(1, Math.min(totalPaginas, nextPage));
+    if (boundedPage === paginaActual || cargando) return;
+    await cargarRowsFromBackend(filtrosAplicados, boundedPage);
   }
 
   function reiniciar() {
     const empty = {
       defensor: '',
+      defensorId: '',
       nombre: '',
       documento: '',
       lugar: '',
+      centroId: '',
       departamento: '',
       municipio: '',
-      estado: '',
+      estadoCodigo: '',
+      accionCodigo: '',
+      incluirFueraPrision: false,
     };
     setFiltrosDraft(empty);
     setFiltrosAplicados(empty);
@@ -740,7 +752,9 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       '__nombreUsuario__',
       '__defensor__',
       '__lugarPrivacion__',
-      '__estadoTramite__',
+      '__accionPendiente__',
+      '__fuenteInformacion__',
+      '__fechaCorte__',
       '__departamentoReclusion__',
       '__municipioReclusion__',
     ];
@@ -778,6 +792,12 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       'Situacion juridica ',
       'situacionJuridica',
       'situacionJuridicaActualizada',
+      'situacionActiva',
+      'estadoReclusion',
+      'fuenteInformacion',
+      'fechaCorte',
+      'totalSituaciones',
+      'tieneHistorialActivoInactivo',
       'Departamento del lugar de reclusi\u00f3n',
       'Departamento del lugar de reclusion',
       'departamentoLugarReclusion',
@@ -796,6 +816,13 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       'Acci\u00f3n a realizar',
       'Accion a realizar',
       'accionImpulsar',
+      'accionPendiente',
+      'estadoCodigo',
+      'estadoEtiqueta',
+      'centroId',
+      'centroHomologado',
+      'centroReclusion',
+      'lugarReclusionOriginal',
       'casos',
       'activeCaseId',
     ]);
@@ -810,7 +837,9 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     if (col === '__nombreUsuario__') return 'NOMBRE USUARIO';
     if (col === '__defensor__') return 'DEFENSOR';
     if (col === '__lugarPrivacion__') return 'NOMBRE DEL LUGAR DE PRIVACIÓN DE LA LIBERTAD';
-    if (col === '__estadoTramite__') return 'ACCIÓN A IMPULSAR';
+    if (col === '__accionPendiente__') return 'ACCIÓN A IMPULSAR';
+    if (col === '__fuenteInformacion__') return 'FUENTE DE INFORMACIÓN';
+    if (col === '__fechaCorte__') return 'FECHA DE CORTE';
     if (col === '__departamentoReclusion__') return 'DEPARTAMENTO';
     if (col === '__municipioReclusion__') return 'MUNICIPIO';
     return getTableHeaderLabel(col);
@@ -822,14 +851,49 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     if (col === '__nombreUsuario__') return displayOrDash(getNombreUsuarioValue(row));
     if (col === '__defensor__') return displayOrDash(getDefensorValue(row));
     if (col === '__lugarPrivacion__') return displayOrDash(getLugarPrivacionValue(row));
-    if (col === '__estadoTramite__') {
-      const estadoInfo = getEstadoDisplayInfoMemo(row);
-      const estado = String(estadoInfo.label || '').trim();
-      if (!estado) return '\u2014';
-      const estadoClass = String(estadoInfo.className || '').trim();
-      if (!estadoClass) return estado;
-      return <span className={`estadoBadge ${estadoClass}`}>{estado}</span>;
+    if (col === '__accionPendiente__') {
+      const accion = row?.accionPendiente;
+      const etiqueta = String(accion?.etiqueta || row?.accionImpulsar || '').trim();
+      const original = String(accion?.valorOriginal || '').trim();
+      if (!etiqueta) return '\u2014';
+      const situacionActiva = isSituacionActiva(pickActiveCaseData(row));
+      const estadoCanonico = String(row?.estadoEtiqueta || etiqueta).trim();
+      const estadoClass = situacionActiva
+        ? String(getEstadoClassForRecord(row, estadoCanonico)).trim()
+        : 'estado--fuera-prision';
+      return (
+        <div>
+          <span className={`estadoBadge${estadoClass ? ` ${estadoClass}` : ''}`}>{etiqueta}</span>
+          {accion?.homologada === false && original && normalize(original) !== normalize(etiqueta) && (
+            <small style={{ display: 'block', color: '#8a5a00', marginTop: '0.25rem' }}>
+              Valor original no homologado: {original}
+            </small>
+          )}
+        </div>
+      );
     }
+    if (col === '__fuenteInformacion__') {
+      const fuente = displayOrDash(row?.fuenteInformacion);
+      return (
+        <div>
+          <span>{fuente}</span>
+          {row?.tieneHistorialActivoInactivo && (
+            <small
+              title="La persona tiene más de una situación carcelaria y el historial contiene registros ACTIVO=1 y ACTIVO=0. Se muestra la situación con la fecha efectiva más reciente."
+              style={{ display: 'block', color: '#6b4f00', marginTop: '0.25rem' }}
+            >
+              Cambio de situación registrado
+              {row?.fechaCorte && (
+                <span style={{ marginLeft: '0.35rem', fontSize: '0.85em', whiteSpace: 'nowrap' }}>
+                  · {row.fechaCorte}
+                </span>
+              )}
+            </small>
+          )}
+        </div>
+      );
+    }
+    if (col === '__fechaCorte__') return displayOrDash(row?.fechaCorte);
     if (col === '__departamentoReclusion__') return displayOrDash(getDepartamentoPrivacionValue(row));
     if (col === '__municipioReclusion__') return displayOrDash(getMunicipioPrivacionValue(row));
     return displayOrDash(getCellValue(row, col));
@@ -863,13 +927,9 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       </div>
 
       {!cargando && errorCarga && <p className="hint-text">{errorCarga}</p>}
-      {!cargando && metaConsulta?.filtered && (
+      {!cargando && busquedaRealizada && metaConsulta && (
         <p className="hint-text">
-          {metaConsulta?.truncated
-            ? metaConsulta?.totalMatchedExact === false
-              ? `Se muestran los primeros ${metaConsulta?.returned || 0} registros. Hay más resultados; ajuste los filtros para precisar la búsqueda.`
-              : `Se encontraron ${metaConsulta?.totalMatched || 0} registros y se muestran los primeros ${metaConsulta?.returned || 0}.`
-            : `Se encontraron ${metaConsulta?.returned || metaConsulta?.totalMatched || 0} registros.`}
+          Se encontraron {totalResultados} registros. Página {paginaActual} de {totalPaginas}; se muestran hasta {PAGE_SIZE} por página.
         </p>
       )}
 
@@ -882,7 +942,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
               <DropdownField
                 label="Defensor"
                 value={filtrosDraft.defensor}
-                onChange={(value) => setFiltroDraft('defensor', value)}
+                onChange={setDefensorDraft}
                 options={defensoresOrdenados}
                 searchable
                 listId="filtro-defensor"
@@ -899,9 +959,15 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
               />
 
               <DropdownField
-                label="ESTADO / ACCIÓN A IMPULSAR"
-                value={filtrosDraft.estado}
-                onChange={(value) => setFiltroDraft('estado', value)}
+                label="Acción a Impulsar / estado"
+                value={filtrosDraft.estadoCodigo}
+                onChange={(value) => {
+                  setFiltrosDraft((prev) => ({
+                    ...prev,
+                    estadoCodigo: value,
+                    accionCodigo: '',
+                  }));
+                }}
                 options={estadosDisponibles}
               />
 
@@ -930,13 +996,12 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                 <InputField
                   label="Nombre del lugar de privación de la libertad"
                   value={filtrosDraft.lugar}
-                  onChange={(value) => setFiltroDraft('lugar', value)}
+                  onChange={setCentroDraft}
                   options={lugaresDisponibles}
                   listId="filtro-lugar"
                   placeholder="Ingrese lugar"
                 />
               )}
-
               {filtroAdicionalSeleccionado === 'departamento' && (
                 <InputField
                   label="Departamento del lugar de privación de la libertad"
@@ -965,13 +1030,24 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                 />
               )}
 
-              <div className="search-row" style={{ marginTop: '0.75rem' }}>
+              <div className="search-row asignados-filter-actions" style={{ marginTop: '0.75rem' }}>
                 <button className="primary-button primary-button--search" type="button" onClick={aplicarFiltros}>
                   Buscar
                 </button>
                 <button className="primary-button" type="button" onClick={reiniciar}>
                   Limpiar
                 </button>
+                <label className="asignados-inactive-toggle" htmlFor="incluir-fuera-prision">
+                  <input
+                    id="incluir-fuera-prision"
+                    type="checkbox"
+                    checked={filtrosDraft.incluirFueraPrision}
+                    onChange={(event) => setFiltroDraft('incluirFueraPrision', event.target.checked)}
+                  />
+                  <span>
+                    Incluir personas fuera de prisión
+                  </span>
+                </label>
               </div>
             </div>
           )}
@@ -1000,6 +1076,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
                 <tbody>
                   {rowsPaginaActual.map((r, idx) => {
+                    const situacionActiva = isSituacionActiva(pickActiveCaseData(r));
                     const rawKey =
                       (documentoKey && pickActiveCaseData(r)?.[documentoKey]) ||
                       getNumeroIdentificacionValue(r) ||
@@ -1011,7 +1088,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                       <tr
                         key={String(key)}
                         onClick={() => handleRowClick(r)}
-                        className="clickable-row"
+                        className={`clickable-row${situacionActiva ? '' : ' row-fuera-prision'}`}
+                        title={situacionActiva ? undefined : 'Fuera de prisión. Registro histórico disponible solo para consulta.'}
                       >
                         {orderedColumns.map((c) => (
                           <td key={c}>
@@ -1043,25 +1121,25 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
               <div style={{ width: `${stickyScrollWidth}px` }} />
             </div>
 
-            {rowsFiltradas.length > 0 && (
+            {busquedaRealizada && rowsFiltradas.length > 0 && (
               <div className="search-row" style={{ marginTop: '0.75rem', justifyContent: 'space-between' }}>
                 <p className="hint-text" style={{ margin: 0 }}>
-                  Mostrando {rowsPaginaActual.length} de {rowsFiltradas.length} registros. Pagina {paginaActual} de {totalPaginas}.
+                  Mostrando {rowsPaginaActual.length} registros de {totalResultados}. Página {paginaActual} de {totalPaginas}.
                 </p>
                 <div className="search-row" style={{ gap: '0.5rem' }}>
                   <button
                     className="primary-button"
                     type="button"
-                    onClick={() => setPagina((p) => Math.max(1, p - 1))}
-                    disabled={paginaActual <= 1}
+                    onClick={() => cambiarPagina(paginaActual - 1)}
+                    disabled={paginaActual <= 1 || cargando}
                   >
                     Anterior
                   </button>
                   <button
                     className="primary-button"
                     type="button"
-                    onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
-                    disabled={paginaActual >= totalPaginas}
+                    onClick={() => cambiarPagina(paginaActual + 1)}
+                    disabled={paginaActual >= totalPaginas || cargando}
                   >
                     Siguiente
                   </button>

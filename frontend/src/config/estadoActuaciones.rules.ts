@@ -116,6 +116,46 @@ export function getEstadoClassByLabel(estado: unknown): string {
   return '';
 }
 
+export function getEstadoClassForRecord(record: unknown, estado: unknown): string {
+  const safeRecord = record && typeof record === 'object' ? (record as AnyRecord) : {};
+  const data = resolveEstadoSource(safeRecord);
+  const key = normalizeEstadoActuacion(estado);
+
+  if (key === 'analizar el caso') {
+    const fechaAsignacion = firstFilledValue(
+      pickFirstValue(data, [
+        'Fecha de asignación del PAG',
+        'Fecha asignación del PAG',
+        'Fecha de asignación PAG',
+        'Fecha asignación PAG',
+        'Fecha de asignación',
+        'Fecha de asignacion',
+        'fechaAsignacionPAG',
+        'fechaAsignacionPag',
+        'fechaAsignacion',
+      ]),
+      safeRecord?.createdAt
+    );
+    return getSemaforoClassByDays(getDaysSince(fechaAsignacion)) || 'estado--verde';
+  }
+
+  if (key === 'entrevistar al usuario') {
+    const fechaAnalisis = pickFirstValue(data, [
+      'Fecha de análisis jurídico del caso',
+      'Fecha de analisis juridico del caso',
+      'aurora_b3_fechaAnalisis',
+    ]);
+    return getSemaforoClassByDays(getDaysSince(fechaAnalisis)) || 'estado--amarillo';
+  }
+
+  if (key === 'presentar solicitud') {
+    const fechaEntrevista = pickFirstValue(data, ['Fecha de entrevista']);
+    return getSemaforoClassByDays(getDaysSince(fechaEntrevista)) || 'estado--rojo';
+  }
+
+  return getEstadoClassByLabel(estado);
+}
+
 function parseDateValue(value: unknown): Date | null {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
   const text = toText(value);
@@ -167,7 +207,9 @@ export function getSemaforoClassByDays(days: number | null): string {
 function getEstadoTramiteValue(record: unknown): string {
   const data = resolveEstadoSource(record);
   return firstFilledValue(
-    data?.['Acci\u00f3n a realizar'] ??
+    data?.['Acci\u00f3n a impulsar'] ??
+      data?.['Accion a impulsar'] ??
+      data?.['Acci\u00f3n a realizar'] ??
       data?.['Accion a realizar'] ??
       data?.['Actuaci\u00f3n a adelantar'] ??
       data?.['Actuacion a adelantar'] ??
@@ -190,12 +232,12 @@ function resolveTipoFromText(value: unknown): 'condenado' | 'sindicado' | '' {
 }
 
 function resolveFlow(record: AnyRecord, data: AnyRecord): 'condenado' | 'sindicado' {
-  const fromSituacion = resolveTipoFromText(pickFirstValue(data, ['Situación Jurídica']));
-  if (fromSituacion) return fromSituacion;
   const fromSituacionActualizada = resolveTipoFromText(
     pickFirstValue(data, ['Situación Jurídica actualizada (de conformidad con la rama judicial)'])
   );
   if (fromSituacionActualizada) return fromSituacionActualizada;
+  const fromSituacion = resolveTipoFromText(pickFirstValue(data, ['Situación Jurídica']));
+  if (fromSituacion) return fromSituacion;
 
   const fromHints =
     resolveTipoFromText(record?.tipo) ||

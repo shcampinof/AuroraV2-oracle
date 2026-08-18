@@ -1,19 +1,21 @@
 # Guía de despliegue Aurora
 
-Fecha de actualización: 2026-07-24
+Fecha de actualización: 2026-07-30
 
 ## 1. Objeto
 
 Esta guía explica el despliegue operativo de Aurora desde una máquina limpia hasta una aplicación publicada y validada. Está escrita como un paso a paso para una persona que recibe el servidor sin Docker instalado y necesita saber exactamente qué instalar, de dónde sale la imagen Docker, qué variables configurar y qué evidencias entregar.
 
-El despliegue recomendado para Aurora es Docker Compose. Aurora se ejecuta como un único servicio Docker que publica la aplicación web y la API en el puerto `7860`.
+El despliegue recomendado para Aurora es Docker Compose. Aurora se ejecuta como un único servicio Docker: Node escucha en el puerto interno `7860` y Docker publica el puerto definido por `HOST_PORT` (`443` por defecto).
 
 ```text
-Aplicación web: http://<ip-o-dns-del-servidor>:7860
-API:            http://<ip-o-dns-del-servidor>:7860/api
-Salud API:      http://<ip-o-dns-del-servidor>:7860/api/health
-Salud Oracle:   http://<ip-o-dns-del-servidor>:7860/api/health/db
+Aplicación web: https://<ip-o-dns-del-servidor>
+API:            https://<ip-o-dns-del-servidor>/api
+Salud API:      https://<ip-o-dns-del-servidor>/api/health
+Salud Oracle:   https://<ip-o-dns-del-servidor>/api/health/db
 ```
+
+Si infraestructura publica un puerto temporal diferente o termina TLS en un proxy, se debe adaptar el protocolo y `HOST_PORT` sin cambiar el puerto interno `PORT=7860`.
 
 ## 2. Qué se debe recibir antes de iniciar
 
@@ -271,6 +273,8 @@ El `Dockerfile` usa como base:
 node:20.19-bookworm-slim
 ```
 
+Para pruebas o ejecución directa fuera de Docker se requiere Node.js `20.19` o superior dentro de la línea compatible indicada por las dependencias.
+
 Durante la construcción, Docker descarga esa imagen base oficial de Node.js, instala dependencias, compila el frontend React/Vite, copia el resultado al backend Express, instala dependencias Python para cargas mensuales, incorpora los tres tutoriales institucionales y valida sus sumas SHA-256.
 
 Comando para construir la imagen sin levantar todavía el servicio:
@@ -354,6 +358,7 @@ AUTH_BOOTSTRAP_ADMIN_EMAILS=<correo-admin-inicial>
 AUTH_USER_STORE_PATH=/app/backend/storage/auth/auth-users.json
 AUTH_USER_IMPORT_MAX_MB=2
 AUTH_USER_IMPORT_MAX_ROWS=5000
+AUTH_USER_SYNC_REQUIRED=false
 
 # Manual Interactivo incluido en la imagen
 AURORA_VIDEOS_DIR=/app/backend/tutorial-videos
@@ -365,6 +370,13 @@ AZURE_AD_ALLOWED_EMAIL_DOMAINS=defensoria.gov.co
 AZURE_AD_REQUIRED_GROUP_IDS=
 AZURE_AD_REQUIRED_APP_ROLES=
 AZURE_AD_ADMIN_GROUP_IDS=
+
+# LDAP / Active Directory alterno
+LDAP_ENABLED=false
+LDAP_URL=
+LDAP_DOMAIN=defensoria.gov.co
+LDAP_ALLOWED_EMAIL_DOMAINS=defensoria.gov.co
+LDAP_TIMEOUT_MS=8000
 
 # Oracle
 ORACLE_USER=<usuario-oracle>
@@ -383,21 +395,24 @@ ORACLE_POOL_TIMEOUT=60
 
 # Cargas mensuales
 AURORA_CARGAS_DIR=/app/backend/storage/cargas_bd
+AURORA_CARGAS_TMP_DIR=
 CARGUEBD_ADMIN_ROLES=admin,carguebd,cargas_bd
 CARGUEBD_PYTHON=python3
 CARGUEBD_AURORA10_ENABLED=true
+CARGUEBD_SISIPEC_PROCEDURE=
 CARGUEBD_SKIP_ETL=false
 CARGUEBD_MAX_FILE_MB=120
 CARGUEBD_PUBLIC_ERROR_MAX_LENGTH=1000
 CARGUEBD_REPAIR_REGISTRY_ON_START=false
 CARGUEBD_CLEAR_REGISTRY_ON_START=false
+CARGUEBD_ACTUACIONES_CLEANUP_DEFENSOR=PRUEBA PILOTO
 ```
 
 ### 9.2 Variables que normalmente sí cambian por ambiente
 
 | Variable | Valor esperado | Quién la define |
 |---|---|---|
-| `HOST_PORT` | Puerto publicado en el servidor. Por defecto `7860`. | Infraestructura |
+| `HOST_PORT` | Puerto publicado en el servidor. Por defecto `443`; puede usarse uno alterno en pruebas. | Infraestructura |
 | `HTTPS_KEY_PATH` | Ruta de la llave privada `.key` o PEM para habilitar HTTPS. Vacío sirve HTTP. | Infraestructura |
 | `HTTPS_CERT_PATH` | Ruta del certificado `.crt` o `fullchain.crt` para habilitar HTTPS. Vacío sirve HTTP. | Infraestructura |
 | `AUTH_JWT_SECRET` | Secreto largo, aleatorio y privado. | Administrador técnico |
@@ -405,6 +420,7 @@ CARGUEBD_CLEAR_REGISTRY_ON_START=false
 | `AUTH_USER_ACCESS_MODE` | `managed` cuando solo pueden ingresar cuentas aprobadas en Aurora. | Administrador funcional |
 | `AUTH_BOOTSTRAP_ADMIN_EMAILS` | Correo real que administrará el directorio inicial. | Administrador funcional |
 | `AUTH_USER_STORE_PATH` | `/app/backend/storage/auth/auth-users.json` con Docker Compose. | Equipo técnico |
+| `AUTH_USER_SYNC_REQUIRED` | `true` bloquea el ingreso si falla la sincronización del directorio interno. | Administrador técnico |
 | `AURORA_VIDEOS_DIR` | `/app/backend/tutorial-videos`; solo cambia si se monta un catálogo externo. | Equipo técnico |
 | `AZURE_AD_TENANT_ID` | Tenant de Microsoft Entra ID. | Administrador Entra ID |
 | `AZURE_AD_CLIENT_ID` | Client ID de la aplicación registrada. | Administrador Entra ID |
@@ -412,6 +428,7 @@ CARGUEBD_CLEAR_REGISTRY_ON_START=false
 | `AZURE_AD_REQUIRED_GROUP_IDS` | IDs de grupos requeridos, si la entidad lo usa. | Administrador Entra ID |
 | `AZURE_AD_REQUIRED_APP_ROLES` | Roles requeridos, si la entidad lo usa. | Administrador Entra ID |
 | `AZURE_AD_ADMIN_GROUP_IDS` | IDs de grupos que reciben rol interno `admin`, si la entidad lo usa. | Administrador Entra ID |
+| `LDAP_ENABLED`, `LDAP_URL`, `LDAP_DOMAIN` | Habilitan autenticación directa LDAP/LDAPS como alternativa. | Administrador AD / Infraestructura |
 | `ORACLE_USER` | Usuario de conexión a Oracle. | DBA |
 | `ORACLE_PASSWORD` | Contraseña Oracle. | DBA |
 | `ORACLE_HOST` | Host o IP de Oracle. | DBA / Infraestructura |
@@ -420,7 +437,10 @@ CARGUEBD_CLEAR_REGISTRY_ON_START=false
 | `ORACLE_SCHEMA` | Esquema dueño o esquema funcional. | DBA |
 | `ORACLE_GESTION_ID_SEQUENCE` | Secuencia Oracle si aplica al ambiente. | DBA / Equipo técnico |
 | `AURORA_CARGAS_DIR` | Dentro de Docker se recomienda `/app/backend/storage/cargas_bd`. | Equipo técnico |
+| `AURORA_CARGAS_TMP_DIR` | Directorio temporal opcional para archivos recién recibidos. | Equipo técnico |
 | `CARGUEBD_ADMIN_ROLES` | Roles autorizados para cargas. | Administrador funcional / Entra ID |
+| `CARGUEBD_SISIPEC_PROCEDURE` | Procedimiento Oracle para completar la carga SISIPEC, si difiere del predeterminado. | DBA / Equipo técnico |
+| `CARGUEBD_ACTUACIONES_CLEANUP_DEFENSOR` | Único defensor permitido en la depuración administrativa controlada. | Administrador funcional / DBA |
 
 ### 9.3 Dónde van las credenciales y datos de Azure AD / Microsoft Entra ID
 
@@ -519,6 +539,26 @@ Resultado esperado cuando Azure sí está configurado:
 
 Si `azureAd.enabled` está en `false`, la pantalla de login no abrirá Microsoft Entra ID y el usuario verá el flujo local. No debe interpretarse como falla de contraseña institucional, sino como configuración incompleta del ambiente.
 
+#### Autenticación LDAP/LDAPS alternativa
+
+LDAP no es SSO transparente. El usuario escribe sus credenciales institucionales y Aurora realiza un bind directo contra Active Directory. Para habilitarlo:
+
+```env
+LDAP_ENABLED=true
+LDAP_URL=ldaps://servidor-ad.defensoria.gov.co:636
+LDAP_DOMAIN=defensoria.gov.co
+LDAP_ALLOWED_EMAIL_DOMAINS=defensoria.gov.co
+LDAP_TIMEOUT_MS=8000
+```
+
+Validar conectividad desde el servidor antes de recrear el contenedor:
+
+```bash
+nc -vz servidor-ad.defensoria.gov.co 636
+```
+
+El endpoint `/api/auth/config` debe responder `ldap.enabled: true`. Si `AUTH_USER_ACCESS_MODE=managed`, una autenticación LDAP correcta no reemplaza la habilitación del correo en `Usuarios autorizados`.
+
 ### 9.4 Generar un secreto JWT si no fue entregado
 
 Si el administrador técnico autoriza generarlo en el servidor:
@@ -593,6 +633,7 @@ ls -la Dockerfile docker-compose.yml .env
 Construir la imagen:
 
 ```bash
+docker compose config --quiet
 docker compose build aurora
 ```
 
@@ -641,22 +682,25 @@ Ctrl + C
 
 ## 12. Validar puerto y salud de la aplicación
 
-Validar que el puerto está escuchando:
+Validar que el puerto publicado está escuchando. Con el valor predeterminado:
 
 ```bash
-ss -ltnp | grep ':7860' || true
+ss -ltnp | grep ':443' || true
 ```
 
-Validar salud desde el servidor:
+Validar salud desde el servidor usando el protocolo y `HOST_PORT` reales. Si Aurora termina TLS directamente en el puerto predeterminado:
 
 ```bash
-curl http://127.0.0.1:7860/api/health
-curl http://127.0.0.1:7860/api/health/db
-curl -I -H 'Range: bytes=0-1023' \
-  http://127.0.0.1:7860/tutorial-videos/defensor-publico-condenados-eron.mp4
+curl -k https://127.0.0.1/api/health
+curl -k https://127.0.0.1/api/health/db
+curl -k https://127.0.0.1/api/auth/config
+curl -k -I -H 'Range: bytes=0-1023' \
+  https://127.0.0.1/tutorial-videos/defensor-publico-condenados-eron.mp4
 docker compose exec aurora sh -c \
   'cd /app/backend/tutorial-videos && sha256sum --check SHA256SUMS'
 ```
+
+Si se publica temporalmente `HOST_PORT=7860` sin TLS, sustituir las URL anteriores por `http://127.0.0.1:7860/...`.
 
 Resultado esperado para salud general:
 
@@ -967,13 +1011,16 @@ Tomar capturas o guardar salidas de:
 7. `docker compose build aurora` finalizado sin errores.
 8. `docker compose ps` con el servicio `aurora` arriba.
 9. `docker images | grep aurora-app`.
-10. `curl http://127.0.0.1:7860/api/health`.
-11. `curl http://127.0.0.1:7860/api/health/db`.
-12. `curl http://127.0.0.1:7860/api/auth/config`, ocultando valores si la evidencia se comparte fuera del equipo técnico.
+10. Consulta de `/api/health` usando el protocolo y puerto publicados.
+11. Consulta de `/api/health/db`.
+12. Consulta de `/api/auth/config`, ocultando valores si la evidencia se comparte fuera del equipo técnico.
 13. Respuesta `206` de un tutorial y verificación SHA-256 de los tres MP4.
-14. Navegador cargando Aurora.
-15. Validación desde equipo cliente o evidencia de solicitud a Infraestructura si falta publicación de red.
-16. Si se usó puerto alterno, evidencia de `HOST_PORT=<puerto> docker compose ps` y URL de prueba.
+14. Resultado de `npm run qa:smoke`, `npm run qa:encoding` y auditorías de dependencias.
+15. Navegador cargando Aurora.
+16. Caja de Herramientas abriendo un enlace institucional autorizado.
+17. Login Entra ID y, si está habilitado, login LDAP seguido de `/api/auth/me`.
+18. Validación desde equipo cliente o evidencia de solicitud a Infraestructura si falta publicación de red.
+19. Si se usó puerto alterno, evidencia de `HOST_PORT=<puerto> docker compose ps` y URL de prueba.
 
 No incluir capturas donde se vean contraseñas, `AUTH_JWT_SECRET`, `ORACLE_PASSWORD` o llaves privadas.
 
@@ -997,6 +1044,8 @@ No incluir capturas donde se vean contraseñas, `AUTH_JWT_SECRET`, `ORACLE_PASSW
 | `AADSTS9002326` o `Cross-origin token redemption` | La Redirect URI existe como plataforma `Web` o no está registrada como `Single-page application`. | En Entra ID > App registrations > Authentication, agregar la URL exacta en `Single-page application`, por ejemplo `https://localhost:7860`. |
 | Cambio de `.env` no se ve reflejado | El contenedor fue reiniciado pero no recreado. | Ejecutar `docker compose up -d --force-recreate aurora`. |
 | Cargas mensuales no funcionan | Roles, Python o carpeta de cargas. | Revisar `CARGUEBD_*`, `AURORA_CARGAS_DIR` y logs del backend. |
+| Un nombre de defensor con caracteres dañados no filtra | Datos históricos con codificación inconsistente y ausencia de vínculo por cédula. | Confirmar la versión actual, verificar `CEDULA_DEFENSOR` y probar el nombre correcto y el visible. Corregir el dato en origen cuando sea posible. |
+| Una escritura pendiente desaparece al cambiar de usuario | Protección de identidad de la cola sin conexión. | Es el comportamiento esperado: las operaciones autenticadas no se transfieren entre sesiones. Repetir la operación con la cuenta autorizada y conexión disponible. |
 
 ## 18. Recomendaciones de seguridad
 
@@ -1006,6 +1055,8 @@ No incluir capturas donde se vean contraseñas, `AUTH_JWT_SECRET`, `ORACLE_PASSW
 - Mantener `AUTH_LOCAL_ADMIN_ENABLED=false` en producción.
 - Usar HTTPS para la URL institucional definitiva.
 - Restringir el puerto `7860` o publicarlo detrás de proxy inverso según política de Infraestructura.
+- No versionar `node_modules`, `.env`, archivos temporales de entorno, datos de carga ni almacenamiento operativo.
+- Probar cierre y cambio de sesión cuando se habilite operación sin conexión.
 - Documentar fecha, responsable, versión desplegada y resultado de pruebas.
 
 ## 19. Referencias técnicas

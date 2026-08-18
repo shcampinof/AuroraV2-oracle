@@ -51,11 +51,84 @@ function testCorruptRegistryDoesNotBreakList() {
     fs.writeFileSync(path.join(tmpDir, 'cargas.json'), '[{"id":"truncado","originalName":"archivo.xlsx"');
 
     assert.deepEqual(listCargas(), []);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(tmpDir, 'cargas.json'), 'utf8')), []);
     const backups = fs.readdirSync(tmpDir).filter((name) => name.startsWith('cargas.json.corrupt-'));
     assert.equal(backups.length, 1);
   } finally {
     if (previous == null) delete process.env.AURORA_CARGAS_DIR;
     else process.env.AURORA_CARGAS_DIR = previous;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+function testLegacyRegistryIsMigratedAndErrorsAreBoundedOnDisk() {
+  const previousDir = process.env.AURORA_CARGAS_DIR;
+  const previousMax = process.env.CARGUEBD_PUBLIC_ERROR_MAX_LENGTH;
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-cargas-legacy-test-'));
+  try {
+    process.env.AURORA_CARGAS_DIR = tmpDir;
+    process.env.CARGUEBD_PUBLIC_ERROR_MAX_LENGTH = '120';
+    fs.writeFileSync(
+      path.join(tmpDir, 'cargas.json'),
+      JSON.stringify({
+        cargas: [
+          {
+            id: 'legacy',
+            status: 'fallido',
+            createdAt: new Date().toISOString(),
+            error: `ORA-01400: ${'X'.repeat(500)}`,
+          },
+        ],
+      })
+    );
+
+    const [carga] = listCargas();
+    const persisted = JSON.parse(fs.readFileSync(path.join(tmpDir, 'cargas.json'), 'utf8'));
+
+    assert.equal(carga.id, 'legacy');
+    assert.ok(carga.error.length <= 123);
+    assert.ok(Array.isArray(persisted));
+    assert.ok(persisted[0].error.length <= 123);
+    assert.equal(fs.readdirSync(tmpDir).filter((name) => name.endsWith('.tmp')).length, 0);
+  } finally {
+    if (previousDir == null) delete process.env.AURORA_CARGAS_DIR;
+    else process.env.AURORA_CARGAS_DIR = previousDir;
+    if (previousMax == null) delete process.env.CARGUEBD_PUBLIC_ERROR_MAX_LENGTH;
+    else process.env.CARGUEBD_PUBLIC_ERROR_MAX_LENGTH = previousMax;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+function testRegistryRetentionKeepsOnlyRecentEntries() {
+  const previousDir = process.env.AURORA_CARGAS_DIR;
+  const previousDays = process.env.CARGUEBD_REGISTRY_RETENTION_DAYS;
+  const previousRecords = process.env.CARGUEBD_REGISTRY_MAX_RECORDS;
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-cargas-retention-test-'));
+  try {
+    process.env.AURORA_CARGAS_DIR = tmpDir;
+    process.env.CARGUEBD_REGISTRY_RETENTION_DAYS = '2';
+    process.env.CARGUEBD_REGISTRY_MAX_RECORDS = '2';
+    fs.writeFileSync(
+      path.join(tmpDir, 'cargas.json'),
+      JSON.stringify([
+        { id: 'reciente-1', status: 'exitoso', updatedAt: new Date().toISOString(), error: '' },
+        { id: 'reciente-2', status: 'fallido', updatedAt: new Date().toISOString(), error: '' },
+        { id: 'antiguo', status: 'exitoso', updatedAt: '2020-01-01T00:00:00.000Z', error: '' },
+      ])
+    );
+
+    assert.deepEqual(listCargas().map((record) => record.id), ['reciente-1', 'reciente-2']);
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(path.join(tmpDir, 'cargas.json'), 'utf8')).map((record) => record.id),
+      ['reciente-1', 'reciente-2']
+    );
+  } finally {
+    if (previousDir == null) delete process.env.AURORA_CARGAS_DIR;
+    else process.env.AURORA_CARGAS_DIR = previousDir;
+    if (previousDays == null) delete process.env.CARGUEBD_REGISTRY_RETENTION_DAYS;
+    else process.env.CARGUEBD_REGISTRY_RETENTION_DAYS = previousDays;
+    if (previousRecords == null) delete process.env.CARGUEBD_REGISTRY_MAX_RECORDS;
+    else process.env.CARGUEBD_REGISTRY_MAX_RECORDS = previousRecords;
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
@@ -92,7 +165,7 @@ function testLongErrorIsTruncatedForPublicList() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-cargas-error-test-'));
   try {
     process.env.AURORA_CARGAS_DIR = tmpDir;
-    process.env.CARGUEBD_PUBLIC_ERROR_MAX_LENGTH = '120';
+    process.env.CARGUEBD_PUBLIC_ERROR_MAX_LENGTH = '999999';
     fs.mkdirSync(tmpDir, { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, 'cargas.json'),
@@ -100,14 +173,14 @@ function testLongErrorIsTruncatedForPublicList() {
         {
           id: 'error-largo',
           status: 'fallido',
-          error: `ORA-01400: ${'X'.repeat(500)}`,
+          error: `ORA-01400: ${'X'.repeat(5000)}`,
         },
       ])
     );
 
     const [carga] = listCargas();
 
-    assert.ok(carga.error.length <= 123);
+    assert.ok(carga.error.length <= 2003);
     assert.ok(carga.error.endsWith('...'));
   } finally {
     if (previousDir == null) delete process.env.AURORA_CARGAS_DIR;
@@ -122,6 +195,8 @@ testSourcesMetadata();
 testAuroraToggle();
 testSafeFileName();
 testCorruptRegistryDoesNotBreakList();
+testLegacyRegistryIsMigratedAndErrorsAreBoundedOnDisk();
+testRegistryRetentionKeepsOnlyRecentEntries();
 testRegistryClearOnStartupWithBackup();
 testLongErrorIsTruncatedForPublicList();
 

@@ -179,7 +179,8 @@ function deriveBloque5StatusCeleste(answers: CelesteRecord): CelesteDerivedStatu
   if (isRevocaOSustituyeQ26(answers)) return 'Caso cerrado';
   if (isNiegaQ26(answers)) {
     if (normalizeYesNo(q28) === 'si') return 'Pendiente decisión';
-    return 'Caso cerrado';
+    if (normalizeYesNo(q28) === 'no') return 'Caso cerrado';
+    return 'Presentar recurso';
   }
   if (isFilled(q29) || normalizeYesNo(q28) === 'si') return 'Pendiente decisión';
   if (isFilled(q25) && !isFilled(q26)) return 'Pendiente decisión de audiencia';

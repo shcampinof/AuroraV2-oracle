@@ -50,6 +50,7 @@ module.exports = {
   createActuacionByDocumento: (documento, payload) => pplService.createActuacionByDocumento(documento, payload),
   updateByDocumento: (documento, payload) => pplService.updateByDocumento(documento, payload),
   assignDefensor: (documentos, defensor, options) => pplService.assignDefensor(documentos, defensor, options),
+  unassignDefensor: (documentos) => pplService.unassignDefensor(documentos),
   getDefensoresDistinct: (options) => pplService.getDefensoresDistinct(options),
   computeTipo: (row) => pplService.computeTipo(row),
   getDataVersion: () => pplService.getDataVersion(),

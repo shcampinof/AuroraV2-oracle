@@ -1,6 +1,6 @@
 ﻿import { describe, expect, it } from 'vitest';
 import { evaluateCelesteRules, normalize } from './evaluateCelesteRules';
-import { mandatoryByBlock } from '../config/formRules.celeste';
+import { deriveStatusCeleste, mandatoryByBlock } from '../config/formRules.celeste';
 
 const BLOQUE_3_FIELDS = mandatoryByBlock.bloque3Celeste || [];
 const Q21 = BLOQUE_3_FIELDS.find((field) => field.label.startsWith('21 '))?.key || 'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS';
@@ -122,17 +122,17 @@ describe('evaluateCelesteRules - flujo sindicados', () => {
     expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
-  it('Regla 6: con Q24/Q25 diligenciadas, Q26 = niega y Q28 vacía, estado = Caso cerrado', () => {
-    const result = evaluateCelesteRules({
-      answers: {
-        ...buildBaseSeAvanza(),
-        [Q23]: '2026-04-15',
-        [Q24]: '2026-04-16',
-        [Q25]: '2026-04-18',
-        [Q26]: Q26_NIEGA,
-      },
-    });
-    expect(result.derivedStatus).toBe('Caso cerrado');
+  it('Regla 6: con Q26 = niega y Q28 vacía, la acción es presentar recurso', () => {
+    const answers = {
+      ...buildBaseSeAvanza(),
+      [Q23]: '2026-04-15',
+      [Q24]: '2026-04-16',
+      [Q25]: '2026-04-18',
+      [Q26]: Q26_NIEGA,
+    };
+    const result = evaluateCelesteRules({ answers });
+    expect(result.derivedStatus).toBe('Presentar recurso');
+    expect(deriveStatusCeleste(answers)).toBe('Presentar recurso');
   });
 
   it('Regla 7: si Q28 = No, estado = Caso cerrado', () => {

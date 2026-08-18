@@ -905,6 +905,159 @@ a:hover{
 }
 
 /* =========================================================
+   REPORTE ATENCIONES DEFENSORES
+========================================================= */
+.report-attentions-page{
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.report-attentions-header h2,
+.report-attentions-header p,
+.report-attentions-preview h3,
+.report-attentions-preview p{
+  margin: 0;
+}
+
+.report-attentions-header h2{
+  color: var(--primary-dark);
+  font-size: 1.75rem;
+}
+
+.report-attentions-header p{
+  margin-top: 0.35rem;
+  color: #46515f;
+  line-height: 1.4;
+}
+
+.report-attentions-form{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 1rem;
+  padding: 1.15rem;
+  border: 1px solid #dbe2ea;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 2px 4px var(--shadow);
+}
+
+.report-attentions-form label{
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  color: #243447;
+  font-weight: 800;
+}
+
+.report-attentions-form select,
+.report-attentions-form input{
+  width: 100%;
+  min-width: 0;
+  min-height: 43px;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #b9c7d6;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #172b3f;
+  font-size: 0.98rem;
+}
+
+.report-attentions-form select:focus,
+.report-attentions-form input:focus{
+  outline: 3px solid rgba(47, 100, 173, 0.2);
+  border-color: var(--primary);
+}
+
+.report-attentions-submit{
+  grid-column: 1 / -1;
+  justify-self: end;
+  min-width: 190px;
+}
+
+.report-attentions-preview{
+  display: grid;
+  gap: 1rem;
+  padding: 1.15rem;
+  border: 1px solid var(--primary-blue-soft-border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 3px 10px rgba(7, 71, 148, 0.08);
+}
+
+.report-attentions-preview-header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.report-attentions-preview-header h3{
+  color: var(--primary-dark);
+}
+
+.report-attentions-preview-header p{
+  margin-top: 0.3rem;
+  color: #536172;
+}
+
+.report-attentions-summary{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(125px, 1fr));
+  gap: 0.75rem;
+}
+
+.report-attentions-summary article{
+  display: grid;
+  gap: 0.3rem;
+  min-height: 92px;
+  padding: 0.8rem;
+  border: 1px solid #d7e2ef;
+  border-radius: 7px;
+  background: var(--primary-blue-soft);
+}
+
+.report-attentions-summary span{
+  color: #42566c;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.report-attentions-summary strong{
+  align-self: end;
+  color: var(--primary-dark);
+  font-size: 1.55rem;
+}
+
+.report-attentions-note{
+  color: #536172;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 1050px){
+  .report-attentions-summary{
+    grid-template-columns: repeat(2, minmax(125px, 1fr));
+  }
+}
+
+@media (max-width: 700px){
+  .report-attentions-form,
+  .report-attentions-summary{
+    grid-template-columns: 1fr;
+  }
+
+  .report-attentions-submit{
+    width: 100%;
+  }
+
+  .report-attentions-preview-header{
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+/* =========================================================
    MANUAL INTERACTIVO
 ========================================================= */
 .manual-interactivo-header{
@@ -1153,6 +1306,40 @@ a:hover{
   background: transparent;
 }
 
+.checkbox-multiple-option{
+  width: fit-content !important;
+  max-width: 100%;
+  margin-bottom: 0 !important;
+  padding: 0.18rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+
+.checkbox-multiple-options{
+  display: grid;
+  justify-items: start;
+  gap: 0.08rem;
+}
+
+.checkbox-multiple-option.is-exclusive{
+  border-color: #b7791f;
+  background: #fff8dc;
+  font-weight: 800;
+}
+
+.checkbox-multiple-option.is-exclusive.is-selected{
+  border-color: #8a5700;
+  background: #ffe7a3;
+}
+
+.checkbox-exclusive-note{
+  display: inline-block;
+  margin-left: 0.5rem;
+  color: #704500;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
 .form-field input:focus-visible,
 .form-field select:focus-visible,
 .form-field textarea:focus-visible,
@@ -1248,6 +1435,34 @@ input[list]{
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem 1.5rem;
+}
+
+.insistencias-fieldset{
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0 0 0.8rem;
+  padding: 1rem 1rem 0.2rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+
+.insistencias-fieldset legend{
+  padding: 0 0.35rem;
+  color: var(--primary-dark);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.insistencias-fields-grid{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1.5rem;
+}
+
+@media (max-width: 720px){
+  .insistencias-fields-grid{
+    grid-template-columns: 1fr;
+  }
 }
 
 .calificacion-resumen-field{
@@ -1451,6 +1666,31 @@ input[list]{
 
 .secondary-button:hover{
   background-color: var(--primary-blue-soft);
+}
+
+.pag-page-picker{
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pag-page-picker input{
+  width: 4.5rem;
+  min-width: 0;
+  padding: 0.5rem 0.4rem;
+  border: 2px solid var(--secondaryBlue);
+  border-radius: 4px;
+  text-align: center;
+}
+
+@media (max-width: 760px){
+  .pag-page-picker{
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 /* Variante: botón de buscar */
@@ -2368,6 +2608,15 @@ input[list]{
   background-color: var(--primary-blue-soft);
 }
 
+.row-fuera-prision{
+  background-color: #f1f3f5;
+  color: #4b5563;
+}
+
+.row-fuera-prision:hover{
+  background-color: #e5e7eb;
+}
+
 /* =========================================================
    TABLA USUARIOS ASIGNADOS
 ========================================================= */
@@ -2414,6 +2663,36 @@ input[list]{
   min-width: 100%;
   table-layout: fixed;
   font-size: 0.92rem;
+}
+
+.asignados-filter-actions{
+  align-items: center;
+}
+
+.asignados-inactive-toggle{
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-left: auto;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #c8d4e3;
+  border-radius: 6px;
+  background: #f6f8fb;
+  color: #24364f;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.asignados-inactive-toggle input{
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  accent-color: var(--secondaryBlue);
+}
+
+.asignados-inactive-toggle span{
+  display: grid;
+  gap: 0.15rem;
 }
 
 .asignados-table thead th{
@@ -2758,6 +3037,58 @@ input[list]{
   color: #115b26;
 }
 
+.estado--en-prision{
+  background: #e8f7ec;
+  border-color: #9fd9ae;
+  color: #115b26;
+}
+
+.estado--fuera-prision{
+  background: #f1f3f5;
+  border-color: #c8ced6;
+  color: #4b5563;
+}
+
+.ppl-inactive-alert{
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border: 2px solid #aeb6c0;
+  border-radius: 8px;
+  background: #f1f3f5;
+  color: #4b5563;
+  font-weight: 800;
+}
+
+.ppl-situation-change-alert{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid #d4bd72;
+  border-radius: 8px;
+  background: #fff9e8;
+  color: #6b4f00;
+  font-weight: 700;
+}
+
+.ppl-situation-change-alert small{
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.readonly-form-fieldset{
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.readonly-form-fieldset:disabled{
+  opacity: 0.78;
+}
+
 .estado--amarillo{
   background: #fff4d6;
   border-color: #ffd27a;
@@ -2970,28 +3301,16 @@ input[list]{
   background: var(--tool-accent);
 }
 
-.tool-card:nth-child(4n + 1){
-  --tool-accent: #2f64ad;
+.tool-card--general{
+  --tool-accent: #2563a6;
   --tool-surface: #f7faff;
   --tool-surface-hover: #eef5ff;
 }
 
-.tool-card:nth-child(4n + 2){
-  --tool-accent: #d28616;
-  --tool-surface: #fffaf1;
-  --tool-surface-hover: #fff3dc;
-}
-
-.tool-card:nth-child(4n + 3){
-  --tool-accent: #1f8a70;
-  --tool-surface: #f3fbf8;
-  --tool-surface-hover: #e8f6f1;
-}
-
-.tool-card:nth-child(4n){
-  --tool-accent: #7a5baf;
-  --tool-surface: #f8f6fd;
-  --tool-surface-hover: #f1ecfb;
+.tool-card--utilidad-publica{
+  --tool-accent: #c23b73;
+  --tool-surface: #fff5f9;
+  --tool-surface-hover: #ffeaf2;
 }
 
 .tool-card:hover{
@@ -3264,6 +3583,11 @@ input[list]{
   /* Usuarios asignados */
   .asignados-layout{
     flex-direction: column;
+  }
+
+  .asignados-inactive-toggle{
+    width: 100%;
+    margin-left: 0;
   }
 
   .asignados-table-container{

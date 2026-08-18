@@ -1,0 +1,946 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "INPEC-2025-07-31",
+  "source": {
+    "datasetId": "24zf-4cfu",
+    "name": "Directorio de Establecimientos de Reclusión de Orden Nacional",
+    "owner": "Instituto Nacional Penitenciario y Carcelario - INPEC",
+    "dataLastUpdated": "2025-07-31",
+    "url": "https://www.datos.gov.co/resource/24zf-4cfu"
+  },
+  "items": [
+    {
+      "id": "INPEC_101",
+      "label": "EPMSC LETICIA",
+      "aliases": [
+        "EPMSC LETICIA",
+        "CPMS LETICIA"
+      ]
+    },
+    {
+      "id": "INPEC_103",
+      "label": "EPMSC SANTA ROSA DE VITERBO (JYP-MUJERES)",
+      "aliases": [
+        "EPMSC SANTA ROSA DE VITERBO (JYP-MUJERES)",
+        "CPMS SANTA ROSA DE VITERBO (JYP-MUJERES)"
+      ]
+    },
+    {
+      "id": "INPEC_104",
+      "label": "CPMS CHIQUINQUIRA",
+      "aliases": [
+        "CPMS CHIQUINQUIRA"
+      ]
+    },
+    {
+      "id": "INPEC_105",
+      "label": "EPMSC DUITAMA",
+      "aliases": [
+        "EPMSC DUITAMA",
+        "CPMS DUITAMA"
+      ]
+    },
+    {
+      "id": "INPEC_107",
+      "label": "EPMSC GUATEQUE",
+      "aliases": [
+        "EPMSC GUATEQUE",
+        "CPMS GUATEQUE"
+      ]
+    },
+    {
+      "id": "INPEC_109",
+      "label": "CPMS MONIQUIRA",
+      "aliases": [
+        "CPMS MONIQUIRA"
+      ]
+    },
+    {
+      "id": "INPEC_110",
+      "label": "CPMS RAMIRIQUI",
+      "aliases": [
+        "CPMS RAMIRIQUI"
+      ]
+    },
+    {
+      "id": "INPEC_112",
+      "label": "EPMSC SOGAMOSO",
+      "aliases": [
+        "EPMSC SOGAMOSO",
+        "CPMS SOGAMOSO"
+      ]
+    },
+    {
+      "id": "INPEC_113",
+      "label": "COMPLEJO CARCELARIO Y PENITENCIARIO BOGOTA",
+      "aliases": [
+        "COMPLEJO CARCELARIO Y PENITENCIARIO BOGOTA"
+      ]
+    },
+    {
+      "id": "INPEC_114",
+      "label": "CPMS BOGOTA",
+      "aliases": [
+        "CPMS BOGOTA"
+      ]
+    },
+    {
+      "id": "INPEC_116",
+      "label": "EPMSC CAQUEZA",
+      "aliases": [
+        "EPMSC CAQUEZA",
+        "CPMS CAQUEZA"
+      ]
+    },
+    {
+      "id": "INPEC_117",
+      "label": "CPMS CHOCONTA",
+      "aliases": [
+        "CPMS CHOCONTA"
+      ]
+    },
+    {
+      "id": "INPEC_119",
+      "label": "CPMS FUSAGASUGA",
+      "aliases": [
+        "CPMS FUSAGASUGA"
+      ]
+    },
+    {
+      "id": "INPEC_120",
+      "label": "CPMS GACHETA",
+      "aliases": [
+        "CPMS GACHETA"
+      ]
+    },
+    {
+      "id": "INPEC_124",
+      "label": "CPMS LA MESA",
+      "aliases": [
+        "CPMS LA MESA"
+      ]
+    },
+    {
+      "id": "INPEC_126",
+      "label": "CPMS UBATE",
+      "aliases": [
+        "CPMS UBATE"
+      ]
+    },
+    {
+      "id": "INPEC_127",
+      "label": "CPMS VILLETA",
+      "aliases": [
+        "CPMS VILLETA"
+      ]
+    },
+    {
+      "id": "INPEC_129",
+      "label": "CPAMSM BOGOTA",
+      "aliases": [
+        "CPAMSM BOGOTA"
+      ]
+    },
+    {
+      "id": "INPEC_130",
+      "label": "CPOMS ACACIAS",
+      "aliases": [
+        "CPOMS ACACIAS"
+      ]
+    },
+    {
+      "id": "INPEC_131",
+      "label": "CPMS VILLAVICENCIO",
+      "aliases": [
+        "CPMS VILLAVICENCIO",
+        "VILLAVICENCIO"
+      ]
+    },
+    {
+      "id": "INPEC_133",
+      "label": "EPMSC GRANADA",
+      "aliases": [
+        "EPMSC GRANADA",
+        "CPMS GRANADA"
+      ]
+    },
+    {
+      "id": "INPEC_136",
+      "label": "CPMS MELGAR",
+      "aliases": [
+        "CPMS MELGAR",
+        "MELGAR"
+      ]
+    },
+    {
+      "id": "INPEC_138",
+      "label": "CPMS GIRARDOT",
+      "aliases": [
+        "CPMS GIRARDOT"
+      ]
+    },
+    {
+      "id": "INPEC_139",
+      "label": "CPMS NEIVA",
+      "aliases": [
+        "CPMS NEIVA"
+      ]
+    },
+    {
+      "id": "INPEC_140",
+      "label": "CPMS GARZON",
+      "aliases": [
+        "CPMS GARZON"
+      ]
+    },
+    {
+      "id": "INPEC_141",
+      "label": "CPMS LA PLATA",
+      "aliases": [
+        "CPMS LA PLATA"
+      ]
+    },
+    {
+      "id": "INPEC_142",
+      "label": "EPMSC PITALITO",
+      "aliases": [
+        "EPMSC PITALITO"
+      ]
+    },
+    {
+      "id": "INPEC_143",
+      "label": "CPMS FLORENCIA",
+      "aliases": [
+        "CPMS FLORENCIA"
+      ]
+    },
+    {
+      "id": "INPEC_144",
+      "label": "EPMSC CHAPARRAL",
+      "aliases": [
+        "EPMSC CHAPARRAL"
+      ]
+    },
+    {
+      "id": "INPEC_145",
+      "label": "CPMS ESPINAL",
+      "aliases": [
+        "CPMS ESPINAL"
+      ]
+    },
+    {
+      "id": "INPEC_148",
+      "label": "CPMS ACACIAS",
+      "aliases": [
+        "CPMS ACACIAS"
+      ]
+    },
+    {
+      "id": "INPEC_149",
+      "label": "CPMS TUNJA",
+      "aliases": [
+        "CPMS TUNJA"
+      ]
+    },
+    {
+      "id": "INPEC_150",
+      "label": "CPAMS EL BARNE",
+      "aliases": [
+        "CPAMS EL BARNE",
+        "CPAMS EL BARNÉ"
+      ]
+    },
+    {
+      "id": "INPEC_152",
+      "label": "CPMS PAZ DE ARIPORO",
+      "aliases": [
+        "CPMS PAZ DE ARIPORO"
+      ]
+    },
+    {
+      "id": "INPEC_153",
+      "label": "CPMS YOPAL",
+      "aliases": [
+        "CPMS YOPAL"
+      ]
+    },
+    {
+      "id": "INPEC_156",
+      "label": "PMS LA ESPERANZA DE GUADUAS",
+      "aliases": [
+        "PMS LA ESPERANZA DE GUADUAS"
+      ]
+    },
+    {
+      "id": "INPEC_157",
+      "label": "PMS LAS HELICONIAS DE FLORENCIA",
+      "aliases": [
+        "PMS LAS HELICONIAS DE FLORENCIA"
+      ]
+    },
+    {
+      "id": "INPEC_158",
+      "label": "CPMS GUAMO",
+      "aliases": [
+        "CPMS GUAMO"
+      ]
+    },
+    {
+      "id": "INPEC_202",
+      "label": "EPMSC BOLIVAR-CAUCA",
+      "aliases": [
+        "EPMSC BOLIVAR-CAUCA"
+      ]
+    },
+    {
+      "id": "INPEC_204",
+      "label": "CPMS EL BORDO",
+      "aliases": [
+        "CPMS EL BORDO"
+      ]
+    },
+    {
+      "id": "INPEC_206",
+      "label": "EPMSC PUERTO TEJADA",
+      "aliases": [
+        "EPMSC PUERTO TEJADA"
+      ]
+    },
+    {
+      "id": "INPEC_207",
+      "label": "EPMSC SANTANDER DE QUILICHAO",
+      "aliases": [
+        "EPMSC SANTANDER DE QUILICHAO",
+        "SANTANDER DE QUILICHAO"
+      ]
+    },
+    {
+      "id": "INPEC_208",
+      "label": "EPMSC SILVIA",
+      "aliases": [
+        "EPMSC SILVIA",
+        "CPMS SILVIA"
+      ]
+    },
+    {
+      "id": "INPEC_209",
+      "label": "CPMSM POPAYAN",
+      "aliases": [
+        "CPMSM POPAYAN"
+      ]
+    },
+    {
+      "id": "INPEC_215",
+      "label": "CPMSM PASTO",
+      "aliases": [
+        "CPMSM PASTO"
+      ]
+    },
+    {
+      "id": "INPEC_217",
+      "label": "CPMS IPIALES",
+      "aliases": [
+        "CPMS IPIALES"
+      ]
+    },
+    {
+      "id": "INPEC_219",
+      "label": "EPMSC LA UNION",
+      "aliases": [
+        "EPMSC LA UNION"
+      ]
+    },
+    {
+      "id": "INPEC_221",
+      "label": "CPMS TUQUERRES",
+      "aliases": [
+        "CPMS TUQUERRES",
+        "TUQUERRES"
+      ]
+    },
+    {
+      "id": "INPEC_222",
+      "label": "EPMSC TUMACO",
+      "aliases": [
+        "EPMSC TUMACO",
+        "CPMS TUMACO",
+        "TUMACO"
+      ]
+    },
+    {
+      "id": "INPEC_225",
+      "label": "CPAMS PALMIRA",
+      "aliases": [
+        "CPAMS PALMIRA"
+      ]
+    },
+    {
+      "id": "INPEC_226",
+      "label": "CPMS CALI (ERE)",
+      "aliases": [
+        "CPMS CALI (ERE)"
+      ]
+    },
+    {
+      "id": "INPEC_227",
+      "label": "CPMS BUGA",
+      "aliases": [
+        "CPMS BUGA"
+      ]
+    },
+    {
+      "id": "INPEC_228",
+      "label": "EPMSC BUENAVENTURA",
+      "aliases": [
+        "EPMSC BUENAVENTURA",
+        "CPMS BUENAVENTURA"
+      ]
+    },
+    {
+      "id": "INPEC_233",
+      "label": "CPMS TULUA",
+      "aliases": [
+        "CPMS TULUA"
+      ]
+    },
+    {
+      "id": "INPEC_235",
+      "label": "CPAMS POPAYAN (ERE)",
+      "aliases": [
+        "CPAMS POPAYAN (ERE)"
+      ]
+    },
+    {
+      "id": "INPEC_238",
+      "label": "EPMSC CARTAGO",
+      "aliases": [
+        "EPMSC CARTAGO",
+        "CPMS CARTAGO"
+      ]
+    },
+    {
+      "id": "INPEC_239",
+      "label": "EPMSC CAICEDONIA",
+      "aliases": [
+        "EPMSC CAICEDONIA",
+        "CPMS CAICEDONIA"
+      ]
+    },
+    {
+      "id": "INPEC_241",
+      "label": "EPMSC SEVILLA",
+      "aliases": [
+        "EPMSC SEVILLA",
+        "CPMS SEVILLA"
+      ]
+    },
+    {
+      "id": "INPEC_242",
+      "label": "COMPLEJO CARCELARIO Y PENITENCIARIO JAMUNDI",
+      "aliases": [
+        "COMPLEJO CARCELARIO Y PENITENCIARIO JAMUNDI"
+      ]
+    },
+    {
+      "id": "INPEC_301",
+      "label": "CPMS BARRANQUILLA",
+      "aliases": [
+        "CMS BARRANQUILLA",
+        "CPMS BARRANQUILLA"
+      ]
+    },
+    {
+      "id": "INPEC_303",
+      "label": "CPMS CARTAGENA",
+      "aliases": [
+        "CPMS CARTAGENA"
+      ]
+    },
+    {
+      "id": "INPEC_305",
+      "label": "CPMS MAGANGUE",
+      "aliases": [
+        "CPMS MAGANGUE"
+      ]
+    },
+    {
+      "id": "INPEC_307",
+      "label": "CPMS VALLEDUPAR",
+      "aliases": [
+        "EPMSC VALLEDUPAR",
+        "CPMS VALLEDUPAR"
+      ]
+    },
+    {
+      "id": "INPEC_308",
+      "label": "CPMS MONTERIA",
+      "aliases": [
+        "CPMS MONTERIA"
+      ]
+    },
+    {
+      "id": "INPEC_313",
+      "label": "CPMS RIOHACHA",
+      "aliases": [
+        "CPMS RIOHACHA"
+      ]
+    },
+    {
+      "id": "INPEC_314",
+      "label": "EPMSC SANTA MARTA",
+      "aliases": [
+        "EPMSC SANTA MARTA",
+        "CPMS SANTA MARTA"
+      ]
+    },
+    {
+      "id": "INPEC_316",
+      "label": "EPMSC EL BANCO",
+      "aliases": [
+        "EPMSC EL BANCO",
+        "CPMS EL BANCO"
+      ]
+    },
+    {
+      "id": "INPEC_318",
+      "label": "EPMSC SAN ANDRES",
+      "aliases": [
+        "EPMSC SAN ANDRES",
+        "CPMS SAN ANDRES"
+      ]
+    },
+    {
+      "id": "INPEC_319",
+      "label": "CPMS SINCELEJO",
+      "aliases": [
+        "CPMS SINCELEJO"
+      ]
+    },
+    {
+      "id": "INPEC_322",
+      "label": "CPMS BARRANQUILLA (JYP)",
+      "aliases": [
+        "EPMSC BARRANQUILLA",
+        "CPMS BARRANQUILLA (JYP)"
+      ]
+    },
+    {
+      "id": "INPEC_323",
+      "label": "CPAMS VALLEDUPAR",
+      "aliases": [
+        "CPAMS VALLEDUPAR"
+      ]
+    },
+    {
+      "id": "INPEC_324",
+      "label": "CPMS TIERRALTA",
+      "aliases": [
+        "CPMS TIERRALTA"
+      ]
+    },
+    {
+      "id": "INPEC_401",
+      "label": "EPMSC ARAUCA",
+      "aliases": [
+        "EPMSC ARAUCA",
+        "CPMS ARAUCA"
+      ]
+    },
+    {
+      "id": "INPEC_405",
+      "label": "EPMSC AGUACHICA",
+      "aliases": [
+        "EPMSC AGUACHICA",
+        "CPMS AGUACHICA"
+      ]
+    },
+    {
+      "id": "INPEC_407",
+      "label": "EPMSC PAMPLONA",
+      "aliases": [
+        "EPMSC PAMPLONA",
+        "CPMS PAMPLONA"
+      ]
+    },
+    {
+      "id": "INPEC_408",
+      "label": "EPMSC OCANA",
+      "aliases": [
+        "EPMSC OCANA"
+      ]
+    },
+    {
+      "id": "INPEC_410",
+      "label": "CPMS BUCARAMANGA (ERE)",
+      "aliases": [
+        "CPMS BUCARAMANGA (ERE)"
+      ]
+    },
+    {
+      "id": "INPEC_411",
+      "label": "EPMSC BARRANCABERMEJA",
+      "aliases": [
+        "EPMSC BARRANCABERMEJA",
+        "CPMS BARRANCABERMEJA"
+      ]
+    },
+    {
+      "id": "INPEC_413",
+      "label": "EPMSC MALAGA",
+      "aliases": [
+        "EPMSC MALAGA"
+      ]
+    },
+    {
+      "id": "INPEC_415",
+      "label": "EPMS SAN GIL",
+      "aliases": [
+        "EPMS SAN GIL",
+        "PMS SAN GIL"
+      ]
+    },
+    {
+      "id": "INPEC_416",
+      "label": "EPMSC SOCORRO",
+      "aliases": [
+        "EPMSC SOCORRO",
+        "CPMS SOCORRO"
+      ]
+    },
+    {
+      "id": "INPEC_417",
+      "label": "CPMS SAN VICENTE DE CHUCURI",
+      "aliases": [
+        "CPMS SAN VICENTE DE CHUCURI"
+      ]
+    },
+    {
+      "id": "INPEC_418",
+      "label": "EPMSC VELEZ",
+      "aliases": [
+        "EPMSC VELEZ"
+      ]
+    },
+    {
+      "id": "INPEC_420",
+      "label": "CPMSM BUCARAMANGA",
+      "aliases": [
+        "CPMSM BUCARAMANGA"
+      ]
+    },
+    {
+      "id": "INPEC_421",
+      "label": "CPAMS GIRON",
+      "aliases": [
+        "CPAMS GIRON",
+        "CPMAMS GIRON",
+        "GIRON"
+      ]
+    },
+    {
+      "id": "INPEC_422",
+      "label": "COMPLEJO CARCELARIO Y PENITENCIARIO CUCUTA",
+      "aliases": [
+        "COMPLEJO CARCELARIO Y PENITENCIARIO CUCUTA"
+      ]
+    },
+    {
+      "id": "INPEC_501",
+      "label": "CPAMS LA PAZ",
+      "aliases": [
+        "CPAMS LA PAZ"
+      ]
+    },
+    {
+      "id": "INPEC_502",
+      "label": "CPMS BELLO",
+      "aliases": [
+        "CPMS BELLO"
+      ]
+    },
+    {
+      "id": "INPEC_505",
+      "label": "EPMSC ANDES",
+      "aliases": [
+        "EPMSC ANDES"
+      ]
+    },
+    {
+      "id": "INPEC_507",
+      "label": "EPMSC BOLIVAR-ANTIOQUIA",
+      "aliases": [
+        "EPMSC BOLIVAR-ANTIOQUIA"
+      ]
+    },
+    {
+      "id": "INPEC_508",
+      "label": "EPMSC CAUCASIA",
+      "aliases": [
+        "EPMSC CAUCASIA",
+        "CPMS CAUCASIA"
+      ]
+    },
+    {
+      "id": "INPEC_513",
+      "label": "CPMS JERICO",
+      "aliases": [
+        "CPMS JERICO"
+      ]
+    },
+    {
+      "id": "INPEC_514",
+      "label": "EPMSC LA CEJA",
+      "aliases": [
+        "EPMSC LA CEJA"
+      ]
+    },
+    {
+      "id": "INPEC_515",
+      "label": "EPMSC PUERTO BERRIO",
+      "aliases": [
+        "EPMSC PUERTO BERRIO",
+        "CPMS PUERTO BERRIO"
+      ]
+    },
+    {
+      "id": "INPEC_517",
+      "label": "EPMSC SANTA BARBARA",
+      "aliases": [
+        "EPMSC SANTA BARBARA"
+      ]
+    },
+    {
+      "id": "INPEC_518",
+      "label": "CPMS SANTO DOMINGO",
+      "aliases": [
+        "CPMS SANTO DOMINGO"
+      ]
+    },
+    {
+      "id": "INPEC_519",
+      "label": "EPMSC SANTA ROSA DE OSOS",
+      "aliases": [
+        "EPMSC SANTA ROSA DE OSOS"
+      ]
+    },
+    {
+      "id": "INPEC_521",
+      "label": "EPMSC SONSON",
+      "aliases": [
+        "EPMSC SONSON",
+        "CPMS SONSON"
+      ]
+    },
+    {
+      "id": "INPEC_523",
+      "label": "EPMSC TAMESIS",
+      "aliases": [
+        "EPMSC TAMESIS"
+      ]
+    },
+    {
+      "id": "INPEC_527",
+      "label": "EPMSC YARUMAL",
+      "aliases": [
+        "EPMSC YARUMAL",
+        "CPMS YARUMAL"
+      ]
+    },
+    {
+      "id": "INPEC_530",
+      "label": "EPMSC QUIBDO",
+      "aliases": [
+        "EPMSC QUIBDO",
+        "CPMS QUIBDO"
+      ]
+    },
+    {
+      "id": "INPEC_531",
+      "label": "CPMS APARTADO",
+      "aliases": [
+        "CPMS APARTADO"
+      ]
+    },
+    {
+      "id": "INPEC_533",
+      "label": "EPMSC ISTMINA",
+      "aliases": [
+        "EPMSC ISTMINA",
+        "CPMS ISTMINA"
+      ]
+    },
+    {
+      "id": "INPEC_535",
+      "label": "CPMS PUERTO TRIUNFO",
+      "aliases": [
+        "CPMS PUERTO TRIUNFO"
+      ]
+    },
+    {
+      "id": "INPEC_537",
+      "label": "COMPLEJO CARCELARIO Y PENITENCIARIO PEDREGAL",
+      "aliases": [
+        "COMPLEJO CARCELARIO Y PENITENCIARIO PEDREGAL"
+      ]
+    },
+    {
+      "id": "INPEC_601",
+      "label": "CPMS MANIZALES",
+      "aliases": [
+        "EPMSC MANIZALES",
+        "CPMS MANIZALES"
+      ]
+    },
+    {
+      "id": "INPEC_602",
+      "label": "EPMSC ANSERMA",
+      "aliases": [
+        "EPMSC ANSERMA",
+        "CPMS ANSERMA"
+      ]
+    },
+    {
+      "id": "INPEC_607",
+      "label": "EPMSC PACORA",
+      "aliases": [
+        "EPMSC PACORA",
+        "CPMS PACORA"
+      ]
+    },
+    {
+      "id": "INPEC_608",
+      "label": "EPMSC PENSILVANIA",
+      "aliases": [
+        "EPMSC PENSILVANIA",
+        "CPMS PENSILVANIA"
+      ]
+    },
+    {
+      "id": "INPEC_609",
+      "label": "EPMSC RIOSUCIO",
+      "aliases": [
+        "EPMSC RIOSUCIO",
+        "CPMS RIOSUCIO"
+      ]
+    },
+    {
+      "id": "INPEC_610",
+      "label": "EPMSC SALAMINA",
+      "aliases": [
+        "EPMSC SALAMINA",
+        "CPMS SALAMINA"
+      ]
+    },
+    {
+      "id": "INPEC_611",
+      "label": "CPMSM MANIZALES",
+      "aliases": [
+        "RM MANIZALES",
+        "CPMSM MANIZALES"
+      ]
+    },
+    {
+      "id": "INPEC_612",
+      "label": "EPMSC CALARCA",
+      "aliases": [
+        "EPMSC CALARCA",
+        "CPMS CALARCA"
+      ]
+    },
+    {
+      "id": "INPEC_613",
+      "label": "CPMS ARMENIA",
+      "aliases": [
+        "CPMS ARMENIA",
+        "EPMSC ARMENIA",
+        "EMPSC ARMENIA"
+      ]
+    },
+    {
+      "id": "INPEC_615",
+      "label": "CPMSM ARMENIA",
+      "aliases": [
+        "CPMSM ARMENIA",
+        "RM ARMENIA"
+      ]
+    },
+    {
+      "id": "INPEC_616",
+      "label": "EPMSC PEREIRA (ERE)",
+      "aliases": [
+        "EPMSC PEREIRA (ERE)",
+        "CPMS PEREIRA (ERE)"
+      ]
+    },
+    {
+      "id": "INPEC_617",
+      "label": "EPMSC SANTA ROSA DE CABAL",
+      "aliases": [
+        "EPMSC SANTA ROSA DE CABAL",
+        "CPMS SANTA ROSA DE CABAL",
+        "SANTA ROSA DE CABAL"
+      ]
+    },
+    {
+      "id": "INPEC_620",
+      "label": "RM PEREIRA",
+      "aliases": [
+        "RM PEREIRA",
+        "CPMSM PEREIRA"
+      ]
+    },
+    {
+      "id": "INPEC_626",
+      "label": "EPMSC FRESNO",
+      "aliases": [
+        "EPMSC FRESNO",
+        "CPMS FRESNO"
+      ]
+    },
+    {
+      "id": "INPEC_628",
+      "label": "EPMSC HONDA",
+      "aliases": [
+        "EPMSC HONDA",
+        "CPMS HONDA"
+      ]
+    },
+    {
+      "id": "INPEC_629",
+      "label": "EPMSC LIBANO",
+      "aliases": [
+        "EPMSC LIBANO",
+        "CPMS LIBANO"
+      ]
+    },
+    {
+      "id": "INPEC_633",
+      "label": "EPMSC PUERTO BOYACA",
+      "aliases": [
+        "EPMSC PUERTO BOYACA",
+        "CPMS PUERTO BOYACA"
+      ]
+    },
+    {
+      "id": "INPEC_637",
+      "label": "CPAMS LA DORADA",
+      "aliases": [
+        "CPAMS LA DORADA"
+      ]
+    },
+    {
+      "id": "INPEC_639",
+      "label": "COMPLEJO CARCELARIO Y PENITENCIARIO IBAGUE",
+      "aliases": [
+        "COMPLEJO CARCELARIO Y PENITENCIARIO IBAGUE"
+      ]
+    },
+    {
+      "id": "INPEC_9001",
+      "label": "CPMMSF FACATATIVA",
+      "aliases": [
+        "CPMMSF FACATATIVA"
+      ]
+    }
+  ]
+}

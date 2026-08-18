@@ -92,6 +92,29 @@ try {
   assert.equal(disabled.authenticated, false);
   assert.equal(disabled.status, 403);
   assert.equal(disabled.body?.code, 'AUTH_USER_DISABLED');
+
+  updateManagedUser(managedUser.id, { enabled: true, roles: ['user'] });
+  const ldapToken = signAppToken({
+    ...managedUser,
+    provider: 'ldap',
+  });
+  const ldapRequest = { headers: { authorization: `Bearer ${ldapToken}` } };
+  let ldapAuthenticated = false;
+  requireAuth(
+    ldapRequest,
+    {
+      status() {
+        return this;
+      },
+      json() {
+        return this;
+      },
+    },
+    () => {
+      ldapAuthenticated = true;
+    }
+  );
+  assert.equal(ldapAuthenticated, true, 'LDAP sessions must remain valid after successful login');
 } finally {
   if (previousStorePath == null) delete process.env.AUTH_USER_STORE_PATH;
   else process.env.AUTH_USER_STORE_PATH = previousStorePath;

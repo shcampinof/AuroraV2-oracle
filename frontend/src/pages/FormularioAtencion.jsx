@@ -1,6 +1,7 @@
 ﻿import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createPplActuacion,
+  getCondenadosFilterOptions,
   getDefensoresCatalogo,
   getPplActuacionesByDocumento,
   getPplByDocumento,
@@ -16,6 +17,7 @@ import { AURORA_FIELD_IDS } from '../config/auroraFieldIds.ts';
 import { reportError } from '../utils/reportError.js';
 import { getLabelAccionCaso } from '../utils/actuacionesLabels.js';
 import { shouldBlockNuevaActuacion } from '../utils/actuacionesValidation.js';
+import { isSituacionActiva } from '../utils/pplStatus.js';
 
 const OPCIONES_TIPO_IDENTIFICACION = ['CC', 'CE', 'PASAPORTE', 'OTRA'];
 const OPCIONES_SI_NO = ['Sí', 'No'];
@@ -30,6 +32,18 @@ const KEY_CALIFICACION_CONDUCTA = 'Calificación de conducta';
 const KEY_FECHA_RECURSO_AURORA_LEGACY = 'Fecha de recurso en caso desfavorable';
 const KEY_FECHA_PRESENTACION_RECURSO = 'Fecha de presentación del recurso';
 const KEY_FECHA_DECISION_RECURSO = 'Fecha de la decisión del recurso';
+const KEY_FECHA_INSISTENCIA_1 = 'Fecha de insistencia 1';
+const KEY_FECHA_INSISTENCIA_2 = 'Fecha de insistencia 2';
+const KEY_NUMERO_INSISTENCIAS = 'Número de insistencias';
+const KEY_FECHAS_INSISTENCIA_EXPORT = '__fechasInsistenciaExport';
+const FECHA_INSISTENCIA_KEYS = [
+  KEY_FECHA_INSISTENCIA_1,
+  KEY_FECHA_INSISTENCIA_2,
+  'Fecha de insistencia 3',
+  'Fecha de insistencia 4',
+  'Fecha de insistencia 5',
+];
+const OPCIONES_NUMERO_INSISTENCIAS = ['0', '1', '2', '3', '4', '5'];
 const ALIASES_SE_PRESENTA_RECURSO = [
   'Se presenta recurso',
   '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?',
@@ -60,14 +74,56 @@ const OPCIONES_GENERO_AURORA = [
   'Otra identidad',
 ];
 const OPCIONES_ENFOQUE_ETNICO = [
-  'Negro',
-  'Afrocolombiano (a) / Afrodescendiente',
-  'Raizal',
-  'Palenquero',
+  'NARP (Personas Negras, Afrocolombianas, Raizales y Palenqueras)',
   'Gitano (a) o Rrom',
   'Indígena',
+  'Migrante',
+  'Población LGTBI+',
+  'Adulto mayor',
 ];
 const OPCIONES_LUGAR_PRIVACION = ['CDT', 'ERON'];
+const CAMPO_ESTABLECIMIENTO = 'Nombre del lugar de privación de la libertad';
+const CAMPO_DEPARTAMENTO_RECLUSION = 'Departamento del lugar de privación de la libertad';
+const CAMPO_MUNICIPIO_RECLUSION = 'Distrito/municipio del lugar de privación de la libertad';
+
+function normalizeCatalogValue(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+function appendCurrentCatalogValue(options, currentValue) {
+  const values = Array.isArray(options) ? options.map((value) => String(value || '').trim()).filter(Boolean) : [];
+  const current = String(currentValue || '').trim();
+  const keys = new Set(values.map(normalizeCatalogValue));
+  if (current && !keys.has(normalizeCatalogValue(current))) values.push(current);
+  return values.sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+}
+
+function resolveCentroCatalogLabel(value, centros) {
+  const key = normalizeCatalogValue(value);
+  if (!key) return '';
+  const matches = (Array.isArray(centros) ? centros : []).filter((centro) => {
+    const candidates = [centro?.label, ...(Array.isArray(centro?.valoresOriginales) ? centro.valoresOriginales : [])];
+    return candidates.some((candidate) => normalizeCatalogValue(candidate) === key);
+  });
+  const ids = new Set(matches.map((centro) => String(centro?.id || '').trim()).filter(Boolean));
+  return ids.size === 1 ? String(matches[0]?.label || '').trim() : '';
+}
+
+function resolveControlledCatalogValue(value, options) {
+  const key = normalizeCatalogValue(value);
+  if (!key) return '';
+  const matches = (Array.isArray(options) ? options : [])
+    .map((option) => (typeof option === 'string' ? option : String(option?.label ?? option?.value ?? '')))
+    .map((option) => String(option || '').trim())
+    .filter((option) => normalizeCatalogValue(option) === key);
+  return matches.length === 1 ? matches[0] : '';
+}
+
 const OPCIONES_FASE_TRATAMIENTO = [
   { value: 'OBS', label: 'Observación' },
   { value: 'ALT', label: 'Alta' },
@@ -89,8 +145,6 @@ const OPCIONES_CALIFICACION_CONDUCTA = [
   'Pendiente',
   'Sin registro',
 ];
-const FECHA_CORTE_DATOS_REFERENCIA = '15/04/2026';
-
 const OPCIONES_PROCEDENCIA_LIBERTAD_CONDICIONAL = [
 
   'Sí procede solicitud de libertad condicional',
@@ -172,6 +226,7 @@ const OPCIONES_PROCEDENCIA_ACUMULACION_PENAS = [
   'No aplica porque est\u00E1 en tr\u00E1mite solicitud de acumulaci\u00F3n de penas',
 ];
 
+const OPCION_ACCION_TUTELA = 'Acción de tutela';
 const OPCIONES_OTRAS_SOLICITUDES = [
   'Ninguna',
   'Solicitud de actualización de conducta',
@@ -181,6 +236,7 @@ const OPCIONES_OTRAS_SOLICITUDES = [
   'Solicitud de redención de pena 2x3 trabajo',
   'Solicitud de redención de pena 2x3 analógica en actividades distintas a trabajo',
   'Permiso de 72 horas',
+  OPCION_ACCION_TUTELA,
   'Otra',
 ];
 const OPCION_MULTIPLE_P36 = 'MAS DE UNA OPCION';
@@ -214,6 +270,7 @@ const OPCIONES_AURORA_ACTUACION_A_ADELANTAR = [
   'Solicitud de traslado del proceso al distrito judicial correspondiente',
   'Reiterar solicitud de subrogado penal ya radicada',
   'Solicitud de actualización de cartilla biográfica',
+  OPCION_ACCION_TUTELA,
   'Otra',
   'Ninguna porque la persona está sindicada',
   'Ninguna porque está en trámite una solicitud de subrogado penal o pena cumplida',
@@ -306,7 +363,7 @@ const EXPORT_FIELDS_BLOQUE_1 = [
   { label: '3. Número de identificación', key: 'Número de identificación', aliases: ['Numero de identificacion'] },
   { label: '4. Situación Jurídica', key: 'Situación Jurídica' },
   { label: '5. Género', key: 'Género' },
-  { label: '6. Enfoque Étnico/Racial/Cultural', key: 'Enfoque Étnico/Racial/Cultural' },
+  { label: '6. Enfoque diferencial', key: 'Enfoque Étnico/Racial/Cultural' },
   { label: '7. Nacionalidad', key: 'Nacionalidad' },
   { label: '8. Fecha de nacimiento', key: 'Fecha de nacimiento', isDate: true },
   { label: '9. Edad', key: 'Edad' },
@@ -388,19 +445,21 @@ const EXPORT_FIELDS_AURORA_BLOQUE_5_TRAMITE = [
   },
   { label: '44. Fecha de solicitud de documentos al Inpec (si aplica)', key: 'Fecha de solicitud de documentos al Inpec (si aplica)', isDate: true },
   { label: '45. Fecha de presentación de la solicitud a la autoridad', key: 'Fecha de presentación de la solicitud a la autoridad', isDate: true },
-  { label: '46. Fecha de decisión de la autoridad', key: 'Fecha de decisión de la autoridad', isDate: true },
-  { label: '47. Sentido de la decisión', key: 'Sentido de la decisión' },
-  { label: '48. Motivo de la decisión negativa', key: 'Motivo de la decisión negativa' },
-  { label: '49. Se presenta recurso', key: 'Se presenta recurso' },
+  { label: '46. Número de insistencias', key: KEY_NUMERO_INSISTENCIAS },
+  { label: '47. Fechas de las insistencias', key: KEY_FECHAS_INSISTENCIA_EXPORT },
+  { label: '48. Fecha de decisión de la autoridad', key: 'Fecha de decisión de la autoridad', isDate: true },
+  { label: '49. Sentido de la decisión', key: 'Sentido de la decisión' },
+  { label: '50. Motivo de la decisión negativa', key: 'Motivo de la decisión negativa' },
+  { label: '51. Se presenta recurso', key: 'Se presenta recurso' },
   {
-    label: '50. Fecha de presentación del recurso',
+    label: '52. Fecha de presentación del recurso',
     key: KEY_FECHA_PRESENTACION_RECURSO,
     aliases: [KEY_FECHA_RECURSO_AURORA_LEGACY],
     isDate: true,
   },
-  { label: '51. Fecha de la decisión del recurso', key: KEY_FECHA_DECISION_RECURSO, isDate: true },
-  { label: '52. Sentido de la decisión que resuelve recurso', key: 'Sentido de la decisión que resuelve la solicitud' },
-  { label: '53. Cierre del caso por imposibilidad de avanzar (si aplica)', key: 'Cierre del caso por imposibilidad de avanzar (si aplica)' },
+  { label: '53. Fecha de la decisión del recurso', key: KEY_FECHA_DECISION_RECURSO, isDate: true },
+  { label: '54. Sentido de la decisión que resuelve recurso', key: 'Sentido de la decisión que resuelve la solicitud' },
+  { label: '55. Cierre del caso por imposibilidad de avanzar (si aplica)', key: 'Cierre del caso por imposibilidad de avanzar (si aplica)' },
 ];
 
 const EXPORT_FIELDS_CELESTE_BLOQUE_2 = [
@@ -449,6 +508,19 @@ function isFilled(value) {
   if (!text) return false;
   const normalized = normalizeFieldName(text);
   return normalized !== '-' && normalized !== '--' && normalized !== 'null' && normalized !== 'undefined' && normalized !== 'seleccione' && normalized !== 'todos';
+}
+
+function getNumeroInsistencias(record) {
+  const rawValue = String(record?.[KEY_NUMERO_INSISTENCIAS] ?? '').trim();
+  if (rawValue !== '') {
+    const parsed = Number.parseInt(rawValue, 10);
+    if (Number.isFinite(parsed)) return Math.min(FECHA_INSISTENCIA_KEYS.length, Math.max(0, parsed));
+  }
+
+  return FECHA_INSISTENCIA_KEYS.reduce(
+    (count, key, index) => (String(record?.[key] ?? '').trim() ? index + 1 : count),
+    0
+  );
 }
 
 function isCierreImposibilidadSeleccionado(value) {
@@ -764,6 +836,9 @@ function wrapRegistroForLookup(rawRegistro) {
   if (REGISTRO_PROXY_TARGET.has(rawRegistro)) return rawRegistro;
 
   const target = hydrateDefensorAliases(rawRegistro);
+  if (!Object.prototype.hasOwnProperty.call(target, '__defensorAsignadoOriginal')) {
+    target.__defensorAsignadoOriginal = getDefensorAsignadoValue(target);
+  }
   const normalizedIndex = new Map();
   Object.keys(target).forEach((key) => {
     const nk = normalizeFieldName(key);
@@ -1247,6 +1322,10 @@ function buildNuevaActuacionDraft(source) {
     next[key] = '';
   });
 
+  // Toda actuación nace con una acción persistible, incluso antes de que se
+  // diligencien los hitos que permiten avanzar a la siguiente etapa.
+  next['Acción a impulsar'] = 'Analizar el caso';
+
   return next;
 }
 
@@ -1283,6 +1362,9 @@ const CAMPOS_LIMPIABLES_DESDE_BLOQUE_3 = new Set(
     'Fecha de presentación de la solicitud a la autoridad',
     'Fecha de decisión de la autoridad',
     'Sentido de la decisión',
+    KEY_FECHA_INSISTENCIA_1,
+    KEY_FECHA_INSISTENCIA_2,
+    ...FECHA_INSISTENCIA_KEYS.slice(2),
     'Motivo de la decisión negativa',
     'Se presenta recurso',
     'Fecha de recurso en caso desfavorable',
@@ -1312,6 +1394,7 @@ function Campo({
   value,
   onChange,
   options,
+  allowUnknownValue = false,
   readOnly = false,
   disabled = false,
   required = true,
@@ -1351,9 +1434,13 @@ function Campo({
         (normalizedRawValue === 'n' && normalizedOptionLabel === 'no')
       );
     });
-    const normalizedValue = matchedOption ? matchedOption.value : '';
+    const unknownOption = allowUnknownValue && rawValue && !matchedOption
+      ? { value: rawValue, label: rawValue }
+      : null;
+    const visibleOptions = unknownOption ? [unknownOption, ...normalizedOptions] : normalizedOptions;
+    const normalizedValue = matchedOption ? matchedOption.value : unknownOption?.value || '';
     const hasDashOption = normalizedOptions.some((opt) => String(opt?.value ?? '').trim() === '-');
-    const selectedLabel = normalizedOptions.find((opt) => opt.value === normalizedValue)?.label ?? '';
+    const selectedLabel = visibleOptions.find((opt) => opt.value === normalizedValue)?.label ?? '';
     const selectTitle = selectedLabel ? displayText(selectedLabel) : undefined;
     return (
       <div className={`form-field${isDisabled ? ' is-disabled' : ''}`}>
@@ -1367,7 +1454,7 @@ function Campo({
           title={selectTitle}
         >
           {canClear && !hasDashOption ? <option value="">-</option> : <option value="" disabled hidden />}
-          {normalizedOptions.map((opt, idx) => {
+          {visibleOptions.map((opt, idx) => {
             const optionValue = opt.value;
             const optionLabel = opt.label;
             return (
@@ -1435,6 +1522,58 @@ function Campo({
           readOnly={isDisabled}
           disabled={isDisabled}
           required={required}
+        />
+        <datalist id={listId}>
+          {normalizedOptions.map((opt, idx) => (
+            <option key={`${idx}-${opt}`} value={opt} />
+          ))}
+        </datalist>
+        {canClear && !isDisabled && hasValue && (
+          <button type="button" className="field-clear-button" onClick={clearValue} title={clearTitle}>
+            Limpiar
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (type === 'catalog-datalist') {
+    const normalizedOptions = (options || [])
+      .map((opt) => (typeof opt === 'string' ? opt : String(opt?.label ?? opt?.value ?? '')))
+      .map((opt) => String(opt ?? '').trim())
+      .filter(Boolean);
+    const safeName = String(name ?? '')
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-');
+    const listId = `catalog-${safeName || 'campo'}`;
+    const hasValue = String(value ?? '').trim() !== '';
+
+    return (
+      <div className={`form-field${isDisabled ? ' is-disabled' : ''}`}>
+        {labelNode}
+        <input
+          type="text"
+          name={name}
+          list={listId}
+          value={value ?? ''}
+          onChange={(e) => {
+            e.target.setCustomValidity('');
+            if (!isDisabled) onChange(name, e.target.value);
+          }}
+          onBlur={(e) => {
+            if (isDisabled || !String(e.target.value || '').trim()) return;
+            const canonicalValue = resolveControlledCatalogValue(e.target.value, normalizedOptions);
+            if (canonicalValue) {
+              e.target.setCustomValidity('');
+              if (canonicalValue !== e.target.value) onChange(name, canonicalValue);
+              return;
+            }
+            e.target.setCustomValidity('Seleccione una opción válida del catálogo.');
+          }}
+          readOnly={isDisabled}
+          disabled={isDisabled}
+          required={required}
+          autoComplete="off"
         />
         <datalist id={listId}>
           {normalizedOptions.map((opt, idx) => (
@@ -1546,13 +1685,16 @@ function CampoCheckboxMultiple({
         {displayText(label)}
         {showObligatoria && <span className="required-note"> *Obligatoria*</span>}
       </label>
-      <div style={{ display: 'grid', gap: '0.35rem' }}>
+      <div className="checkbox-multiple-options">
         {(options || []).map((opt, idx) => {
           const optionText = String(opt ?? '').trim();
           const normalizedOption = normalizeFieldName(optionText);
+          const isExclusive = Boolean(normalizedExclusive && normalizedOption === normalizedExclusive);
+          const isSelected = selectedSet.has(normalizedOption);
           return (
             <label
               key={`${idx}-${optionText}`}
+              className={`checkbox-multiple-option${isExclusive ? ' is-exclusive' : ''}${isSelected ? ' is-selected' : ''}`}
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'auto minmax(0, 1fr)',
@@ -1564,12 +1706,15 @@ function CampoCheckboxMultiple({
             >
               <input
                 type="checkbox"
-                checked={selectedSet.has(normalizedOption)}
+                checked={isSelected}
                 disabled={isDisabled}
                 onChange={(e) => toggleOption(optionText, e.target.checked)}
                 style={{ marginTop: '0.12rem' }}
               />
-              <span style={{ textAlign: 'left' }}>{displayText(optionText)}</span>
+              <span style={{ textAlign: 'left' }}>
+                {displayText(optionText)}
+                {isExclusive && <small className="checkbox-exclusive-note">No combinar con otras opciones</small>}
+              </span>
             </label>
           );
         })}
@@ -1595,6 +1740,15 @@ export default function FormularioAtencion({ numeroInicial }) {
   const [creandoActuacion, setCreandoActuacion] = useState(false);
   const [mostrarFormularioDetalle, setMostrarFormularioDetalle] = useState(false);
   const [defensoresCatalogo, setDefensoresCatalogo] = useState([]);
+  const [ubicacionCatalogo, setUbicacionCatalogo] = useState({
+    departamentos: [],
+    municipios: [],
+    centros: [],
+  });
+  const [ubicacionCatalogoDependiente, setUbicacionCatalogoDependiente] = useState({
+    municipios: [],
+    centros: [],
+  });
   const [actuacionesCalificacion, setActuacionesCalificacion] = useState([]);
   const [calificacionesDraft, setCalificacionesDraft] = useState({});
   const bloque2AuroraRef = useRef(null);
@@ -1645,6 +1799,56 @@ export default function FormularioAtencion({ numeroInicial }) {
   }, [cargarDefensoresFormulario]);
 
   useEffect(() => {
+    let active = true;
+    getCondenadosFilterOptions({ tipo: 'all' })
+      .then((data) => {
+        if (!active) return;
+        setUbicacionCatalogo({
+          departamentos: Array.isArray(data?.departamentos) ? data.departamentos : [],
+          municipios: Array.isArray(data?.municipios) ? data.municipios : [],
+          centros: Array.isArray(data?.centros) ? data.centros : [],
+        });
+      })
+      .catch((e) => reportError(e, 'formulario-entrevista:catalogo-ubicacion'));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const departamentoReclusionActual = String(registro?.[CAMPO_DEPARTAMENTO_RECLUSION] ?? '').trim();
+  const municipioReclusionActual = String(registro?.[CAMPO_MUNICIPIO_RECLUSION] ?? '').trim();
+
+  useEffect(() => {
+    let active = true;
+    setUbicacionCatalogoDependiente({ municipios: [], centros: [] });
+    const timeoutId = window.setTimeout(() => {
+      if (!departamentoReclusionActual && !municipioReclusionActual) {
+        return;
+      }
+      getCondenadosFilterOptions({
+        tipo: 'all',
+        filters: {
+          departamento: departamentoReclusionActual,
+          municipio: municipioReclusionActual,
+        },
+      })
+        .then((data) => {
+          if (!active) return;
+          setUbicacionCatalogoDependiente({
+            municipios: Array.isArray(data?.municipios) ? data.municipios : [],
+            centros: Array.isArray(data?.centros) ? data.centros : [],
+          });
+        })
+        .catch((e) => reportError(e, 'formulario-entrevista:catalogo-ubicacion-dependiente'));
+    }, 200);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [departamentoReclusionActual, municipioReclusionActual]);
+
+  useEffect(() => {
     const refrescarDefensores = () => cargarDefensoresFormulario({ force: true });
     const refrescarSiVisible = () => {
       if (document.visibilityState === 'visible') refrescarDefensores();
@@ -1666,10 +1870,42 @@ export default function FormularioAtencion({ numeroInicial }) {
       const nombre = String(item?.nombre ?? '').trim();
       if (nombre) dedup.add(nombre);
     });
+    const defensorAsignadoOriginal = String(registro?.__defensorAsignadoOriginal ?? '').trim();
+    if (defensorAsignadoOriginal) dedup.add(defensorAsignadoOriginal);
     return Array.from(dedup).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
-  }, [defensoresCatalogo]);
+  }, [defensoresCatalogo, registro]);
+
+  const centroReclusionActual = String(registro?.[CAMPO_ESTABLECIMIENTO] ?? '').trim();
+  const opcionesDepartamentosReclusion = useMemo(
+    () => appendCurrentCatalogValue(ubicacionCatalogo.departamentos, departamentoReclusionActual),
+    [ubicacionCatalogo.departamentos, departamentoReclusionActual]
+  );
+  const opcionesMunicipiosReclusion = useMemo(() => {
+    const source = departamentoReclusionActual
+      ? ubicacionCatalogoDependiente.municipios
+      : ubicacionCatalogo.municipios;
+    return appendCurrentCatalogValue(source, municipioReclusionActual);
+  }, [departamentoReclusionActual, municipioReclusionActual, ubicacionCatalogo.municipios, ubicacionCatalogoDependiente.municipios]);
+  const centroReclusionCanonico = useMemo(() => {
+    const allCentros = [...ubicacionCatalogo.centros, ...ubicacionCatalogoDependiente.centros];
+    return resolveCentroCatalogLabel(centroReclusionActual, allCentros) || centroReclusionActual;
+  }, [centroReclusionActual, ubicacionCatalogo.centros, ubicacionCatalogoDependiente.centros]);
+  const opcionesCentrosReclusion = useMemo(() => {
+    const source = departamentoReclusionActual || municipioReclusionActual
+      ? ubicacionCatalogoDependiente.centros
+      : ubicacionCatalogo.centros;
+    return appendCurrentCatalogValue(source.map((centro) => centro?.label), centroReclusionCanonico);
+  }, [departamentoReclusionActual, municipioReclusionActual, centroReclusionCanonico, ubicacionCatalogo.centros, ubicacionCatalogoDependiente.centros]);
 
   const flow = useMemo(() => (registro ? computeFlow(registro, tipoRegistro) : null), [registro, tipoRegistro]);
+  const numeroInsistencias = useMemo(() => getNumeroInsistencias(registro), [registro]);
+  const personaFueraPrision = useMemo(() => Boolean(registro) && !isSituacionActiva(registro), [registro]);
+  const cambioSituacionRegistrado = Boolean(
+    registro?.__historialActivoInactivo ?? registro?.tieneHistorialActivoInactivo
+  );
+  const fechaCambioSituacion = formatDateForExport(
+    registro?.['Fecha de corte'] ?? registro?.fechaCorte ?? ''
+  );
   const tieneInfoDesdePregunta29 = useCallback((source) => {
     if (!source || typeof source !== 'object') return false;
     return CAMPOS_AURORA_DESDE_P29.some((alias) =>
@@ -1809,6 +2045,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   }
 
   function handleChange(name, value) {
+    if (personaFueraPrision) return;
     setRegistro((prev) => {
       const base = { ...unwrapRegistro(prev) };
       if (isDefensorFieldName(name)) {
@@ -1829,10 +2066,37 @@ export default function FormularioAtencion({ numeroInicial }) {
         if (!touched) {
           base[name] = nextValue;
         }
+        if (nextValue.trim()) delete base.__desasignarDefensor;
         return wrapRegistroForLookup(base);
       }
 
       const normalizedName = normalizeFieldName(name);
+      if (normalizedName === normalizeFieldName(KEY_NUMERO_INSISTENCIAS)) {
+        const nextCount = Math.min(
+          FECHA_INSISTENCIA_KEYS.length,
+          Math.max(0, Number.parseInt(String(value ?? ''), 10) || 0)
+        );
+        setFieldValueAcrossAliases(base, KEY_NUMERO_INSISTENCIAS, String(nextCount));
+        FECHA_INSISTENCIA_KEYS.slice(nextCount).forEach((key) => {
+          setFieldValueAcrossAliases(base, key, '');
+        });
+        return wrapRegistroForLookup(base);
+      }
+      if (normalizedName === normalizeFieldName(CAMPO_DEPARTAMENTO_RECLUSION)) {
+        setFieldValueAcrossAliases(base, CAMPO_DEPARTAMENTO_RECLUSION, value);
+        setFieldValueAcrossAliases(base, CAMPO_MUNICIPIO_RECLUSION, '');
+        setFieldValueAcrossAliases(base, CAMPO_ESTABLECIMIENTO, '');
+        return wrapRegistroForLookup(base);
+      }
+      if (normalizedName === normalizeFieldName(CAMPO_MUNICIPIO_RECLUSION)) {
+        setFieldValueAcrossAliases(base, CAMPO_MUNICIPIO_RECLUSION, value);
+        setFieldValueAcrossAliases(base, CAMPO_ESTABLECIMIENTO, '');
+        return wrapRegistroForLookup(base);
+      }
+      if (normalizedName === normalizeFieldName(CAMPO_ESTABLECIMIENTO)) {
+        setFieldValueAcrossAliases(base, CAMPO_ESTABLECIMIENTO, value);
+        return wrapRegistroForLookup(base);
+      }
       const isResumenAnalisis = RESUMEN_ANALISIS_KEYS.some((alias) => normalizeFieldName(alias) === normalizedName);
       if (isResumenAnalisis) {
         RESUMEN_ANALISIS_KEYS.forEach((key) => {
@@ -1912,7 +2176,11 @@ export default function FormularioAtencion({ numeroInicial }) {
     triggerFormularioAutoScroll();
   }
 
-  function handleIniciarPrimeraActuacion() {
+  function handleIniciarPrimeraActuacion(options = {}) {
+    if (personaFueraPrision && !options?.soloConsulta) {
+      setError('La persona figura fuera de prisión. El registro está disponible solo para consulta.');
+      return;
+    }
     if (!registro || !getDocumentoActual(registro)) {
       setError('Debe cargar un usuario antes de actualizar la actuacion.');
       return;
@@ -1927,6 +2195,10 @@ export default function FormularioAtencion({ numeroInicial }) {
   }
 
   async function handleCrearNuevaActuacion(options = {}) {
+    if (personaFueraPrision) {
+      setError('La persona figura fuera de prisión. No se pueden crear nuevas actuaciones.');
+      return;
+    }
     if (!registro) {
       setError('Debe cargar un usuario antes de crear una nueva actuacion.');
       return;
@@ -1999,10 +2271,16 @@ export default function FormularioAtencion({ numeroInicial }) {
     const solicitudesP36 = parseP36Selections(
       readRegistroTextByAliases(registro, ['Otras solicitudes a tramitar']) || registro?.['Otras solicitudes a tramitar']
     );
-    const tieneSolicitudesPositivasP36 = solicitudesP36.some(
-      (item) => normalizeFieldName(item) !== normalizeFieldName('Ninguna')
-    );
-    if (tieneSolicitudesPositivasP36) return false;
+    const tieneNingunaExplicita =
+      solicitudesP36.length === 1 &&
+      normalizeFieldName(solicitudesP36[0]) === normalizeFieldName('Ninguna');
+    if (!tieneNingunaExplicita) return false;
+
+    const fechaAnalisis = readRegistroTextByAliases(registro, [
+      'Fecha de análisis jurídico del caso',
+      'Fecha de analisis juridico del caso',
+    ]);
+    if (!isMeaningfullyFilled(fechaAnalisis)) return false;
 
     const respuestasConProcedencia = [
       registro['Procedencia de libertad condicional'],
@@ -2029,7 +2307,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     [registro]
   );
   const decisionUsuarioDesbloquea = useMemo(() => decisionUsuarioPermiteAvance(decisionUsuario), [decisionUsuario]);
-  const decisionUsuarioBloquea = useMemo(() => Boolean(decisionUsuario && !decisionUsuarioDesbloquea), [
+  const decisionUsuarioBloquea = useMemo(() => Boolean(isMeaningfullyFilled(decisionUsuario) && !decisionUsuarioDesbloquea), [
     decisionUsuario,
     decisionUsuarioDesbloquea,
   ]);
@@ -2178,7 +2456,7 @@ export default function FormularioAtencion({ numeroInicial }) {
         iso: toIsoDateString(fechaPresentacionSolicitudTramite),
       },
       {
-        label: '46. Fecha de decisión de la autoridad',
+        label: '48. Fecha de decisión de la autoridad',
         iso: toIsoDateString(fechaDecisionAutoridadBloque5),
       },
     ];
@@ -2356,12 +2634,15 @@ export default function FormularioAtencion({ numeroInicial }) {
     const cierrePorQ57 =
       isCierreImposibilidadSeleccionado(cierreImposibilidadTramite) ||
       isCierreImposibilidadSeleccionado(cierreImposibilidadUtilidad);
-    const cierrePorQ52Utilidad = actuacionIncluyeUtilidadPublica && isFilled(sentidoDecisionBloque5);
-    const cierrePorQ47Tramite =
+    const cierrePorQ52Utilidad =
+      actuacionIncluyeUtilidadPublica &&
+      isFilled(sentidoDecisionBloque5) &&
+      norm(sentidoDecisionBloque5) !== norm('Niega utilidad pública');
+    const cierrePorQ49Tramite =
       !actuacionIncluyeUtilidadPublica &&
       isFilled(sentidoDecisionBloque5) &&
       !isNoConcedeSubrogadoPenal(sentidoDecisionBloque5);
-    return cierrePorQ57 || cierrePorQ52Utilidad || cierrePorQ47Tramite;
+    return cierrePorQ57 || cierrePorQ52Utilidad || cierrePorQ49Tramite;
   }, [
     auroraActivo,
     cierreImposibilidadTramite,
@@ -2477,7 +2758,10 @@ export default function FormularioAtencion({ numeroInicial }) {
   ]);
 
   const casoCerrado = useMemo(() => {
-    if (auroraActivo && cierrePorDecisionFinalBloque5) return true;
+    const bloque5Visible =
+      auroraVisibleBlocks.has('bloque5UtilidadPublica') ||
+      auroraVisibleBlocks.has('bloque5TramiteNormal');
+    if (auroraActivo && bloque5Visible && cierrePorDecisionFinalBloque5) return true;
 
     // BLOQUE 4
     if (auroraActivo && decisionUsuarioBloquea) return true;
@@ -2489,14 +2773,14 @@ export default function FormularioAtencion({ numeroInicial }) {
     // BLOQUE 5A
     const cumpleMarginalidad = String(registro?.['Cumple el requisito de marginalidad'] ?? '').trim();
     const cumpleJefatura = String(registro?.['Cumple el requisito de jefatura de hogar'] ?? '').trim();
-    if (auroraActivo && actuacionIncluyeUtilidadPublica) {
+    if (auroraActivo && bloque5Visible && actuacionIncluyeUtilidadPublica) {
       if (cumpleMarginalidad === 'No' || cumpleJefatura === 'No') return true;
       if (recursoNoPresentadoBloque5) return true;
       if (sentidoResuelveRecursoBloque5) return true;
     }
 
     // BLOQUE 5B
-    if (auroraActivo && !actuacionIncluyeUtilidadPublica) {
+    if (auroraActivo && bloque5Visible && !actuacionIncluyeUtilidadPublica) {
       if (isFilled(sentidoDecisionBloque5) && !isNoConcedeSubrogadoPenal(sentidoDecisionBloque5)) return true;
       if (recursoNoPresentadoBloque5) return true;
       if (sentidoResuelveSolicitudBloque5) return true;
@@ -2514,6 +2798,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     recursoNoPresentadoBloque5,
     sentidoResuelveRecursoBloque5,
     sentidoResuelveSolicitudBloque5,
+    auroraVisibleBlocks,
   ]);
 
   const motivoCierre = useMemo(() => {
@@ -2533,7 +2818,7 @@ export default function FormularioAtencion({ numeroInicial }) {
         isFilled(sentidoDecisionBloque5) &&
         !isNoConcedeSubrogadoPenal(sentidoDecisionBloque5)
       ) {
-        return `Caso cerrado por decisión de la autoridad (pregunta 47): ${sentidoDecisionBloque5}.`;
+        return `Caso cerrado por decisión de la autoridad (pregunta 49): ${sentidoDecisionBloque5}.`;
       }
       return 'Caso cerrado por resultado final del bloque 5.';
     }
@@ -2564,7 +2849,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
     if (auroraActivo && !actuacionIncluyeUtilidadPublica) {
       if (isFilled(sentidoDecisionBloque5) && !isNoConcedeSubrogadoPenal(sentidoDecisionBloque5)) {
-        return `Caso cerrado por decisión de la autoridad (pregunta 47): ${sentidoDecisionBloque5}.`;
+        return `Caso cerrado por decisión de la autoridad (pregunta 49): ${sentidoDecisionBloque5}.`;
       }
       if (recursoNoPresentadoBloque5) return 'Caso cerrado: no se presenta recurso.';
       if (sentidoResuelveSolicitudBloque5) {
@@ -2593,20 +2878,23 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   const bloqueCierre = useMemo(() => {
     if (!registro) return '';
-    if (auroraActivo && cierrePorDecisionFinalBloque5) return 'bloque5';
+    const bloque5Visible =
+      auroraVisibleBlocks.has('bloque5UtilidadPublica') ||
+      auroraVisibleBlocks.has('bloque5TramiteNormal');
+    if (auroraActivo && bloque5Visible && cierrePorDecisionFinalBloque5) return 'bloque5';
     if (auroraActivo && decisionUsuarioBloquea) return 'bloque4';
     if (auroraActivo && actuacionBloqueaPorNinguna) return 'bloque4';
     if (auroraActivo && cierreRegla1Bloque3) return 'bloque3';
 
     const cumpleMarginalidad = String(registro?.['Cumple el requisito de marginalidad'] ?? '').trim();
     const cumpleJefatura = String(registro?.['Cumple el requisito de jefatura de hogar'] ?? '').trim();
-    if (auroraActivo && actuacionIncluyeUtilidadPublica) {
+    if (auroraActivo && bloque5Visible && actuacionIncluyeUtilidadPublica) {
       if (cumpleMarginalidad === 'No' || cumpleJefatura === 'No') return 'bloque5';
       if (recursoNoPresentadoBloque5) return 'bloque5';
       if (sentidoResuelveRecursoBloque5) return 'bloque5';
     }
 
-    if (auroraActivo && !actuacionIncluyeUtilidadPublica) {
+    if (auroraActivo && bloque5Visible && !actuacionIncluyeUtilidadPublica) {
       if (isFilled(sentidoDecisionBloque5) && !isNoConcedeSubrogadoPenal(sentidoDecisionBloque5)) return 'bloque5';
       if (recursoNoPresentadoBloque5) return 'bloque5';
       if (sentidoResuelveSolicitudBloque5) return 'bloque5';
@@ -2625,6 +2913,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     recursoNoPresentadoBloque5,
     sentidoResuelveRecursoBloque5,
     sentidoResuelveSolicitudBloque5,
+    auroraVisibleBlocks,
   ]);
 
   useEffect(() => {
@@ -2642,6 +2931,10 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   useEffect(() => {
     if (!registro || !auroraActivo || !cierrePorDecisionFinalBloque5) return;
+    const bloque5Visible =
+      auroraVisibleBlocks.has('bloque5UtilidadPublica') ||
+      auroraVisibleBlocks.has('bloque5TramiteNormal');
+    if (!bloque5Visible) return;
     const doc = getDocumentoActual(registro);
     if (!doc) return;
     const estadoActual = String(registro['Estado del caso'] ?? '').trim();
@@ -2649,7 +2942,11 @@ export default function FormularioAtencion({ numeroInicial }) {
 
     const persistirCierreAutomatico = async () => {
       try {
-        const nextRecord = { ...unwrapRegistro(registro), 'Estado del caso': 'Cerrado' };
+        const nextRecord = {
+          ...unwrapRegistro(registro),
+          'Estado del caso': 'Cerrado',
+          'Acción a impulsar': 'Caso cerrado',
+        };
         if (!String(nextRecord['Cierre del caso por imposibilidad de avanzar (si aplica)'] ?? '').trim()) {
           nextRecord['Cierre del caso por imposibilidad de avanzar (si aplica)'] = motivoCierre || 'Caso cerrado';
         }
@@ -2670,19 +2967,25 @@ export default function FormularioAtencion({ numeroInicial }) {
     };
 
     persistirCierreAutomatico();
-  }, [registro, auroraActivo, cierrePorDecisionFinalBloque5, getDocumentoActual, buildUpdatePayload, motivoCierre]);
+  }, [registro, auroraActivo, cierrePorDecisionFinalBloque5, auroraVisibleBlocks, getDocumentoActual, buildUpdatePayload, motivoCierre]);
 
   useEffect(() => {
     if (!registro || !auroraActivo) return;
     const next = String(auroraRuleState?.derivedStatus || '').trim();
     if (!next) return;
     const current = String(registro['Estado del trámite'] ?? '').trim();
-    if (current === next) return;
+    const currentAction = String(registro['Acción a impulsar'] ?? '').trim();
+    if (current === next && currentAction === next) return;
     setRegistro((prev) => {
       if (!prev) return prev;
       const cur = String(prev['Estado del trámite'] ?? '').trim();
-      if (cur === next) return prev;
-      return wrapRegistroForLookup({ ...unwrapRegistro(prev), 'Estado del trámite': next });
+      const curAction = String(prev['Acción a impulsar'] ?? '').trim();
+      if (cur === next && curAction === next) return prev;
+      return wrapRegistroForLookup({
+        ...unwrapRegistro(prev),
+        'Estado del trámite': next,
+        'Acción a impulsar': next,
+      });
     });
   }, [registro, auroraActivo, auroraRuleState]);
 
@@ -2708,7 +3011,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     setRegistro((prev) => {
       if (!prev) return prev;
       const currentTramite = String(prev['Estado del trámite'] ?? '').trim();
-      const currentAccion = String(prev['Acción a realizar'] ?? '').trim();
+      const currentAccion = String(prev['Acción a impulsar'] ?? prev['Acción a realizar'] ?? '').trim();
       const nextCaso = estadoTramiteSindicado === 'Caso cerrado' ? 'Cerrado' : 'Activo';
       const currentCaso = String(prev['Estado del caso'] ?? '').trim();
       if (
@@ -2722,7 +3025,7 @@ export default function FormularioAtencion({ numeroInicial }) {
       return wrapRegistroForLookup({
         ...unwrapRegistro(prev),
         'Estado del trámite': estadoTramiteSindicado,
-        'Acción a realizar': estadoTramiteSindicado,
+        'Acción a impulsar': estadoTramiteSindicado,
         'Estado del caso': nextCaso,
       });
     });
@@ -2798,7 +3101,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   }, [registro, auroraActivo, actuacionIncluyeUtilidadPublica, habilitarNegativaUtilidadPublica]);
 
   useEffect(() => {
-    // Compatibilidad retroactiva: migra etiquetas históricas de Q47 a las nuevas.
+    // Compatibilidad retroactiva: migra etiquetas históricas del sentido de la decisión a las nuevas.
     if (!registro || !auroraActivo || actuacionIncluyeUtilidadPublica) return;
     const current = readRegistroTextByAliases(registro, ['Sentido de la decisión', 'Sentido de la decision']);
     const normalized = normalizeSentidoDecisionTramite(current);
@@ -2815,7 +3118,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   useEffect(() => {
     // Regla: AURORA.B5B.DEPENDENCIA.4
-    // Si en tramite normal Q47 != "No concede la solicitud", limpiar motivo y campos de recurso.
+    // Si en trámite normal Q49 != "No concede la solicitud", limpiar motivo y campos de recurso.
     if (!registro || !auroraActivo || actuacionIncluyeUtilidadPublica) return;
     if (habilitarNegativaTramiteNormal) return;
 
@@ -2985,7 +3288,15 @@ export default function FormularioAtencion({ numeroInicial }) {
       if (auroraVisibleBlocks.has('bloque2Aurora')) {
         const fieldsBloque2 = [
           ...EXPORT_FIELDS_AURORA_BLOQUE_2.slice(0, 4),
-          { label: 'Fecha de actualización de los datos (corte)', value: FECHA_CORTE_DATOS_REFERENCIA, isDate: true },
+          {
+            label: 'Fuente de información',
+            value: registro?.['Fuente de información'] ?? registro?.fuenteInformacion ?? '',
+          },
+          {
+            label: 'Fecha de actualización de los datos (corte)',
+            value: registro?.['Fecha de corte'] ?? registro?.fechaCorte ?? '',
+            isDate: true,
+          },
           ...EXPORT_FIELDS_AURORA_BLOQUE_2.slice(4),
           {
             label: 'Días restantes para cumplir requisito temporal de prisión domiciliaria',
@@ -3044,6 +3355,16 @@ export default function FormularioAtencion({ numeroInicial }) {
           if (field.key === 'Fecha de presentación de la solicitud a la autoridad') {
             return { ...field, value: fechaPresentacionSolicitudTramite };
           }
+          if (field.key === KEY_NUMERO_INSISTENCIAS) {
+            return { ...field, value: String(numeroInsistencias) };
+          }
+          if (field.key === KEY_FECHAS_INSISTENCIA_EXPORT) {
+            const fechas = FECHA_INSISTENCIA_KEYS.slice(0, numeroInsistencias).map((key, index) => {
+              const fecha = String(registro?.[key] ?? '').trim();
+              return `Insistencia ${index + 1}: ${fecha ? formatDateForExport(fecha) : 'Sin dato'}`;
+            });
+            return { ...field, value: fechas.join('\n') };
+          }
           return field;
         });
         sections.push({
@@ -3091,8 +3412,15 @@ export default function FormularioAtencion({ numeroInicial }) {
       { label: 'Documento', value: getDocumentoActual(registro) || 'Sin dato' },
       { label: 'Nombre', value: displayText(String(registro?.['Nombre'] ?? '').trim()) || 'Sin dato' },
       { label: 'Flujo', value: flow === 'condenado' ? 'AURORA (Condenado)' : flow === 'sindicado' ? 'CELESTE (Sindicado)' : 'No definido' },
-      { label: 'Estado del caso', value: displayText(registro?.['Estado del caso'] ?? '') || 'Sin dato' },
-      { label: 'Estado del trámite', value: displayText(registro?.['Estado del trámite'] ?? '') || 'Sin dato' },
+      {
+        label: 'Acción a impulsar',
+        value: displayText(
+          registro?.['Acción a impulsar'] ??
+          registro?.['Acción a realizar'] ??
+          registro?.['Estado del trámite'] ??
+          ''
+        ) || 'Sin dato',
+      },
       { label: 'Actuación activa', value: actuacionActivaId || 'Sin dato' },
       {
         label: 'Fecha de generación',
@@ -3186,9 +3514,49 @@ export default function FormularioAtencion({ numeroInicial }) {
   }
 
   async function handleGuardar() {
+    if (personaFueraPrision) {
+      setError('La persona figura fuera de prisión. El registro histórico no se puede editar.');
+      return;
+    }
     const doc = getDocumentoActual(registro);
     if (!doc) {
       setError('Debe cargar un usuario antes de guardar.');
+      return;
+    }
+    const ubicacionesControladas = [
+      {
+        label: 'nombre del lugar de privación de la libertad',
+        value: centroReclusionCanonico,
+        options: opcionesCentrosReclusion,
+      },
+      {
+        label: 'departamento del lugar de privación de la libertad',
+        value: departamentoReclusionActual,
+        options: opcionesDepartamentosReclusion,
+      },
+      {
+        label: 'distrito/municipio del lugar de privación de la libertad',
+        value: municipioReclusionActual,
+        options: opcionesMunicipiosReclusion,
+      },
+    ];
+    const ubicacionInvalida = ubicacionesControladas.find(
+      ({ value, options }) => String(value || '').trim() && !resolveControlledCatalogValue(value, options)
+    );
+    if (ubicacionInvalida) {
+      const message = `Seleccione un ${ubicacionInvalida.label} válido del catálogo.`;
+      setError(message);
+      setToastMessage(message);
+      setToastOpen(true);
+      return;
+    }
+    const defensorIngresado = getDefensorAsignadoValue(registro);
+    const defensorCatalogado = resolveControlledCatalogValue(defensorIngresado, opcionesDefensores);
+    if (String(defensorIngresado || '').trim() && !defensorCatalogado) {
+      const message = 'Seleccione un defensor válido del catálogo o créelo antes de guardar.';
+      setError(message);
+      setToastMessage(message);
+      setToastOpen(true);
       return;
     }
     const dateValidationError = getDateValidationError();
@@ -3209,6 +3577,26 @@ export default function FormularioAtencion({ numeroInicial }) {
       setError('');
       setToastOpen(false);
       const payloadBase = { ...unwrapRegistro(registro) };
+      setFieldValueAcrossAliases(
+        payloadBase,
+        CAMPO_ESTABLECIMIENTO,
+        resolveControlledCatalogValue(centroReclusionCanonico, opcionesCentrosReclusion)
+      );
+      setFieldValueAcrossAliases(
+        payloadBase,
+        CAMPO_DEPARTAMENTO_RECLUSION,
+        resolveControlledCatalogValue(departamentoReclusionActual, opcionesDepartamentosReclusion)
+      );
+      setFieldValueAcrossAliases(
+        payloadBase,
+        CAMPO_MUNICIPIO_RECLUSION,
+        resolveControlledCatalogValue(municipioReclusionActual, opcionesMunicipiosReclusion)
+      );
+      if (defensorCatalogado) {
+        DEFENSOR_DIRECT_KEYS.forEach((key) => {
+          payloadBase[key] = defensorCatalogado;
+        });
+      }
       const calificacionesPersistibles = calificacionesCompactas.map((item) => {
         const draft = calificacionesDraft?.[item.id] || {};
         const originalSnapshot = {
@@ -3260,7 +3648,10 @@ export default function FormularioAtencion({ numeroInicial }) {
           });
         }
         const estadoTramiteActual = String(auroraRuleState?.derivedStatus || '').trim();
-        if (estadoTramiteActual) payloadBase['Estado del trámite'] = estadoTramiteActual;
+        if (estadoTramiteActual) {
+          payloadBase['Estado del trámite'] = estadoTramiteActual;
+          payloadBase['Acción a impulsar'] = estadoTramiteActual;
+        }
         payloadBase['Estado del caso'] = estadoTramiteActual === 'Caso cerrado' || casoCerrado ? 'Cerrado' : 'Activo';
         if (payloadBase['Estado del caso'] === 'Cerrado' && !String(payloadBase['Cierre del caso por imposibilidad de avanzar (si aplica)'] ?? '').trim()) {
           payloadBase['Cierre del caso por imposibilidad de avanzar (si aplica)'] = motivoCierre || estadoTramiteActual || 'Caso cerrado';
@@ -3276,7 +3667,7 @@ export default function FormularioAtencion({ numeroInicial }) {
         const estadoTramiteSindicado = String(celesteRuleState?.derivedStatus || '').trim();
         if (estadoTramiteSindicado) {
           payloadBase['Estado del trámite'] = estadoTramiteSindicado;
-          payloadBase['Acción a realizar'] = estadoTramiteSindicado;
+          payloadBase['Acción a impulsar'] = estadoTramiteSindicado;
         }
         payloadBase['Estado del caso'] = estadoTramiteSindicado === 'Caso cerrado' ? 'Cerrado' : 'Activo';
       }
@@ -3359,6 +3750,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     const next = {
       ...(registro || {}),
       'Situación Jurídica actualizada (de conformidad con la rama judicial)': 'CONDENADO',
+      'Acción a impulsar': String(celesteEval?.derivedStatus || 'Analizar el caso'),
       redirectedToAurora: true,
     };
 
@@ -3500,6 +3892,19 @@ export default function FormularioAtencion({ numeroInicial }) {
 
       {!cargando && registro && (
         <>
+          {cambioSituacionRegistrado && (
+            <div className="ppl-situation-change-alert" role="status">
+              <span>Cambio de situación registrado</span>
+              {fechaCambioSituacion && (
+                <small>Fecha de corte: {fechaCambioSituacion}</small>
+              )}
+            </div>
+          )}
+          {personaFueraPrision && (
+            <div className="ppl-inactive-alert" role="alert" style={{ marginTop: '1rem' }}>
+              FUERA DE PRISIÓN — registro histórico disponible solo para consulta. No se permiten modificaciones ni nuevas actuaciones.
+            </div>
+          )}
           <div className="card" style={{ marginTop: '1rem' }}>
             <HistorialActuacionesPPL
               registro={registro}
@@ -3510,6 +3915,7 @@ export default function FormularioAtencion({ numeroInicial }) {
               refreshToken={historialRefreshToken}
               actuacionActivaId={actuacionActivaId}
               creandoActuacion={creandoActuacion}
+              soloLectura={personaFueraPrision}
               onActionLabelChange={handleActionLabelChange}
             />
           </div>
@@ -3522,6 +3928,12 @@ export default function FormularioAtencion({ numeroInicial }) {
 
           {mostrarFormularioDetalle && (
           <div ref={formularioDetalleRef} className="card" style={{ marginTop: '1rem' }}>
+            {personaFueraPrision && (
+              <div className="ppl-inactive-alert" role="status">
+                Caso cerrado. La persona figura fuera de prisión y este registro histórico no se puede editar.
+              </div>
+            )}
+            <fieldset className="readonly-form-fieldset" disabled={personaFueraPrision}>
             <h3 className="block-title">{displayText('BLOQUE 1. Información de la persona privada de la libertad')}</h3>
 
           <div className="grid-2">
@@ -3564,12 +3976,13 @@ export default function FormularioAtencion({ numeroInicial }) {
             />
 
             <Campo
-              label="6. Enfoque Étnico/Racial/Cultural"
+              label="6. Enfoque diferencial"
               name="Enfoque Étnico/Racial/Cultural"
               type="select"
               value={registro['Enfoque Étnico/Racial/Cultural']}
               onChange={handleChange}
               options={OPCIONES_ENFOQUE_ETNICO}
+              allowUnknownValue
             />
 
             <Campo
@@ -3601,22 +4014,28 @@ export default function FormularioAtencion({ numeroInicial }) {
             <Campo
               label="11. Nombre del lugar de privación de la libertad"
               name="Nombre del lugar de privación de la libertad"
-              value={registro['Nombre del lugar de privación de la libertad']}
+              type="catalog-datalist"
+              value={centroReclusionCanonico}
               onChange={handleChange}
+              options={opcionesCentrosReclusion}
             />
 
             <Campo
               label="12. Departamento del lugar de privación de la libertad"
               name="Departamento del lugar de privación de la libertad"
+              type="catalog-datalist"
               value={registro['Departamento del lugar de privación de la libertad']}
               onChange={handleChange}
+              options={opcionesDepartamentosReclusion}
             />
 
             <Campo
               label="13. Distrito/municipio del lugar de privación de la libertad"
               name="Distrito/municipio del lugar de privación de la libertad"
+              type="catalog-datalist"
               value={registro['Distrito/municipio del lugar de privación de la libertad']}
               onChange={handleChange}
+              options={opcionesMunicipiosReclusion}
             />
           </div>
 
@@ -3660,9 +4079,17 @@ export default function FormularioAtencion({ numeroInicial }) {
                 />
                 <div className="question-40-highlight">
                   <Campo
+                    label="Fuente de información"
+                    name="Fuente de información"
+                    value={registro['Fuente de información'] ?? registro.fuenteInformacion ?? ''}
+                    onChange={handleChange}
+                    readOnly
+                    required={false}
+                  />
+                  <Campo
                     label="Fecha de actualización de los datos (corte)"
                     name="Fecha de actualización de los datos (corte)"
-                    value={FECHA_CORTE_DATOS_REFERENCIA}
+                    value={registro['Fecha de corte'] ?? registro.fechaCorte ?? ''}
                     onChange={handleChange}
                     readOnly
                     required={false}
@@ -3848,15 +4275,17 @@ export default function FormularioAtencion({ numeroInicial }) {
                 <>
                 <h3 className="block-title">{displayText('BLOQUE 3 - Análisis jurídico')}</h3>
                 <div className="grid-2">
-                <Campo
-                  label="28. Defensor(a) público(a) asignado para tramitar la solicitud"
-                  name="Defensor(a) Público(a) Asignado para tramitar la solicitud"
-                  type="datalist"
-                  value={getDefensorAsignadoValue(registro)}
-                  onChange={handleChange}
-                  options={opcionesDefensores}
-                  showObligatoria
-                />
+                <div>
+                  <Campo
+                    label="28. Defensor(a) público(a) asignado para tramitar la solicitud"
+                    name="Defensor(a) Público(a) Asignado para tramitar la solicitud"
+                    type="catalog-datalist"
+                    value={getDefensorAsignadoValue(registro)}
+                    onChange={handleChange}
+                    options={opcionesDefensores}
+                    showObligatoria
+                  />
+                </div>
 
                 <Campo
                   label="29. Fecha de análisis jurídico del caso"
@@ -4278,7 +4707,36 @@ export default function FormularioAtencion({ numeroInicial }) {
                             disabled={bloquearBloque5}
                           />
                           <Campo
-                            label="46. Fecha de decisión de la autoridad"
+                            label="46. Número de insistencias"
+                            name={KEY_NUMERO_INSISTENCIAS}
+                            type="select"
+                            value={String(numeroInsistencias)}
+                            onChange={handleChange}
+                            options={OPCIONES_NUMERO_INSISTENCIAS}
+                            required={false}
+                            disabled={bloquearBloque5}
+                          />
+                          {numeroInsistencias > 0 && (
+                            <fieldset className="insistencias-fieldset">
+                              <legend>47. Fechas de las insistencias</legend>
+                              <div className="insistencias-fields-grid">
+                                {FECHA_INSISTENCIA_KEYS.slice(0, numeroInsistencias).map((key, index) => (
+                                  <Campo
+                                    key={key}
+                                    label={`Fecha de insistencia ${index + 1}`}
+                                    name={key}
+                                    type="date"
+                                    value={registro[key]}
+                                    onChange={handleChange}
+                                    required={false}
+                                    disabled={bloquearBloque5}
+                                  />
+                                ))}
+                              </div>
+                            </fieldset>
+                          )}
+                          <Campo
+                            label="48. Fecha de decisión de la autoridad"
                             name="Fecha de decisión de la autoridad"
                             type="date"
                             value={fechaDecisionAutoridadBloque5}
@@ -4289,7 +4747,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                             showObligatoria
                           />
                           <Campo
-                            label="47. Sentido de la decisión"
+                            label="49. Sentido de la decisión"
                             name="Sentido de la decisión"
                             type="select"
                             value={sentidoDecisionBloque5}
@@ -4299,7 +4757,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                             showObligatoria
                           />
                           <Campo
-                            label="48. Motivo de la decisión negativa"
+                            label="50. Motivo de la decisión negativa"
                             name="Motivo de la decisión negativa"
                             type="select"
                             value={motivoDecisionNegativaBloque5}
@@ -4309,7 +4767,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                             disabled={bloquearBloque5 || !habilitarNegativaTramiteNormal}
                           />
                           <Campo
-                            label="49. Se presenta recurso"
+                            label="51. Se presenta recurso"
                             name="Se presenta recurso"
                             type="select"
                             value={sePresentaRecursoBloque5}
@@ -4319,7 +4777,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                             disabled={bloquearBloque5 || !habilitarNegativaTramiteNormal}
                           />
                           <Campo
-                            label="50. Fecha de presentación del recurso"
+                            label="52. Fecha de presentación del recurso"
                             name={KEY_FECHA_PRESENTACION_RECURSO}
                             type="date"
                             value={fechaPresentacionRecursoBloque5}
@@ -4332,7 +4790,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                             }
                           />
                           <Campo
-                            label="51. Fecha de la decisión del recurso"
+                            label="53. Fecha de la decisión del recurso"
                             name={KEY_FECHA_DECISION_RECURSO}
                             type="date"
                             value={fechaDecisionRecursoBloque5}
@@ -4345,7 +4803,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                             }
                           />
                           <Campo
-                            label="52. Sentido de la decisión que resuelve recurso"
+                            label="54. Sentido de la decisión que resuelve recurso"
                             name="Sentido de la decisión que resuelve la solicitud"
                             type="select"
                             value={sentidoResuelveSolicitudBloque5}
@@ -4359,7 +4817,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                             }
                           />
                           <Campo
-                            label="53. Cierre del caso por imposibilidad de avanzar (si aplica)"
+                            label="55. Cierre del caso por imposibilidad de avanzar (si aplica)"
                             name="Cierre del caso por imposibilidad de avanzar (si aplica)"
                             type="select"
                             value={registro['Cierre del caso por imposibilidad de avanzar (si aplica)']}
@@ -4436,16 +4894,18 @@ export default function FormularioAtencion({ numeroInicial }) {
                 <>
                   <h3 className="block-title">{displayText('BLOQUE 3 (SINDICADOS) - Análisis jurídico')}</h3>
                   <div className="grid-2">
-                    <Campo
-                      label="19. Defensor(a) p\u00fablico(a) asignado para tramitar la solicitud"
-                      name="Defensor(a) Público(a) Asignado para tramitar la solicitud"
-                      type="datalist"
-                      value={getDefensorAsignadoValue(registro)}
-                      onChange={handleChange}
-                      options={opcionesDefensores}
-                      required
-                      showObligatoria
-                    />
+                    <div>
+                      <Campo
+                        label="19. Defensor(a) p\u00fablico(a) asignado para tramitar la solicitud"
+                        name="Defensor(a) Público(a) Asignado para tramitar la solicitud"
+                        type="catalog-datalist"
+                        value={getDefensorAsignadoValue(registro)}
+                        onChange={handleChange}
+                        options={opcionesDefensores}
+                        required
+                        showObligatoria
+                      />
+                    </div>
                     <Campo
                       label="20. Fecha de an\u00e1lisis jur\u00eddico del caso"
                       name="Fecha de análisis jurídico del caso"
@@ -4585,14 +5045,16 @@ export default function FormularioAtencion({ numeroInicial }) {
             </div>
           )}
 
+          </fieldset>
+
           <div className="actions-center"> 
-            <button className="save-button" type="button" onClick={handleGuardar}>
-              GUARDAR ENTREVISTA
+            <button className="save-button" type="button" onClick={handleGuardar} disabled={personaFueraPrision}>
+              {personaFueraPrision ? 'SOLO LECTURA' : 'GUARDAR ENTREVISTA'}
             </button>
 
-            {guardadoOk && (
+            {(guardadoOk || personaFueraPrision) && (
               <button className="save-button" type="button" onClick={handleConsultarOtro}>
-                CONSULTAR OTRO PPL
+                CONSULTAR OTRA PPL
               </button>
             )}
 

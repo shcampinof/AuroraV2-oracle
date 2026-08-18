@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aurora-shell-v4';
+const CACHE_NAME = 'aurora-shell-v6';
 const QUEUE_DB_NAME = 'aurora-pwa-v1';
 const QUEUE_STORE_NAME = 'offlineRequests';
 const QUEUE_SYNC_TAG = 'aurora-offline-sync';
@@ -17,6 +17,7 @@ const APP_SHELL = Array.from(new Set([
 ]));
 let replayInProgress = false;
 let authHeader = '';
+let authSubject = '';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -117,6 +118,33 @@ async function trimQueue() {
   });
 }
 
+function subjectFromAuthorization(value) {
+  try {
+    const token = String(value || '').replace(/^Bearer\s+/i, '').trim();
+    const payloadPart = token.split('.')[1];
+    if (!payloadPart) return '';
+    const normalized = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const payload = JSON.parse(atob(padded));
+    return String(payload?.sub || payload?.email || payload?.username || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+async function discardAuthenticatedQueueExcept(subjectToKeep = '') {
+  const rows = await getQueuedRequests();
+  const discardedIds = rows
+    .filter((row) => row.requiresAuth && (!subjectToKeep || row.authSubject !== subjectToKeep))
+    .map((row) => row.id);
+  if (!discardedIds.length) return 0;
+
+  await runQueueStore('readwrite', (store) => {
+    discardedIds.forEach((id) => store.delete(id));
+  });
+  return discardedIds.length;
+}
+
 function isQueueableWrite(request, url) {
   if (url.origin !== self.location.origin) return false;
   if (request.headers.get('x-aurora-offline-replay') === 'true') return false;
@@ -127,6 +155,7 @@ function isQueueableWrite(request, url) {
   if (method === 'PUT' && /^\/api\/ppl\/[^/]+$/.test(pathname)) return true;
   if (method === 'POST' && /^\/api\/ppl\/[^/]+\/actuaciones$/.test(pathname)) return true;
   if (method === 'POST' && pathname === '/api/ppl/asignar-defensor') return true;
+  if (method === 'POST' && pathname === '/api/ppl/desasignar-defensor') return true;
   if (method === 'POST' && pathname === '/api/defensores') return true;
   return false;
 }
@@ -154,6 +183,7 @@ async function queueRequest(request) {
     attempts: 0,
     lastAttemptAt: 0,
     requiresAuth: Boolean(request.headers.get('authorization')),
+    authSubject: subjectFromAuthorization(request.headers.get('authorization')),
   };
 
   await runQueueStore('readwrite', (store) => {
@@ -199,6 +229,11 @@ async function replayQueuedRequests() {
       if (row.requiresAuth && !authHeader) {
         await notifyQueueUpdated({ waitingForAuth: true });
         break;
+      }
+      if (row.requiresAuth && (!row.authSubject || row.authSubject !== authSubject)) {
+        await runQueueStore('readwrite', (store) => store.delete(row.id));
+        failed += 1;
+        continue;
       }
 
       const headers = new Headers(row.headers || {});
@@ -330,7 +365,13 @@ self.addEventListener('message', (event) => {
   if (data.type === 'AURORA_AUTH_TOKEN') {
     const token = String(data.token || '').trim();
     authHeader = token ? `Bearer ${token}` : '';
-    if (authHeader) event.waitUntil(replayQueuedRequests());
+    authSubject = subjectFromAuthorization(authHeader);
+    event.waitUntil(
+      discardAuthenticatedQueueExcept(authSubject).then(async (discarded) => {
+        if (discarded) await notifyQueueUpdated({ discarded });
+        if (authHeader && authSubject) await replayQueuedRequests();
+      })
+    );
   }
   if (data.type === 'AURORA_REPLAY_QUEUE') {
     event.waitUntil(replayQueuedRequests());

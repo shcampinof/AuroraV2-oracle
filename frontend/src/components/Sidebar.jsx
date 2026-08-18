@@ -4,6 +4,7 @@ const items = [
   { id: 'inicio', label: 'Inicio' },
   { id: 'formulario', label: 'Formulario de atención' },
   { id: 'registros', label: 'Usuarios asignados' },
+  { id: 'reporte-atenciones', label: 'Descargar reporte de atención' },
   { id: 'asignacion', label: 'PAG - Asignación de casos de condenados', pagOnly: true },
   { id: 'herramientas', label: 'Caja de Herramientas' },
   { id: 'manual', label: 'Manual Interactivo', enabled: FEATURE_FLAGS.manualInteractivo },

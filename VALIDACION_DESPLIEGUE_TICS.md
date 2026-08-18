@@ -1,6 +1,6 @@
 # Validacion de Despliegue AURORA - TICS e Infraestructura
 
-Fecha de actualización: 2026-07-24
+Fecha de actualización: 2026-07-30
 
 Este documento resume lo que se debe validar antes, durante y despues del despliegue de AURORA en ambiente productivo o de pruebas institucionales.
 
@@ -13,6 +13,9 @@ AURORA corre como una aplicacion Node.js/Express que sirve:
 - Autenticacion institucional por Microsoft Entra ID/Azure AD.
 - Login alterno LDAP por bind directo, si se habilita.
 - Conexion a Oracle.
+- Caja de Herramientas integrada con enlaces institucionales de SharePoint.
+- Cola controlada para escrituras sin conexion, asociada a la identidad autenticada.
+- Cargas mensuales PONAL, SISIPEC y Aurora 1.0 mediante Python y procedimientos Oracle.
 - Manual Interactivo con tres videos incluidos en la imagen.
 
 El backend escucha internamente en:
@@ -152,6 +155,7 @@ AUTH_BOOTSTRAP_ADMIN_EMAILS=correo.admin@defensoria.gov.co
 AUTH_USER_STORE_PATH=
 AUTH_USER_IMPORT_MAX_MB=2
 AUTH_USER_IMPORT_MAX_ROWS=5000
+AUTH_USER_SYNC_REQUIRED=false
 ```
 
 Modos:
@@ -226,6 +230,13 @@ nc -vz servidor-ad.defensoria.gov.co 636
 
 Aunque LDAP valide credenciales, si `AUTH_USER_ACCESS_MODE=managed`, el correo debe estar habilitado en AURORA.
 
+Después del login LDAP, validar también una ruta autenticada:
+
+```bash
+curl -H "Authorization: Bearer <token-prueba>" \
+  https://aurora.defensoria.gov.co/api/auth/me
+```
+
 ## 7. Variables de Entorno: `.env` vs `.env.test`
 
 `.env` es el archivo de runtime real del ambiente.
@@ -269,6 +280,7 @@ Validar configuracion:
 
 ```bash
 docker compose config
+docker compose config --quiet
 ```
 
 Construir y subir:
@@ -289,6 +301,15 @@ curl -k -I -H 'Range: bytes=0-1023' \
   https://127.0.0.1:7860/tutorial-videos/defensor-publico-condenados-eron.mp4
 docker compose exec aurora sh -c \
   'cd /app/backend/tutorial-videos && sha256sum --check SHA256SUMS'
+```
+
+Confirmar dentro de la configuración resuelta que estén presentes:
+
+```text
+AUTH_USER_SYNC_REQUIRED
+AURORA_CARGAS_DIR
+AURORA_CARGAS_TMP_DIR
+CARGUEBD_ACTUACIONES_CLEANUP_DEFENSOR
 ```
 
 Volumenes persistentes esperados:
@@ -408,11 +429,16 @@ Infraestructura:
 
 Aplicacion:
 
+- Confirmar `npm run qa:smoke`, `npm run qa:encoding` y auditorias de dependencias sin hallazgos.
 - Confirmar `.env` real cargado por proceso.
 - Confirmar `AUTH_USER_ACCESS_MODE`.
 - Confirmar admin bootstrap inicial.
 - Confirmar `/api/health`, `/api/auth/config`, `/api/health/db`.
 - Confirmar login Microsoft.
+- Confirmar login LDAP y `/api/auth/me` si LDAP se habilita.
 - Confirmar pestaña `Usuarios autorizados`.
+- Confirmar Caja de Herramientas y apertura de enlaces SharePoint.
+- Confirmar que una operación sin conexión queda pendiente y no se reproduce después de cambiar de usuario.
 - Confirmar guardar formulario sin defensor.
+- Confirmar búsqueda de defensor con nombre acentuado y con datos históricos que presenten caracteres dañados.
 - Confirmar comportamiento de asignacion de defensor segun estado de BD.

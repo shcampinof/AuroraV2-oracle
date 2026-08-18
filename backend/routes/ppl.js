@@ -3,6 +3,20 @@ const consolidado = require('../db/oracleConsolidado.repo');
 const pagRepo = require('../repositories/oracle/pagRepository');
 const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const personaRepo = require('../repositories/oracle/personaRepository');
+const { ESTADOS_CASO, getEstadoEtiqueta, resolveEstadoCodigo } = require('../domain/estadoCaso');
+const {
+  catalogVersions,
+  listAcciones,
+  resolveAccionPendiente,
+  resolveCentro,
+  listCentros,
+} = require('../domain/catalogosHomologacion');
+const {
+  homologateIdentityOptions,
+  homologateTextOptions,
+  normalizeComparisonText,
+} = require('../utils/textNormalization');
+const { buildHomologationAudit } = require('../services/homologationAuditService');
 
 const router = express.Router();
 const { requirePag } = require('../middleware/roles');
@@ -12,6 +26,7 @@ const MAX_LIST_LIMIT = 10000;
 const DEFAULT_CONDENADOS_LIMIT = 1000;
 const DEFAULT_CONDENADOS_FILTERED_LIMIT = 200;
 const MAX_CONDENADOS_FILTERED_LIMIT = 200;
+const ACCION_FUERA_PRISION = 'Caso cerrado';
 const CONDENADOS_COLUMNS = [
   'numeroIdentificacion',
   'nombreUsuario',
@@ -23,13 +38,18 @@ const CONDENADOS_COLUMNS = [
   'situacionJuridica',
   'defensorAsignado',
   'accionImpulsar',
+  'fuenteInformacion',
+  'fechaCorte',
 ];
 const MAX_ROUTE_CACHE_VARIANTS = 12;
 const FILTER_OPTIONS_CACHE_TTL_MS = 5 * 60 * 1000;
 const pplListCache = new Map();
 const condenadosListCache = new Map();
 const condenadosListInFlight = new Map();
+const condenadosCountCache = new Map();
+const condenadosCountInFlight = new Map();
 const condenadosFilterOptionsCache = new Map();
+const homologationAuditCache = new Map();
 
 function boundedCacheSet(map, key, value, maxEntries = MAX_ROUTE_CACHE_VARIANTS) {
   if (map.size >= maxEntries && !map.has(key)) {
@@ -48,6 +68,27 @@ function getTimedCache(map, key) {
   return hit.value;
 }
 
+async function getCondenadosExactCount(cacheKey, options) {
+  const cached = getTimedCache(condenadosCountCache, cacheKey);
+  if (cached && Number.isFinite(Number(cached.total))) return Number(cached.total);
+
+  const existing = condenadosCountInFlight.get(cacheKey);
+  if (existing) return existing;
+
+  const request = personaRepo.countCondenadosSummary(options)
+    .then((total) => {
+      const safeTotal = Number(total || 0);
+      boundedCacheSet(condenadosCountCache, cacheKey, {
+        createdAt: Date.now(),
+        value: { total: safeTotal },
+      });
+      return safeTotal;
+    })
+    .finally(() => condenadosCountInFlight.delete(cacheKey));
+  condenadosCountInFlight.set(cacheKey, request);
+  return request;
+}
+
 function parseLimit(rawLimit, fallback = DEFAULT_LIST_LIMIT) {
   const parsed = Number.parseInt(String(rawLimit || `${fallback}`), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
@@ -60,14 +101,12 @@ function parseFilteredLimit(rawLimit, fallback = DEFAULT_CONDENADOS_FILTERED_LIM
   return Math.min(parsed, MAX_CONDENADOS_FILTERED_LIMIT);
 }
 
-function normalizeText(value) {
-  return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
+function parsePage(rawPage) {
+  const parsed = Number.parseInt(String(rawPage || '1'), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
+
+const normalizeText = normalizeComparisonText;
 
 function normalizeDocumento(value) {
   return String(value ?? '').replace(/\D+/g, '');
@@ -136,6 +175,13 @@ function firstFilled(...values) {
   return '';
 }
 
+function toIsoDate(value) {
+  if (!value) return '';
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value ?? '').trim();
+  return parsed.toISOString().slice(0, 10);
+}
+
 function getValueWithFallback(row, primary, secondary = '', fallback = '') {
   return consolidado.getValue(row, primary, consolidado.getValue(row, secondary, fallback));
 }
@@ -157,12 +203,14 @@ function canonicalEstadoLabel(value) {
 function resolveEstadoLabelFromRawRow(row) {
   const estadoCaso = getValueWithFallback(row, 'Estado del caso', '', '');
   const estadoTramite = getValueWithFallback(row, 'Estado del trámite', 'Estado del tramite', '');
+  const accionImpulsar = getValueWithFallback(row, 'Acción a impulsar', 'Accion a impulsar', '');
   const accion = getValueWithFallback(row, 'Acción a realizar', 'Accion a realizar', '');
   const actuacion = getValueWithFallback(row, 'Actuación a adelantar', 'Actuacion a adelantar', '');
   const posible = getValueWithFallback(row, 'posibleActuacionJudicial', '', '');
   return firstFilled(
     canonicalEstadoLabel(estadoCaso),
     canonicalEstadoLabel(estadoTramite),
+    canonicalEstadoLabel(accionImpulsar),
     canonicalEstadoLabel(accion),
     canonicalEstadoLabel(actuacion),
     canonicalEstadoLabel(posible)
@@ -172,6 +220,12 @@ function resolveEstadoLabelFromRawRow(row) {
 function buildEstadoSource(row) {
   return {
     'Situación Jurídica': getValueWithFallback(row, 'Situacion Juridica', 'situacion', ''),
+    'Situación Jurídica actualizada (de conformidad con la rama judicial)': getValueWithFallback(
+      row,
+      'Situacion Juridica actualizada (de conformidad con la rama judicial)',
+      'Situacion Juridica actualizada',
+      ''
+    ),
     'Defensor(a) Público(a) Asignado para tramitar la solicitud': getValueWithFallback(
       row,
       'Defensor(a) Público(a) Asignado para tramitar la solicitud',
@@ -448,6 +502,7 @@ function buildEstadoSource(row) {
     ),
     'Estado del caso': getValueWithFallback(row, 'Estado del caso', '', ''),
     'Estado del trámite': getValueWithFallback(row, 'Estado del trámite', 'Estado del tramite', ''),
+    'Acción a impulsar': getValueWithFallback(row, 'Acción a impulsar', 'Accion a impulsar', ''),
     'Acción a realizar': getValueWithFallback(row, 'Acción a realizar', 'Accion a realizar', ''),
     'posibleActuacionJudicial': getValueWithFallback(row, 'posibleActuacionJudicial', '', ''),
   };
@@ -463,18 +518,50 @@ function compactFilledFields(source) {
 }
 
 function mapCondenadoRow(row) {
+  const situacionActiva = Number(row?.S_ACTIVO) === 1;
+  const estadoCodigoCalculado = situacionActiva
+    ? resolveEstadoCodigo(row?.ESTADO_CODIGO || resolveEstadoLabelFromRawRow(row)) || 'ANALIZAR_CASO'
+    : 'CASO_CERRADO';
+  const estadoEtiquetaCalculada = situacionActiva
+    ? getEstadoEtiqueta(estadoCodigoCalculado) || 'Analizar el caso'
+    : ACCION_FUERA_PRISION;
+  const lugarOriginal = getValueWithFallback(
+    row,
+    'Nombre del lugar de privacion de la libertad',
+    'ESTABLECIMIENTO',
+    ''
+  );
+  const centroReclusion = resolveCentro(lugarOriginal);
+  const accionOriginal = situacionActiva
+    ? firstFilled(
+        getValueWithFallback(row, 'Acción a impulsar', 'Accion a impulsar', ''),
+        getValueWithFallback(row, 'Acción a realizar', 'Accion a realizar', '')
+      )
+    : '';
+  const accionPendienteBase = resolveAccionPendiente({
+    estadoCodigo: estadoCodigoCalculado,
+    valorOriginal: accionOriginal,
+  });
+  const accionPendiente = situacionActiva
+    ? accionPendienteBase
+    : {
+        ...(accionPendienteBase || {}),
+        etiqueta: ACCION_FUERA_PRISION,
+        homologada: true,
+        fuente: 'situacion_inactiva',
+      };
   const categoriaPotencialSubrogado =
     String(row?.CATEGORIA_POTENCIAL_SUBROGADO || '').trim() || computeCategoriaPotencialSubrogado(row);
   const esPotencialSubrogado = categoriaPotencialSubrogado !== POTENCIAL_SUBROGADO_CATEGORY.NO_REUNE;
   return {
+    situacionActiva,
     numeroIdentificacion: getValueWithFallback(row, 'Numero de identificacion', 'numero', ''),
     nombreUsuario: getValueWithFallback(row, 'Nombre', 'Nombre usuario', ''),
-    lugarReclusion: getValueWithFallback(
-      row,
-      'Nombre del lugar de privacion de la libertad',
-      'ESTABLECIMIENTO',
-      ''
-    ),
+    lugarReclusion: centroReclusion?.label || lugarOriginal,
+    lugarReclusionOriginal: lugarOriginal,
+    centroId: centroReclusion?.id || '',
+    centroHomologado: centroReclusion?.homologado === true,
+    centroReclusion,
     departamentoLugarReclusion: getValueWithFallback(
       row,
       'Departamento del lugar de privacion de la libertad',
@@ -503,32 +590,84 @@ function mapCondenadoRow(row) {
       'Defensor',
       ''
     ),
-    accionImpulsar: getValueWithFallback(row, 'Acción a realizar', 'Accion a realizar', ''),
+    defensorId: String(row?.DEFENSOR_ID || '').trim(),
+    fuenteInformacion: String(row?.FUENTE_SITUACION || '').trim(),
+    fechaCorte: toIsoDate(row?.FECHA_CORTE_SITUACION),
+    totalSituaciones: Number(row?.TOTAL_SITUACIONES || 0),
+    tieneHistorialActivoInactivo:
+      Number(row?.MIN_ACTIVO_HISTORICO) === 0 && Number(row?.MAX_ACTIVO_HISTORICO) === 1,
+    estadoCodigo: estadoCodigoCalculado,
+    estadoEtiqueta: estadoEtiquetaCalculada,
+    accionImpulsar: accionPendiente?.etiqueta || accionOriginal,
+    'Acción a impulsar': accionPendiente?.etiqueta || accionOriginal,
+    accionPendiente,
     categoriaPotencialSubrogado,
     esPotencialSubrogado,
     // Los campos vacios no aportan a las reglas de estado y aumentaban
     // considerablemente el JSON enviado por cada fila.
-    estadoSource: compactFilledFields(buildEstadoSource(row)),
-    'Estado del caso': resolveEstadoLabelFromRawRow(row),
+    estadoSource: compactFilledFields({
+      ...buildEstadoSource(row),
+      'Estado del caso': estadoEtiquetaCalculada,
+      ...(situacionActiva
+        ? {}
+        : {
+            'Estado del trámite': ACCION_FUERA_PRISION,
+            'Acción a impulsar': ACCION_FUERA_PRISION,
+            'Acción a realizar': ACCION_FUERA_PRISION,
+          }),
+    }),
+    'Estado del caso': estadoEtiquetaCalculada,
   };
 }
 
 function getCondenadosFiltersFromQuery(query) {
+  const incluirFueraPrision = ['1', 'true', 'si', 'sí']
+    .includes(String(query?.incluirFueraPrision ?? '').trim().toLowerCase())
+    ? '1'
+    : '';
   return {
     defensor: String(query?.defensor ?? '').trim(),
+    defensorId: String(query?.defensorId ?? '').trim(),
     nombre: String(query?.nombre ?? '').trim(),
     documento: String(query?.documento ?? '').trim(),
     lugar: String(query?.lugar ?? '').trim(),
+    centroId: String(query?.centroId ?? '').trim(),
     departamento: String(query?.departamento ?? '').trim(),
     municipio: String(query?.municipio ?? '').trim(),
     estadoAccion: String(query?.estadoAccion ?? '').trim(),
+    estadoCodigo: String(query?.estadoCodigo ?? '').trim(),
     estado: String(query?.estado ?? '').trim(),
+    accionCodigo: String(query?.accionCodigo ?? '').trim(),
+    accion: String(query?.accion ?? '').trim(),
     potencialSubrogado: String(query?.potencialSubrogado ?? '').trim(),
+    asignacionEstado: String(query?.asignacionEstado ?? '').trim(),
+    incluirFueraPrision,
   };
 }
 
 function hasCondenadosFilters(filters) {
   return Object.values(filters || {}).some((value) => String(value || '').trim() !== '');
+}
+
+function buildCentrosFiltro(lugares, tipo = 'all') {
+  const centrosById = new Map();
+  for (const rawValue of Array.isArray(lugares) ? lugares : []) {
+    const centro = resolveCentro(rawValue);
+    if (!centro) continue;
+    if (tipo === 'condenado' && !centro.homologado) continue;
+    const previous = centrosById.get(centro.id);
+    if (previous) {
+      previous.valoresOriginales.push(centro.valorOriginal);
+      continue;
+    }
+    centrosById.set(centro.id, {
+      id: centro.id,
+      label: centro.label,
+      homologado: centro.homologado,
+      valoresOriginales: [centro.valorOriginal],
+    });
+  }
+  return Array.from(centrosById.values()).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function matchesPrefix(value, filterValue) {
@@ -586,6 +725,10 @@ function getEstadoAccionText(row) {
 }
 
 function matchesCondenadoFilters(row, filters) {
+  const incluirFueraPrision = filters?.incluirFueraPrision === true ||
+    ['1', 'true', 'si', 'sí'].includes(String(filters?.incluirFueraPrision || '').trim().toLowerCase());
+  if (!incluirFueraPrision && row?.situacionActiva === false) return false;
+
   const documentoFiltro = normalizeDocumento(filters?.documento);
   if (documentoFiltro) {
     const documentoRow = normalizeDocumento(row?.numeroIdentificacion);
@@ -733,6 +876,8 @@ router.get('/condenados/filter-options', async (req, res) => {
     departamento: filters.departamento,
     municipio: filters.municipio,
     defensor: filters.defensor,
+    defensorId: filters.defensorId,
+    centroId: filters.centroId,
   })}`;
   const cached = getTimedCache(condenadosFilterOptionsCache, cacheKey);
   if (cached) return res.json(cached);
@@ -743,11 +888,65 @@ router.get('/condenados/filter-options', async (req, res) => {
       filters,
       maxPerField: 2000,
     });
-    const payload = {
+    const defensorOptions = homologateIdentityOptions(options.defensorOptions);
+    const departamentos = homologateTextOptions(options.departamentos);
+    const municipios = homologateTextOptions(options.municipios);
+    const lugares = homologateTextOptions(options.lugares);
+    const defensores = homologateTextOptions(defensorOptions.map((item) => item.label));
+    const homologatedOptions = {
       ...options,
+      departamentos,
+      municipios,
+      lugares,
+      defensorOptions,
+      defensores,
+    };
+    // PAG/condenados usa la lista blanca de ERON oficiales; tipo=all conserva
+    // además CDT y otros lugares activos reportados por SISIPEC.
+    const hasDependentLocationFilter = Boolean(filters.departamento || filters.municipio);
+    const centros = tipo === 'condenado' && !hasDependentLocationFilter
+      ? listCentros()
+          .filter((item) => item.id !== 'INPEC_514')
+          .map((item) => ({
+            id: item.id,
+            label: item.label,
+            homologado: true,
+            valoresOriginales: [...item.aliases],
+          }))
+          .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
+      : buildCentrosFiltro(lugares, tipo);
+    const lugaresNoOficiales = tipo === 'condenado'
+      ? buildCentrosFiltro(lugares, 'all').filter((item) => !item.homologado)
+      : [];
+    const centrosVisibles = centros;
+    const centrosHomologados = centros.filter((item) => item.homologado).length;
+    const centrosNoHomologados = centros.length - centrosHomologados;
+    const lugaresVisibles = tipo === 'condenado'
+      ? centrosVisibles.map((item) => item.label)
+      : lugares;
+    const payload = {
+      ...homologatedOptions,
+      lugares: lugaresVisibles,
+      estados: ESTADOS_CASO,
+      acciones: listAcciones(),
+      centros: centrosVisibles,
       meta: {
         tipo,
         cacheTtlMs: FILTER_OPTIONS_CACHE_TTL_MS,
+        catalogVersions,
+        homologacionCentros: {
+          total: centros.length,
+          homologados: centrosHomologados,
+          noHomologados: centrosNoHomologados,
+        },
+        homologacionFiltros: {
+          departamentos: { originales: options.departamentos.length, visibles: departamentos.length },
+          municipios: { originales: options.municipios.length, visibles: municipios.length },
+          lugares: { originales: options.lugares.length, visibles: lugaresVisibles.length },
+          defensores: { originales: options.defensorOptions.length, visibles: defensores.length },
+        },
+        politicaLugares: tipo === 'condenado' ? 'eron_oficiales' : 'todos_los_lugares_activos',
+        otrosLugaresActivos: lugaresNoOficiales.length,
       },
     };
     boundedCacheSet(condenadosFilterOptionsCache, cacheKey, {
@@ -758,6 +957,37 @@ router.get('/condenados/filter-options', async (req, res) => {
   } catch (err) {
     console.error('[ppl:condenados:filter-options] Error Oracle:', err?.message || err);
     return res.status(500).json({ message: 'Error consultando opciones de filtros.' });
+  }
+});
+
+router.get('/condenados/homologation-audit', requirePag, async (req, res) => {
+  const requestedTipo = String(req.query.tipo || 'all').trim().toLowerCase();
+  const tipo = ['all', 'condenado', 'sindicado'].includes(requestedTipo) ? requestedTipo : 'all';
+  const pendingLimit = Math.max(1, Math.min(1000, Number.parseInt(String(req.query.limit || '100'), 10) || 100));
+  const version = Number(consolidado.getDataVersion?.() || 0);
+  const cacheKey = `${version}|${tipo}|${pendingLimit}|${JSON.stringify(catalogVersions)}`;
+  const cached = getTimedCache(homologationAuditCache, cacheKey);
+  if (cached) {
+    res.setHeader('X-Aurora-Cache', 'HIT');
+    return res.json(cached);
+  }
+
+  try {
+    const values = await personaRepo.listCondenadosHomologationValues({ tipo, maxPerField: 5000 });
+    const report = buildHomologationAudit({
+      centerRows: values.centros,
+      actionRows: values.acciones,
+      pendingLimit,
+    });
+    boundedCacheSet(homologationAuditCache, cacheKey, {
+      createdAt: Date.now(),
+      value: report,
+    });
+    res.setHeader('X-Aurora-Cache', 'MISS');
+    return res.json(report);
+  } catch (err) {
+    console.error('[ppl:condenados:homologation-audit] Error Oracle:', err?.message || err);
+    return res.status(500).json({ message: 'Error generando auditoría de homologación.' });
   }
 });
 
@@ -776,10 +1006,12 @@ router.get('/condenados', async (req, res) => {
   }
   const limit = parseLimit(req.query.limit, DEFAULT_CONDENADOS_LIMIT);
   const filteredLimit = parseFilteredLimit(req.query.filteredLimit, DEFAULT_CONDENADOS_FILTERED_LIMIT);
-  const effectiveLimit = hasFilters ? filteredLimit : limit;
+  const page = parsePage(req.query.page);
+  const requestedPageSize = parseFilteredLimit(req.query.pageSize, hasFilters ? filteredLimit : limit);
+  const pageSize = Math.min(requestedPageSize, MAX_CONDENADOS_FILTERED_LIMIT);
   const version = Number(consolidado.getDataVersion?.() || 0);
   const filtersKey = hasFilters ? JSON.stringify(filters) : 'nofilter';
-  const cacheKey = `${version}|${tipo}|${limit}|${filteredLimit}|${filtersKey}`;
+  const cacheKey = `${version}|${tipo}|${page}|${pageSize}|${filtersKey}`;
   if (condenadosListCache.has(cacheKey)) {
     res.setHeader('Server-Timing', 'condenados;dur=0;desc="cache-hit"');
     res.setHeader('X-Aurora-Cache', 'HIT');
@@ -792,14 +1024,17 @@ router.get('/condenados', async (req, res) => {
     const request =
       existingRequest ||
       (async () => {
-        const summary = await personaRepo.listCondenadosSummary({
-          tipo,
-          filters,
-          limit: effectiveLimit,
-          // Para la tabla basta saber si hay mas resultados. Evita COUNT(*)
-          // sobre todo el conjunto, que era la parte mas costosa del primer ingreso.
-          includeExactCounts: false,
-        });
+        const countCacheKey = `${version}|${tipo}|${filtersKey}`;
+        const [summary, totalMatched] = await Promise.all([
+          personaRepo.listCondenadosSummary({
+            tipo,
+            filters,
+            limit: pageSize,
+            offset: (page - 1) * pageSize,
+            includeExactCounts: false,
+          }),
+          getCondenadosExactCount(countCacheKey, { tipo, filters }),
+        ]);
         const rows = (Array.isArray(summary?.rows) ? summary.rows : []).map((row) => mapCondenadoRow(row));
         const payload = {
           columns: CONDENADOS_COLUMNS,
@@ -807,15 +1042,21 @@ router.get('/condenados', async (req, res) => {
           meta: {
             tipo,
             filtered: hasFilters,
-            totalAvailable: Number(summary?.totalAvailable || 0),
-            totalMatched: Number(summary?.totalMatched || 0),
-            totalMatchedExact: summary?.totalMatchedExact !== false,
+            totalAvailable: totalMatched,
+            totalMatched,
+            totalMatchedExact: true,
+            page,
+            pageSize,
+            totalPages: Math.max(1, Math.ceil(totalMatched / pageSize)),
             returned: rows.length,
-            limitApplied: effectiveLimit,
+            homologacion: {
+              centrosNoHomologados: rows.filter((row) => row?.centroReclusion?.homologado === false).length,
+              accionesNoHomologadas: rows.filter((row) => row?.accionPendiente?.homologada === false).length,
+              catalogVersions,
+            },
+            limitApplied: pageSize,
             truncated:
-              typeof summary?.truncated === 'boolean'
-                ? summary.truncated
-                : Number(summary?.totalMatched || 0) > effectiveLimit,
+              (page - 1) * pageSize + rows.length < totalMatched,
           },
         };
         boundedCacheSet(condenadosListCache, cacheKey, payload);
@@ -900,9 +1141,19 @@ router.post('/asignar-defensor', requirePag, async (req, res) => {
       pagCedula: pag.cedula,
       defensorCedula,
     });
+    const requested = new Set(documentos).size;
+    if (updated === 0) {
+      return res.status(409).json({
+        ok: false,
+        updated,
+        requested,
+        message: 'No se modificó ninguna asignación. Recargue el listado y verifique que el caso siga activo.',
+      });
+    }
     return res.json({
       ok: true,
       updated,
+      requested,
       documentos: Array.from(new Set(documentos)),
       defensor: defensorNombre,
       defensorCedula,
@@ -911,6 +1162,51 @@ router.post('/asignar-defensor', requirePag, async (req, res) => {
   } catch (err) {
     console.error('[ppl:asignar-defensor] Error Oracle:', err?.message || err);
     return res.status(500).json({ message: 'Error guardando la asignación de defensor.' });
+  }
+});
+
+// Desasignacion masiva de defensor por documento(s)
+// POST /api/ppl/desasignar-defensor
+// body: { documentos: string[] | string, pagCedula: string }
+router.post('/desasignar-defensor', requirePag, async (req, res) => {
+  const body = req.body || {};
+  const pagCedula = String(body?.pagCedula || '').trim();
+  const rawDocs = Array.isArray(body?.documentos) ? body.documentos : [body?.documentos];
+  const documentos = rawDocs.map((d) => String(d || '').trim()).filter(Boolean);
+
+  if (!pagCedula) {
+    return res.status(400).json({ message: 'Debe indicar la cedula del PAG que desasigna.' });
+  }
+  if (!documentos.length) {
+    return res.status(400).json({ message: 'Debe indicar al menos un documento.' });
+  }
+
+  try {
+    const pag = await pagRepo.findByCedula(pagCedula);
+    if (!pag) {
+      return res.status(400).json({ message: 'Cedula PAG no valida para desasignar.' });
+    }
+
+    const updated = await consolidado.unassignDefensor(documentos);
+    const requested = new Set(documentos).size;
+    if (updated === 0) {
+      return res.status(409).json({
+        ok: false,
+        updated,
+        requested,
+        message: 'No se eliminó ninguna asignación. Recargue el listado y verifique el defensor actual.',
+      });
+    }
+    return res.json({
+      ok: true,
+      updated,
+      requested,
+      documentos: Array.from(new Set(documentos)),
+      pag,
+    });
+  } catch (err) {
+    console.error('[ppl:desasignar-defensor] Error Oracle:', err?.message || err);
+    return res.status(500).json({ message: 'Error desasignando el defensor.' });
   }
 });
 
@@ -961,6 +1257,12 @@ router.post('/:documento/actuaciones', async (req, res) => {
     });
   } catch (err) {
     console.error('[ppl:actuaciones:create] Error Oracle:', err?.message || err);
+    if (err?.code === 'PPL_SITUACION_INACTIVA') {
+      return res.status(409).json({ code: err.code, message: err.message });
+    }
+    if (err?.code === 'DEFENSOR_NOT_IN_CATALOG') {
+      return res.status(400).json({ code: err.code, message: err.message });
+    }
     return res.status(500).json({ message: 'Error creando actuación.' });
   }
 });
@@ -999,6 +1301,12 @@ router.put('/:documento', async (req, res) => {
     return res.status(404).json({ message: 'No encontrado' });
   } catch (err) {
     console.error('[ppl:update] Error Oracle:', err?.message || err);
+    if (err?.code === 'PPL_SITUACION_INACTIVA') {
+      return res.status(409).json({ code: err.code, message: err.message });
+    }
+    if (err?.code === 'DEFENSOR_NOT_IN_CATALOG') {
+      return res.status(400).json({ code: err.code, message: err.message });
+    }
     return res.status(500).json({ message: 'Error actualizando registro.' });
   }
 });
@@ -1034,5 +1342,13 @@ async function warmupCondenadosIndex() {
 }
 
 router.warmupCondenadosIndex = warmupCondenadosIndex;
+router.condenadosContract = Object.freeze({
+  columns: [...CONDENADOS_COLUMNS],
+  hasFilters: hasCondenadosFilters,
+  mapRow: mapCondenadoRow,
+  matchesFilters: matchesCondenadoFilters,
+  parseFilters: getCondenadosFiltersFromQuery,
+  buildCentrosFiltro,
+});
 
 module.exports = router;
