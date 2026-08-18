@@ -17,6 +17,7 @@ const API_FILTER_KEYS = [
   'accion',
   'potencialSubrogado',
   'asignacionEstado',
+  'incluirFueraPrision',
 ];
 
 describe('contrato API de filtros de usuarios asignados', () => {
@@ -39,6 +40,15 @@ describe('contrato API de filtros de usuarios asignados', () => {
     expect(params.get('pageSize')).toBe('50');
     API_FILTER_KEYS.forEach((key) => expect(params.get(key)).toBe(`valor-${key}`));
     expect(request.forceRefresh).toBe(true);
+  });
+
+  it('envía la inclusión explícita de personas fuera de prisión', () => {
+    const params = new URLSearchParams(getCondenadosRequest({
+      tipo: 'all',
+      filters: { incluirFueraPrision: '1' },
+    }).key);
+    expect(params.get('incluirFueraPrision')).toBe('1');
+    expect(params.has('filteredLimit')).toBe(true);
   });
 
   it('aplica límites seguros y no marca como filtrada una consulta vacía', () => {

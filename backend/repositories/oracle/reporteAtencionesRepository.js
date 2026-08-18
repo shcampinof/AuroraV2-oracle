@@ -1,4 +1,5 @@
 const { execute } = require('../../db/oraclePool');
+const personaRepo = require('./personaRepository');
 
 const DEFENSOR_MATCH_SQL = `(
   TO_CHAR(a.CEDULA_DEFENSOR) = :defensorCedula
@@ -6,13 +7,6 @@ const DEFENSOR_MATCH_SQL = `(
     a.CEDULA_DEFENSOR IS NULL
     AND TRANSLATE(UPPER(TRIM(a.NOMBRE_DEFENSOR)), 'ÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÑ', 'AEIOUAEIOUAEIOUN') = :defensorNombre
   )
-)`;
-
-const CASE_CLOSED_SQL = `(
-  NVL(s.ACTIVO, 0) = 0
-  OR TRIM(TO_CHAR(g.CIERRE_CASO)) NOT IN ('-', '--')
-  OR UPPER(NVL(TO_CHAR(g.ACCION_REALIZAR), '')) LIKE '%CASO CERRADO%'
-  OR UPPER(NVL(TO_CHAR(g.ACTUACION_ADELANTAR), '')) LIKE '%CASO CERRADO%'
 )`;
 
 const EVENT_UNIONS = [
@@ -184,81 +178,7 @@ async function listEvents(params) {
 }
 
 async function listAssignedCases(params) {
-  const sql = `
-    WITH current_assignment AS (
-      SELECT selected.*
-      FROM (
-        SELECT
-          a.*,
-          ROW_NUMBER() OVER (
-            PARTITION BY a.ID_PERSONA
-            ORDER BY a.FECHA_ASIGNACION DESC NULLS LAST, a.ID_ASIGNACION DESC
-          ) AS RN
-        FROM DNDP.ASIGNACION a
-        WHERE a.FECHA_FIN IS NULL
-          AND ${DEFENSOR_MATCH_SQL}
-      ) selected
-      WHERE selected.RN = 1
-    ),
-    latest_situacion AS (
-      SELECT selected.*
-      FROM (
-        SELECT
-          s.*,
-          ROW_NUMBER() OVER (
-            PARTITION BY s.ID_PERSONA
-            ORDER BY
-              COALESCE(s.FECHA_CORTE, CAST(s.FECHA_REGISTRO AS DATE), s.FECHA_CAPTURA) DESC NULLS LAST,
-              s.FECHA_REGISTRO DESC NULLS LAST,
-              s.ID_SITUACION DESC
-          ) AS RN
-        FROM DNDP.SITUACION_CARCELARIA s
-      ) selected
-      WHERE selected.RN = 1
-    ),
-    latest_gestion AS (
-      SELECT selected.*
-      FROM (
-        SELECT
-          g.*,
-          ROW_NUMBER() OVER (
-            PARTITION BY g.ID_SITUACION
-            ORDER BY g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
-          ) AS RN
-        FROM DNDP.GESTION_JURIDICA g
-      ) selected
-      WHERE selected.RN = 1
-    )
-    SELECT
-      p.ID_PERSONA,
-      TO_CHAR(p.NOMBRE) AS NOMBRE_USUARIO,
-      TO_CHAR(p.NUMERO) AS IDENTIFICACION,
-      COALESCE(
-        NULLIF(TRIM(TO_CHAR(s.ESTABLECIMIENTO)), ''),
-        NULLIF(TRIM(TO_CHAR(s.LUGAR_PRIVACION)), ''),
-        'Sin información'
-      ) AS LUGAR_PRIVACION,
-      CASE
-        WHEN ${CASE_CLOSED_SQL} THEN 'Caso cerrado'
-        WHEN TRIM(TO_CHAR(g.ACCION_REALIZAR)) IS NOT NULL THEN TRIM(TO_CHAR(g.ACCION_REALIZAR))
-        WHEN TRIM(TO_CHAR(g.ACTUACION_ADELANTAR)) IS NOT NULL THEN TRIM(TO_CHAR(g.ACTUACION_ADELANTAR))
-        ELSE 'Analizar el caso'
-      END AS ESTADO,
-      CASE WHEN ${CASE_CLOSED_SQL} THEN 0 ELSE 1 END AS ACTIVO
-    FROM current_assignment a
-    JOIN DNDP.PERSONA p ON p.ID_PERSONA = a.ID_PERSONA
-    LEFT JOIN latest_situacion s ON s.ID_PERSONA = p.ID_PERSONA
-    LEFT JOIN latest_gestion g ON g.ID_SITUACION = s.ID_SITUACION
-    ORDER BY p.NOMBRE, p.NUMERO
-  `;
-
-  const binds = reportBinds(params);
-  const result = await execute(
-    sql,
-    { defensorCedula: binds.defensorCedula, defensorNombre: binds.defensorNombre },
-    { operation: 'reportes.atenciones.listAssignedCases' }
-  );
-  return Array.isArray(result?.rows) ? result.rows : [];
+  return personaRepo.listAssignedCasesForReport(params);
 }
 
 module.exports = {

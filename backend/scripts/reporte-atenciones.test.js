@@ -91,6 +91,28 @@ function run() {
   assert.strictEqual(report.resumen.personasActivasConGestion, 0);
   assert.strictEqual(report.resumen.totalPersonasConCasosCerrados, 1);
   assert.strictEqual(report.detalles.casosAnalizados[0].fecha, '2026-08-05');
+  assert.deepStrictEqual(
+    report.detalles.casosAsignados.map((item) => item.estado),
+    ['Presentar solicitud', 'Caso cerrado'],
+    'los casos asignados deben seguir el orden del flujo y no el orden alfabético del usuario'
+  );
+
+  const orderingReport = buildReport({
+    defensor: { cedula: '1234', nombre: 'Defensor Uno', regional: 'BOGOTÁ' },
+    fechaInicio: '2026-08-01',
+    fechaFin: '2026-08-31',
+    assignedRows: [
+      { ID_PERSONA: 1, NOMBRE_USUARIO: 'Cierre', IDENTIFICACION: '1', ESTADO: 'Caso cerrado', ACTIVO: 0 },
+      { ID_PERSONA: 2, NOMBRE_USUARIO: 'Entrevista', IDENTIFICACION: '2', ESTADO: 'Entrevistar al usuario', ACTIVO: 1 },
+      { ID_PERSONA: 3, NOMBRE_USUARIO: 'Análisis', IDENTIFICACION: '3', ESTADO: 'Analizar el caso', ACTIVO: 1 },
+      { ID_PERSONA: 4, NOMBRE_USUARIO: 'Recurso', IDENTIFICACION: '4', ESTADO: 'Presentar recurso', ACTIVO: 1 },
+      { ID_PERSONA: 5, NOMBRE_USUARIO: 'Solicitud', IDENTIFICACION: '5', ESTADO: 'Presentar solicitud', ACTIVO: 1 },
+    ],
+  });
+  assert.deepStrictEqual(
+    orderingReport.detalles.casosAsignados.map((item) => item.estado),
+    ['Analizar el caso', 'Entrevistar al usuario', 'Presentar solicitud', 'Presentar recurso', 'Caso cerrado']
+  );
 
   console.log('OK reporte-atenciones.test');
 }

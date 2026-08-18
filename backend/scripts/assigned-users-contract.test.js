@@ -93,10 +93,14 @@ function testAllApiFiltersAreParsedAndTrimmed() {
     'accion',
     'potencialSubrogado',
     'asignacionEstado',
+    'incluirFueraPrision',
   ];
-  const parsed = contract.parseFilters(Object.fromEntries(keys.map((key) => [key, `  ${key}  `])));
+  const input = Object.fromEntries(keys.map((key) => [key, `  ${key}  `]));
+  input.incluirFueraPrision = 'true';
+  const parsed = contract.parseFilters(input);
   assert.deepEqual(Object.keys(parsed), keys);
-  keys.forEach((key) => assert.equal(parsed[key], key));
+  keys.filter((key) => key !== 'incluirFueraPrision').forEach((key) => assert.equal(parsed[key], key));
+  assert.equal(parsed.incluirFueraPrision, '1');
   assert.equal(contract.hasFilters(parsed), true);
   assert.equal(contract.hasFilters(contract.parseFilters({})), false);
 }
@@ -119,6 +123,15 @@ function testLegacyInMemoryFiltersRemainNormalized() {
   );
 }
 
+function testInactiveRowsRequireExplicitFilter() {
+  const inactive = contract.mapRow({ ...activeRawRow(), S_ACTIVO: 0 });
+  assert.equal(contract.matchesFilters(inactive, { documento: '1000' }), false);
+  assert.equal(
+    contract.matchesFilters(inactive, { documento: '1000', incluirFueraPrision: '1' }),
+    true
+  );
+}
+
 function testCenterCatalogPolicyDependsOnBusinessFlow() {
   const rawPlaces = ['CPAMS EL BARNE', 'CPAMS EL BARNÉ', 'CDT MUNICIPAL DE PRUEBA'];
   const condenados = contract.buildCentrosFiltro(rawPlaces, 'condenado');
@@ -134,5 +147,6 @@ testEveryColumnHasMappedDataContract();
 testInactiveRowsCloseStateAndAction();
 testAllApiFiltersAreParsedAndTrimmed();
 testLegacyInMemoryFiltersRemainNormalized();
+testInactiveRowsRequireExplicitFilter();
 testCenterCatalogPolicyDependsOnBusinessFlow();
 console.log('OK assigned-users-contract.test');

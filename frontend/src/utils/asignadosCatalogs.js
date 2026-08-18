@@ -54,12 +54,20 @@ export const ASSIGNED_USERS_FILTER_KEYS = Object.freeze([
   'municipio',
   'estadoCodigo',
   'accionCodigo',
+  'incluirFueraPrision',
 ]);
 
 export function buildAssignedUsersFilters(filters) {
   const safe = filters && typeof filters === 'object' ? filters : {};
   return Object.fromEntries(
-    ASSIGNED_USERS_FILTER_KEYS.map((key) => [key, String(safe[key] ?? '').trim()])
+    ASSIGNED_USERS_FILTER_KEYS.map((key) => [
+      key,
+      key === 'incluirFueraPrision'
+        ? safe[key] === true || ['1', 'true', 'si', 'sí'].includes(String(safe[key] ?? '').trim().toLowerCase())
+          ? '1'
+          : ''
+        : String(safe[key] ?? '').trim(),
+    ])
   );
 }
 

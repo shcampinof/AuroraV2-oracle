@@ -341,6 +341,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     municipio: '',
     estadoCodigo: '',
     accionCodigo: '',
+    incluirFueraPrision: false,
   });
   const [filtrosAplicados, setFiltrosAplicados] = useState({
     defensor: '',
@@ -353,6 +354,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     municipio: '',
     estadoCodigo: '',
     accionCodigo: '',
+    incluirFueraPrision: false,
   });
   const [metaConsulta, setMetaConsulta] = useState(null);
   const [filtroAdicionalSeleccionado, setFiltroAdicionalSeleccionado] = useState('');
@@ -690,10 +692,13 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       municipio: String(filtrosDraft.municipio || '').trim(),
       estadoCodigo: String(filtrosDraft.estadoCodigo || '').trim(),
       accionCodigo: String(filtrosDraft.accionCodigo || '').trim(),
+      incluirFueraPrision: filtrosDraft.incluirFueraPrision === true,
     };
 
     setFiltrosDraft(next);
-    if (!Object.values(next).some((value) => String(value || '').trim() !== '')) {
+    if (!Object.entries(next).some(([key, value]) =>
+      key === 'incluirFueraPrision' ? value === true : String(value || '').trim() !== ''
+    )) {
       setFiltrosAplicados(next);
       setBusquedaRealizada(false);
       setErrorCarga('Ingrese al menos un filtro antes de buscar.');
@@ -727,6 +732,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       municipio: '',
       estadoCodigo: '',
       accionCodigo: '',
+      incluirFueraPrision: false,
     };
     setFiltrosDraft(empty);
     setFiltrosAplicados(empty);
@@ -1024,13 +1030,24 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                 />
               )}
 
-              <div className="search-row" style={{ marginTop: '0.75rem' }}>
+              <div className="search-row asignados-filter-actions" style={{ marginTop: '0.75rem' }}>
                 <button className="primary-button primary-button--search" type="button" onClick={aplicarFiltros}>
                   Buscar
                 </button>
                 <button className="primary-button" type="button" onClick={reiniciar}>
                   Limpiar
                 </button>
+                <label className="asignados-inactive-toggle" htmlFor="incluir-fuera-prision">
+                  <input
+                    id="incluir-fuera-prision"
+                    type="checkbox"
+                    checked={filtrosDraft.incluirFueraPrision}
+                    onChange={(event) => setFiltroDraft('incluirFueraPrision', event.target.checked)}
+                  />
+                  <span>
+                    Incluir personas fuera de prisión
+                  </span>
+                </label>
               </div>
             </div>
           )}

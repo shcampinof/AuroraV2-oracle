@@ -5054,7 +5054,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
             {(guardadoOk || personaFueraPrision) && (
               <button className="save-button" type="button" onClick={handleConsultarOtro}>
-                CONSULTAR OTRO PPL
+                CONSULTAR OTRA PPL
               </button>
             )}
 

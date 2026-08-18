@@ -6,7 +6,7 @@
 |---|---|---|---|
 | Usuarios asignados | Defensor | Asignación activa y catálogo de defensores | Identidad por cédula; texto homologado para presentación |
 | Usuarios asignados | Acción o estado | Catálogo de estados y acciones | Código canónico; los cierres se presentan como `Caso cerrado` |
-| Usuarios asignados | Nombre, documento y ubicación | Situación carcelaria vigente | Búsqueda normalizada; los lugares del filtro corresponden a personas con `ACTIVO = 1` |
+| Usuarios asignados | Nombre, documento y ubicación | Situación carcelaria vigente | Por defecto `ACTIVO = 1`; la casilla explícita permite incluir personas fuera de prisión |
 | Atención | Defensor | `DNDP.DEFENSORES` | Lista controlada y escribible; alta compacta con cédula y nombre |
 | Atención | Acción a impulsar | Reglas del flujo y campos diligenciados | Valor calculado; no usa SQL de catálogo |
 | Atención | Nombre del establecimiento | Catálogo de centros activos | Lista controlada, escribible y dependiente de ubicación |
@@ -15,6 +15,8 @@
 | PAG - Asignación | Departamento, municipio, establecimiento y potenciales candidatos | Condenados activos | Requiere al menos un filtro |
 | PAG - Reasignación | Los anteriores y defensor actual | Condenados activos con asignación vigente | Requiere al menos un filtro |
 | PAG | Nuevo defensor | `DNDP.DEFENSORES` | Nombre en mayúscula y sin signos diacríticos |
+| Reporte de atenciones | Defensor | Asignaciones con actividad histórica | Selección exacta por cédula o, para datos antiguos sin cédula, por nombre normalizado |
+| Reporte de atenciones | Casos asignados | Misma asignación, situación y estado de Usuarios asignados | Incluye personas dentro y fuera de prisión |
 
 ## 2. Centro canónico
 
@@ -62,34 +64,19 @@ WITH ranked_situacion AS (
 )
 ```
 
-La tabla de Usuarios asignados admite condenados y sindicados. Una consulta por defensor, nombre o documento puede incluir una situación cerrada; la interfaz la presenta como caso histórico. Una consulta por ubicación exige `ACTIVO = 1`.
+La tabla de Usuarios asignados admite condenados y sindicados. Por defecto, todos los filtros exigen que la situación más reciente tenga `ACTIVO = 1`; consultar por documento, nombre o defensor ya no amplía implícitamente el universo.
 
-Usuarios asignados amplía la búsqueda al universo histórico únicamente cuando la consulta contiene número de documento, defensor o nombre de la PPL. En esos casos incluye las situaciones más recientes con `ACTIVO = 0` o `NULL` que tengan gestión jurídica o asignación histórica de defensor. Si no está presente ninguno de esos tres criterios, la consulta exige `ACTIVO = 1` y no trae personas fuera de prisión. El filtro `Caso cerrado` se aplica después sobre el universo correspondiente y, por tanto, nunca puede aumentar el total obtenido con los demás criterios. La asignación se reconoce por cédula y también por el nombre histórico cuando el registro anterior no contiene la cédula del catálogo de defensores.
+La casilla `Incluir personas fuera de prisión` es el único control que habilita situaciones cuya fila más reciente tiene `ACTIVO = 0` o `NULL`. Al marcarla se conservan las personas activas y se agregan las inactivas que cumplan los demás filtros. La regla se aplica de la misma forma a documento, defensor, nombre, estado y ubicación. El filtro `Caso cerrado` se aplica después sobre ese universo y no modifica por sí mismo la inclusión de personas fuera de prisión.
 
 ```sql
-AND ESTADO_CODIGO = 'CASO_CERRADO'
-AND (
-  NVL(s.ACTIVO, 0) = 1
-  OR EXISTS (
-    SELECT 1
-    FROM DNDP.SITUACION_CARCELARIA historical_s
-    JOIN DNDP.GESTION_JURIDICA historical_g
-      ON historical_g.ID_SITUACION = historical_s.ID_SITUACION
-    WHERE historical_s.ID_PERSONA = p.ID_PERSONA
-  )
-  OR EXISTS (
-    SELECT 1
-    FROM DNDP.ASIGNACION historical_a
-    WHERE historical_a.ID_PERSONA = p.ID_PERSONA
-      AND (
-        historical_a.CEDULA_DEFENSOR IS NOT NULL
-        OR TRIM(historical_a.NOMBRE_DEFENSOR) IS NOT NULL
-      )
-  )
-)
+-- Casilla desmarcada
+AND NVL(s.ACTIVO, 0) = 1
+
+-- Casilla marcada
+-- No se agrega un predicado sobre ACTIVO.
 ```
 
-Los históricos con `ACTIVO = 0` o `NULL`, sin gestión y sin defensor, no forman parte del resultado. La ausencia del texto de situación jurídica no excluye un histórico que cumpla alguna de las dos condiciones.
+Las personas inactivas solo forman parte del resultado cuando la casilla está marcada. En ese modo no se exige que `SITUACION` tenga texto: `ACTIVO` es el criterio que determina si la persona está dentro o fuera de prisión, y los demás filtros únicamente reducen ese universo.
 
 La consulta directa del formulario también puede recuperar una persona con situación inactiva. El formulario se presenta en modo de solo lectura y no permite crear actuaciones ni actualizar el caso.
 
@@ -327,6 +314,25 @@ Parámetros de interfaz:
 - navegación completa sin cargar el conjunto total en el navegador.
 
 La misma estrategia se usa en Usuarios asignados y PAG.
+
+### 5.4 Reporte de atenciones
+
+El total de personas asignadas del reporte usa el mismo universo que Usuarios asignados con la casilla `Incluir personas fuera de prisión` marcada:
+
+- última situación carcelaria registrada por persona, aunque `SITUACION` esté vacía;
+- última asignación vigente (`FECHA_FIN IS NULL`);
+- coincidencia exacta del defensor seleccionado;
+- última gestión jurídica con contenido;
+- mismo cálculo canónico del estado del caso.
+
+El rango de fechas limita las actuaciones del período, pero no el total de personas que permanecen asignadas al defensor. Por eso `personas asignadas` puede ser mayor que las actuaciones realizadas entre las fechas escogidas.
+
+`ACTIVO` tiene dos usos diferentes en estos resultados:
+
+- `SITUACION_CARCELARIA.ACTIVO` indica si la persona está dentro de prisión y gobierna la nueva casilla de Usuarios asignados;
+- en el reporte, `activo` indica si el caso jurídico sigue abierto. Una persona fuera de prisión se clasifica como `Caso cerrado` mediante el mismo estado calculado que usa la tabla.
+
+El reporte no vuelve a calcular el cierre con reglas propias. Esto evita diferencias en las que la misma persona aparecía con un estado en Usuarios asignados y con otro en el documento descargado.
 
 ## 6. Normalización y blindajes
 

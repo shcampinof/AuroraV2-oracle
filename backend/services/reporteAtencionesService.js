@@ -1,7 +1,11 @@
 const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const reporteRepo = require('../repositories/oracle/reporteAtencionesRepository');
+const { listAcciones, resolveAccionCodigo } = require('../domain/catalogosHomologacion');
 
 const EVENT_KEYS = Object.freeze(['analisis', 'entrevista', 'solicitud', 'reiteracion', 'recurso', 'cierre']);
+const CASE_STATE_ORDER = new Map(
+  listAcciones().map((item, index) => [item.codigo, index])
+);
 
 function createReportError(message, status = 400, code = 'INVALID_REPORT_FILTERS') {
   const error = new Error(message);
@@ -120,6 +124,17 @@ function uniqueCount(items, field) {
   return new Set(items.map((item) => item?.[field]).filter((value) => value != null && value !== '')).size;
 }
 
+function sortAssignedCases(items) {
+  const unknownStateOrder = CASE_STATE_ORDER.size;
+  return [...items].sort((left, right) => {
+    const leftOrder = CASE_STATE_ORDER.get(resolveAccionCodigo(left.estado)) ?? unknownStateOrder;
+    const rightOrder = CASE_STATE_ORDER.get(resolveAccionCodigo(right.estado)) ?? unknownStateOrder;
+    return leftOrder - rightOrder
+      || left.nombre.localeCompare(right.nombre, 'es', { sensitivity: 'base' })
+      || left.identificacion.localeCompare(right.identificacion, 'es', { numeric: true });
+  });
+}
+
 function buildReport({ defensor, fechaInicio, fechaFin, eventRows = [], assignedRows = [] }) {
   const details = Object.fromEntries(EVENT_KEYS.map((key) => [key, []]));
   eventRows.forEach((row) => {
@@ -128,7 +143,7 @@ function buildReport({ defensor, fechaInicio, fechaFin, eventRows = [], assigned
     details[type].push(mapDetail(row));
   });
 
-  const assignedCases = assignedRows.map(mapAssignedCase);
+  const assignedCases = sortAssignedCases(assignedRows.map(mapAssignedCase));
   const activeCases = assignedCases.filter((item) => item.activo);
   const closedAssignedPeopleCount = uniqueCount(
     assignedCases.filter((item) => !item.activo),

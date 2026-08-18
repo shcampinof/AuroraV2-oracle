@@ -50,6 +50,29 @@ async function capturePagedSearch(filters, { tipo = 'condenado', limit = 50, off
   }
 }
 
+async function captureAssignedCasesReport(params, rows = []) {
+  const oraclePoolPath = require.resolve('../db/oraclePool');
+  const repositoryPath = require.resolve('../repositories/oracle/personaRepository');
+  const oraclePool = require(oraclePoolPath);
+  const originalExecute = oraclePool.execute;
+  let captured = null;
+
+  oraclePool.execute = async (sql, binds, options) => {
+    captured = { sql, binds, options };
+    return { rows };
+  };
+  delete require.cache[repositoryPath];
+
+  try {
+    const repository = require(repositoryPath);
+    const result = await repository.listAssignedCasesForReport(params);
+    return { captured, result };
+  } finally {
+    oraclePool.execute = originalExecute;
+    delete require.cache[repositoryPath];
+  }
+}
+
 async function testEstadoUsesDerivedWorkflowMilestones() {
   const captured = await captureStateSearch({
     defensor: 'PEDRO PABLO DIAZ CRISTANCHO',
@@ -75,9 +98,19 @@ async function testCanonicalDefenderIdKeepsHistoricalNameFallback() {
   });
 
   assert.strictEqual(captured.binds.defensorId, '123456');
-  assert.strictEqual(captured.binds.defensorFilter, 'NOMBRE HISTORICO%');
+  assert.strictEqual(captured.binds.defensorFilter, 'NOMBRE HISTORICO');
   assert.strictEqual(captured.binds.estadoCodigo, 'ENTREVISTAR_USUARIO');
-  assert.match(captured.sql, /TO_CHAR\(a\.CEDULA_DEFENSOR\) = :defensorId\s+OR[\s\S]+LIKE :defensorFilter/);
+  assert.match(
+    captured.sql,
+    /TO_CHAR\(a\.CEDULA_DEFENSOR\) = :defensorId\s+OR \(\s*a\.CEDULA_DEFENSOR IS NULL[\s\S]+a\.NOMBRE_DEFENSOR[\s\S]+= :defensorFilter/
+  );
+  assert.doesNotMatch(captured.sql, /LIKE :defensorFilter/);
+}
+
+async function testTypedDefenderWithoutIdRemainsAPrefixSearch() {
+  const captured = await captureStateSearch({ defensor: 'LUBIANA' }, 'all');
+  assert.strictEqual(captured.binds.defensorFilter, 'LUBIANA%');
+  assert.match(captured.sql, /LIKE :defensorFilter/);
 }
 
 async function testFilterOptionsExposeDefenderIdentity() {
@@ -172,63 +205,54 @@ async function testQueryContainsBothBusinessFlows() {
   assert.match(captured.sql, /THEN 'CASO_CERRADO'/);
 }
 
-async function testAssignedUsersClosedCasesRequireManagementOrDefenderHistory() {
-  const captured = await captureStateSearch({
-    defensor: 'LUBIANA',
-    estadoCodigo: 'CASO_CERRADO',
-  }, 'all');
-  assert.match(captured.sql, /NVL\(s\.ACTIVO, 0\) = 1\s+OR EXISTS \(\s*SELECT 1\s+FROM DNDP\.SITUACION_CARCELARIA historical_s/s);
-  assert.match(captured.sql, /JOIN DNDP\.GESTION_JURIDICA historical_g/);
-  assert.match(captured.sql, /historical_s\.ID_PERSONA = p\.ID_PERSONA/);
-  assert.match(captured.sql, /FROM DNDP\.ASIGNACION historical_a/);
-  assert.match(captured.sql, /historical_a\.CEDULA_DEFENSOR IS NOT NULL/);
-  assert.match(captured.sql, /TRIM\(historical_a\.NOMBRE_DEFENSOR\) IS NOT NULL/);
-  assert.doesNotMatch(captured.sql, /WHERE\s+1=1\s+AND\s+TRIM\(s\.SITUACION\) IS NOT NULL/s);
-
-  const actionFilter = await captureStateSearch({
-    documento: '1000221818',
-    accionCodigo: 'SIN_ACCION_PENDIENTE',
-  }, 'all');
-  assert.match(actionFilter.sql, /FROM DNDP\.ASIGNACION historical_a/);
-}
-
-async function testAssignedUsersHistoryRequiresAnIdentityFilter() {
+async function testAssignedUsersDefaultAlwaysRequiresActiveSituation() {
   for (const filters of [
     { estadoCodigo: 'CASO_CERRADO' },
     { accionCodigo: 'SIN_ACCION_PENDIENTE' },
     { departamento: 'BOGOTA D.C.' },
-  ]) {
-    const captured = await captureStateSearch(filters, 'all');
-    assert.match(captured.sql, /NVL\(s\.ACTIVO, 0\) = 1/);
-    assert.doesNotMatch(captured.sql, /historical_s/);
-    assert.doesNotMatch(captured.sql, /historical_a/);
-  }
-
-  for (const filters of [
     { documento: '1000221818' },
     { defensor: 'NANCY LANUZA' },
     { defensorId: '123456' },
     { nombre: 'MARIA ALEJANDRA' },
   ]) {
     const captured = await captureStateSearch(filters, 'all');
-    assert.match(captured.sql, /FROM DNDP\.ASIGNACION historical_a/);
+    assert.match(captured.sql, /AND NVL\(s\.ACTIVO, 0\) = 1/);
+    assert.doesNotMatch(captured.sql, /historical_s/);
+    assert.doesNotMatch(captured.sql, /historical_a/);
   }
 }
 
-async function testCombinedClosedFilterDoesNotExpandThePreviousResultSet() {
-  const total = await captureStateSearch({ defensor: 'LUBIANA' }, 'all');
-  const closed = await captureStateSearch({
+async function testAssignedUsersCheckboxExplicitlyIncludesInactiveSituations() {
+  for (const filters of [
+    { incluirFueraPrision: '1' },
+    { documento: '1000221818', incluirFueraPrision: '1' },
+    { defensor: 'NANCY LANUZA', incluirFueraPrision: true },
+    { nombre: 'MARIA ALEJANDRA', incluirFueraPrision: 'true' },
+    { departamento: 'BOGOTA D.C.', incluirFueraPrision: 'si' },
+    { estadoCodigo: 'CASO_CERRADO', incluirFueraPrision: 'sí' },
+  ]) {
+    const captured = await captureStateSearch(filters, 'all');
+    assert.doesNotMatch(captured.sql, /AND NVL\(s\.ACTIVO, 0\) = 1/);
+    assert.doesNotMatch(captured.sql, /TRIM\(s\.SITUACION\) IS NOT NULL/);
+  }
+}
+
+async function testAssignedUsersClosedFilterDoesNotControlInactiveUniverse() {
+  const activeOnly = await captureStateSearch({
     defensor: 'LUBIANA',
     estadoCodigo: 'CASO_CERRADO',
   }, 'all');
+  const withInactive = await captureStateSearch({
+    defensor: 'LUBIANA',
+    estadoCodigo: 'CASO_CERRADO',
+    incluirFueraPrision: '1',
+  }, 'all');
 
-  assert.strictEqual(total.binds.defensorFilter, 'LUBIANA%');
-  assert.strictEqual(closed.binds.defensorFilter, 'LUBIANA%');
-  assert.strictEqual(closed.binds.estadoCodigo, 'CASO_CERRADO');
-  [total, closed].forEach((captured) => {
-    assert.match(captured.sql, /FROM DNDP\.ASIGNACION historical_a/);
-    assert.doesNotMatch(captured.sql, /TRIM\(s\.SITUACION\) IS NOT NULL/);
-  });
+  assert.strictEqual(activeOnly.binds.defensorFilter, 'LUBIANA%');
+  assert.strictEqual(withInactive.binds.defensorFilter, 'LUBIANA%');
+  assert.strictEqual(withInactive.binds.estadoCodigo, 'CASO_CERRADO');
+  assert.match(activeOnly.sql, /AND NVL\(s\.ACTIVO, 0\) = 1/);
+  assert.doesNotMatch(withInactive.sql, /AND NVL\(s\.ACTIVO, 0\) = 1/);
 }
 
 async function testPagClosedFilterKeepsMandatoryActiveRuleWithoutHistoricalExpansion() {
@@ -350,17 +374,45 @@ async function testPagFiltersActiveAndAssignmentStateBeforePagination() {
   assert.match(reassignment.sql, /a\.CEDULA_DEFENSOR IS NOT NULL OR TRIM\(a\.NOMBRE_DEFENSOR\) IS NOT NULL/);
 }
 
+async function testReportUsesTheSameAssignedUsersUniverseAndState() {
+  const { captured, result } = await captureAssignedCasesReport(
+    {
+      defensorCedula: '1.234.567',
+      defensorNombre: 'Lubiána HistÃ³rica',
+    },
+    [{ ESTADO_CODIGO: 'CASO_CERRADO', ACTIVO: 0 }]
+  );
+
+  assert.strictEqual(captured.options.operation, 'reportes.atenciones.listAssignedCases');
+  assert.strictEqual(captured.binds.defensorCedula, '1234567');
+  assert.strictEqual(captured.binds.defensorNombre, 'LUBIANA HISTORICA');
+  assert.match(captured.sql, /PARTITION BY a\.ID_PERSONA[\s\S]+a\.FECHA_ASIGNACION DESC NULLS LAST/);
+  assert.match(captured.sql, /a\.RN = 1[\s\S]+TO_CHAR\(a\.CEDULA_DEFENSOR\) = :defensorCedula/);
+  assert.match(captured.sql, /a\.CEDULA_DEFENSOR IS NULL[\s\S]+a\.NOMBRE_DEFENSOR[\s\S]+= :defensorNombre/);
+  assert.match(captured.sql, /CASE[\s\S]+NVL\(s\.ACTIVO, 0\) <> 1 THEN 'CASO_CERRADO'/);
+  assert.match(captured.sql, /CASE WHEN ESTADO_CODIGO = 'CASO_CERRADO' THEN 0 ELSE 1 END AS ACTIVO/);
+  assert.doesNotMatch(captured.sql, /TRIM\(s\.SITUACION\) IS NOT NULL/);
+  assert.deepStrictEqual(result, [{ ESTADO_CODIGO: 'CASO_CERRADO', ACTIVO: 0, ESTADO: 'Caso cerrado' }]);
+}
+
+async function testReportWithoutDefenderIdentityFailsClosed() {
+  const { captured } = await captureAssignedCasesReport({});
+  assert.match(captured.sql, /WHERE 1=0/);
+  assert.deepStrictEqual(captured.binds, {});
+}
+
 (async () => {
   await testEstadoUsesDerivedWorkflowMilestones();
   await testLugarKeepsPrefixFilterAlongsideEstado();
   await testCanonicalDefenderIdKeepsHistoricalNameFallback();
+  await testTypedDefenderWithoutIdRemainsAPrefixSearch();
   await testFilterOptionsExposeDefenderIdentity();
   await testFilterOptionsOnlyUseActivePrisonSituations();
   await testUnknownStateNeverFallsBackToUnfilteredResults();
   await testQueryContainsBothBusinessFlows();
-  await testAssignedUsersClosedCasesRequireManagementOrDefenderHistory();
-  await testAssignedUsersHistoryRequiresAnIdentityFilter();
-  await testCombinedClosedFilterDoesNotExpandThePreviousResultSet();
+  await testAssignedUsersDefaultAlwaysRequiresActiveSituation();
+  await testAssignedUsersCheckboxExplicitlyIncludesInactiveSituations();
+  await testAssignedUsersClosedFilterDoesNotControlInactiveUniverse();
   await testPagClosedFilterKeepsMandatoryActiveRuleWithoutHistoricalExpansion();
   await testCanonicalCenterUsesControlledAliases();
   await testOtherActiveLocationsExcludeOfficialAliases();
@@ -372,6 +424,8 @@ async function testPagFiltersActiveAndAssignmentStateBeforePagination() {
   await testEverySupportedFilterBuildsAnEffectivePredicate();
   await testInvalidIdentityFiltersFailClosed();
   await testPagFiltersActiveAndAssignmentStateBeforePagination();
+  await testReportUsesTheSameAssignedUsersUniverseAndState();
+  await testReportWithoutDefenderIdentityFailsClosed();
   console.log('OK condenados-filter-state.test');
 })().catch((error) => {
   console.error(error);

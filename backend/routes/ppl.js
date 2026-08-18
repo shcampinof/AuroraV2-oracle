@@ -621,6 +621,10 @@ function mapCondenadoRow(row) {
 }
 
 function getCondenadosFiltersFromQuery(query) {
+  const incluirFueraPrision = ['1', 'true', 'si', 'sí']
+    .includes(String(query?.incluirFueraPrision ?? '').trim().toLowerCase())
+    ? '1'
+    : '';
   return {
     defensor: String(query?.defensor ?? '').trim(),
     defensorId: String(query?.defensorId ?? '').trim(),
@@ -637,6 +641,7 @@ function getCondenadosFiltersFromQuery(query) {
     accion: String(query?.accion ?? '').trim(),
     potencialSubrogado: String(query?.potencialSubrogado ?? '').trim(),
     asignacionEstado: String(query?.asignacionEstado ?? '').trim(),
+    incluirFueraPrision,
   };
 }
 
@@ -720,6 +725,10 @@ function getEstadoAccionText(row) {
 }
 
 function matchesCondenadoFilters(row, filters) {
+  const incluirFueraPrision = filters?.incluirFueraPrision === true ||
+    ['1', 'true', 'si', 'sí'].includes(String(filters?.incluirFueraPrision || '').trim().toLowerCase());
+  if (!incluirFueraPrision && row?.situacionActiva === false) return false;
+
   const documentoFiltro = normalizeDocumento(filters?.documento);
   if (documentoFiltro) {
     const documentoRow = normalizeDocumento(row?.numeroIdentificacion);

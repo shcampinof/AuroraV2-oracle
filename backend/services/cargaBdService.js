@@ -38,6 +38,9 @@ const SOURCE_DEFINITIONS = {
 
 const RUNNING_JOBS = new Map();
 const DEFAULT_PUBLIC_ERROR_MAX_LENGTH = 1000;
+const MAX_PUBLIC_ERROR_LENGTH = 2000;
+const DEFAULT_REGISTRY_RETENTION_DAYS = 2;
+const DEFAULT_REGISTRY_MAX_RECORDS = 50;
 
 function boolEnv(name, fallback) {
   const raw = process.env[name];
@@ -96,7 +99,21 @@ function createRegistryBackup(registryPath, raw, reason = 'backup') {
 function getPublicErrorMaxLength() {
   const configured = Number(process.env.CARGUEBD_PUBLIC_ERROR_MAX_LENGTH || DEFAULT_PUBLIC_ERROR_MAX_LENGTH);
   if (!Number.isFinite(configured) || configured < 100) return DEFAULT_PUBLIC_ERROR_MAX_LENGTH;
-  return Math.floor(configured);
+  return Math.min(MAX_PUBLIC_ERROR_LENGTH, Math.floor(configured));
+}
+
+function boundedIntegerEnv(name, fallback, min, max) {
+  const configured = Number(process.env[name]);
+  if (!Number.isFinite(configured)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(configured)));
+}
+
+function getRegistryRetentionDays() {
+  return boundedIntegerEnv('CARGUEBD_REGISTRY_RETENTION_DAYS', DEFAULT_REGISTRY_RETENTION_DAYS, 1, 30);
+}
+
+function getRegistryMaxRecords() {
+  return boundedIntegerEnv('CARGUEBD_REGISTRY_MAX_RECORDS', DEFAULT_REGISTRY_MAX_RECORDS, 1, 200);
 }
 
 function publicError(value) {
@@ -104,6 +121,38 @@ function publicError(value) {
   const maxLength = getPublicErrorMaxLength();
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength)}...`;
+}
+
+function recordTimestamp(record) {
+  const value = record?.updatedAt || record?.finishedAt || record?.createdAt;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function compactRegistry(records, referenceTime = Date.now()) {
+  const retentionMs = getRegistryRetentionDays() * 24 * 60 * 60 * 1000;
+  const cutoff = referenceTime - retentionMs;
+  const maxRecords = getRegistryMaxRecords();
+
+  return records
+    .filter((record) => record && typeof record === 'object' && !Array.isArray(record))
+    .filter((record) => {
+      if (['recibido', 'en_ejecucion'].includes(record.status)) return true;
+      const timestamp = recordTimestamp(record);
+      return timestamp == null || timestamp >= cutoff;
+    })
+    .slice(0, maxRecords)
+    .map((record) => ({
+      ...record,
+      error: publicError(record.error),
+    }));
+}
+
+function parseRegistry(raw) {
+  const parsed = JSON.parse(raw);
+  if (Array.isArray(parsed)) return { records: parsed, legacyFormat: false };
+  if (parsed && Array.isArray(parsed.cargas)) return { records: parsed.cargas, legacyFormat: true };
+  return { records: [], legacyFormat: true };
 }
 
 function safeFileName(name) {
@@ -122,16 +171,23 @@ function readRegistry() {
   const { registryPath } = ensureStorage();
   try {
     const raw = fs.readFileSync(registryPath, 'utf8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const { records, legacyFormat } = parseRegistry(raw);
+    const compacted = compactRegistry(records);
+    const changed =
+      legacyFormat ||
+      compacted.length !== records.length ||
+      compacted.some((record, index) => record.error !== records[index]?.error);
+    if (changed) writeRegistry(compacted);
+    return compacted;
   } catch (err) {
     if (err.code === 'ENOENT') return [];
     if (err instanceof SyntaxError) {
       const raw = fs.readFileSync(registryPath, 'utf8');
       const backupPath = createCorruptRegistryBackup(registryPath, raw);
+      writeRegistry([]);
       console.error(
         `[cargas_bd] Registro de cargas corrupto en ${registryPath}. ` +
-          `Se ignora temporalmente y se guardo respaldo en ${backupPath}: ${err.message}`
+          `Se reinicio automaticamente y se guardo respaldo en ${backupPath}: ${err.message}`
       );
       return [];
     }
@@ -141,15 +197,28 @@ function readRegistry() {
 
 function writeRegistry(records) {
   const { registryPath } = ensureStorage();
-  const tmpPath = `${registryPath}.tmp`;
-  fs.writeFileSync(tmpPath, JSON.stringify(records, null, 2));
-  fs.renameSync(tmpPath, registryPath);
+  const tmpPath = `${registryPath}.${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`;
+  const payload = `${JSON.stringify(compactRegistry(records), null, 2)}\n`;
+  let descriptor;
+  try {
+    descriptor = fs.openSync(tmpPath, 'wx', 0o600);
+    fs.writeFileSync(descriptor, payload, 'utf8');
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(tmpPath, registryPath);
+  } finally {
+    if (descriptor != null) fs.closeSync(descriptor);
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+  }
 }
 
 function repairRegistryOnStartup() {
-  const shouldRepair = boolEnv('CARGUEBD_REPAIR_REGISTRY_ON_START', false);
   const shouldClear = boolEnv('CARGUEBD_CLEAR_REGISTRY_ON_START', false);
-  if (!shouldRepair && !shouldClear) return { changed: false, reason: 'disabled' };
 
   const { registryPath } = ensureStorage();
   let raw = '';
@@ -168,13 +237,19 @@ function repairRegistryOnStartup() {
   }
 
   try {
-    JSON.parse(raw);
-    return { changed: false, reason: 'valid' };
+    const { records, legacyFormat } = parseRegistry(raw);
+    const compacted = compactRegistry(records);
+    const changed =
+      legacyFormat ||
+      compacted.length !== records.length ||
+      compacted.some((record, index) => record.error !== records[index]?.error);
+    if (changed) writeRegistry(compacted);
+    return { changed, reason: changed ? 'compacted' : 'valid' };
   } catch (err) {
     const backupPath = createCorruptRegistryBackup(registryPath, raw);
     writeRegistry([]);
     console.warn(
-      `[cargas_bd] Historial de cargas corrupto reparado por CARGUEBD_REPAIR_REGISTRY_ON_START. ` +
+      `[cargas_bd] Historial de cargas corrupto reparado automaticamente. ` +
         `Respaldo: ${backupPath}: ${err.message}`
     );
     return { changed: true, reason: 'repaired', backupPath };
@@ -186,7 +261,7 @@ function saveRecord(record) {
   const index = records.findIndex((item) => item.id === record.id);
   if (index >= 0) records[index] = record;
   else records.unshift(record);
-  writeRegistry(records.slice(0, 200));
+  writeRegistry(records);
   return record;
 }
 

@@ -2665,6 +2665,36 @@ input[list]{
   font-size: 0.92rem;
 }
 
+.asignados-filter-actions{
+  align-items: center;
+}
+
+.asignados-inactive-toggle{
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-left: auto;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #c8d4e3;
+  border-radius: 6px;
+  background: #f6f8fb;
+  color: #24364f;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.asignados-inactive-toggle input{
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  accent-color: var(--secondaryBlue);
+}
+
+.asignados-inactive-toggle span{
+  display: grid;
+  gap: 0.15rem;
+}
+
 .asignados-table thead th{
   text-align: left;
   white-space: normal;
@@ -3553,6 +3583,11 @@ input[list]{
   /* Usuarios asignados */
   .asignados-layout{
     flex-direction: column;
+  }
+
+  .asignados-inactive-toggle{
+    width: 100%;
+    margin-left: 0;
   }
 
   .asignados-table-container{

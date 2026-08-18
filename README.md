@@ -162,11 +162,9 @@ aurora_cargas_bd:/app/backend/storage/cargas_bd
 
 Los videos institucionales de `backend/tutorial-videos/` se versionan y se copian dentro de la imagen. No requieren un volumen Docker. Si el ambiente necesita sustituir el catálogo completo, puede montar una carpeta de solo lectura y apuntar `AURORA_VIDEOS_DIR` a ella.
 
-Si el historial de cargas queda corrupto o se requiere limpiar la tabla operativa de cargas en un despliegue, el backend puede repararlo al arrancar:
+El historial se conserva por 2 dias y hasta 50 registros por defecto. Ambos limites pueden ajustarse con `CARGUEBD_REGISTRY_RETENTION_DAYS` (1 a 30) y `CARGUEBD_REGISTRY_MAX_RECORDS` (1 a 200). Los errores se limitan antes de persistir y el archivo se reemplaza de forma atomica.
 
-```env
-CARGUEBD_REPAIR_REGISTRY_ON_START=true
-```
+Si `cargas.json` esta truncado o usa el formato anterior, el backend lo respalda y recupera automaticamente al arrancar; ya no depende de una bandera. `CARGUEBD_REPAIR_REGISTRY_ON_START` se mantiene solo por compatibilidad con despliegues anteriores.
 
 Para limpiar todo el historial visual una sola vez, conservando un respaldo `.bak` del archivo anterior:
 
@@ -176,7 +174,7 @@ CARGUEBD_CLEAR_REGISTRY_ON_START=true
 
 Después del primer arranque exitoso, retire la bandera de limpieza o déjela en `false`.
 
-Estas variables se propagan al contenedor mediante `docker-compose.yml`. La API limita por defecto a 1000 caracteres el mensaje de error publicado; el límite puede ajustarse con `CARGUEBD_PUBLIC_ERROR_MAX_LENGTH`.
+Estas variables se propagan al contenedor mediante `docker-compose.yml`. La API limita por defecto a 1000 caracteres el mensaje de error publicado; `CARGUEBD_PUBLIC_ERROR_MAX_LENGTH` permite ajustarlo entre 100 y 2000 caracteres.
 
 ## Pruebas Técnicas
 

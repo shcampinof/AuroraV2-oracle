@@ -84,10 +84,15 @@ describe('catálogos de filtros de usuarios asignados', () => {
 
   it('normaliza todos los filtros visibles y excluye campos ajenos al contrato', () => {
     const source = Object.fromEntries(ASSIGNED_USERS_FILTER_KEYS.map((key) => [key, `  ${key}  `]));
+    source.incluirFueraPrision = true;
     source.noAdmitido = 'valor';
     const filters = buildAssignedUsersFilters(source);
     expect(Object.keys(filters)).toEqual(ASSIGNED_USERS_FILTER_KEYS);
-    ASSIGNED_USERS_FILTER_KEYS.forEach((key) => expect(filters[key]).toBe(key));
+    ASSIGNED_USERS_FILTER_KEYS
+      .filter((key) => key !== 'incluirFueraPrision')
+      .forEach((key) => expect(filters[key]).toBe(key));
+    expect(filters.incluirFueraPrision).toBe('1');
+    expect(buildAssignedUsersFilters({ incluirFueraPrision: false }).incluirFueraPrision).toBe('');
     expect(filters.noAdmitido).toBeUndefined();
   });
 

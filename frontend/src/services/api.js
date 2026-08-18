@@ -327,6 +327,7 @@ export function getCondenadosRequest(options = 1000) {
     'accion',
     'potencialSubrogado',
     'asignacionEstado',
+    'incluirFueraPrision',
   ];
   let hasFilters = false;
   filterKeys.forEach((key) => {

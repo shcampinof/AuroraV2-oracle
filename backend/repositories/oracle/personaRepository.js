@@ -7,7 +7,7 @@ const {
   normalizedSqlExpr,
   normalizedMojibakeSqlExpr,
 } = require('./sqlFragments');
-const { resolveEstadoCodigo } = require('../../domain/estadoCaso');
+const { getEstadoEtiqueta, resolveEstadoCodigo } = require('../../domain/estadoCaso');
 const {
   getAccionByCodigo,
   getAllCentroNormalizedAliases,
@@ -504,50 +504,28 @@ function buildCondenadosSummaryWhereClause({
   filters = {},
   scopeDepartamentos = DEFAULT_SCOPE_DEPARTAMENTOS,
   includeUserFilters = true,
-  includeAssignedUsersHistory = false,
+  includeInactiveSituations = false,
 } = {}) {
   const binds = {};
   const clauses = [];
   const { clause: scopeClause, binds: scopeBinds } = buildScopeWhereClause('s.DEPARTAMENTO', 'dep', scopeDepartamentos);
   Object.assign(binds, scopeBinds);
   clauses.push(scopeClause);
-  // Usuarios asignados parte siempre del mismo universo. Así, aplicar un
-  // estado adicional solo reduce resultados y nunca habilita históricos que
-  // no estaban presentes en la consulta inicial.
-  clauses.push(includeAssignedUsersHistory ? '1=1' : buildTipoFilter(tipo));
+  // En Usuarios asignados, las situaciones inactivas se habilitan únicamente
+  // mediante el filtro explícito de la interfaz. Ningún otro criterio amplía
+  // por sí solo el universo de resultados.
+  clauses.push(includeInactiveSituations ? '1=1' : buildTipoFilter(tipo));
   if (String(tipo || '').trim().toLowerCase() === 'condenado') {
     clauses.push('NVL(s.ACTIVO, 0) = 1');
   } else if (
     String(tipo || '').trim().toLowerCase() === 'all' &&
-    !includeAssignedUsersHistory
+    !includeInactiveSituations
   ) {
     clauses.push('NVL(s.ACTIVO, 0) = 1');
   }
 
   if (!includeUserFilters) {
     return { clause: clauses.join('\n      AND '), binds };
-  }
-
-  if (includeAssignedUsersHistory) {
-    clauses.push(`(
-      NVL(s.ACTIVO, 0) = 1
-      OR EXISTS (
-        SELECT 1
-        FROM DNDP.SITUACION_CARCELARIA historical_s
-        JOIN DNDP.GESTION_JURIDICA historical_g
-          ON historical_g.ID_SITUACION = historical_s.ID_SITUACION
-        WHERE historical_s.ID_PERSONA = p.ID_PERSONA
-      )
-      OR EXISTS (
-        SELECT 1
-        FROM DNDP.ASIGNACION historical_a
-        WHERE historical_a.ID_PERSONA = p.ID_PERSONA
-          AND (
-            historical_a.CEDULA_DEFENSOR IS NOT NULL
-            OR TRIM(historical_a.NOMBRE_DEFENSOR) IS NOT NULL
-          )
-      )
-    )`);
   }
 
   const rawDocumento = String(filters?.documento || '').trim();
@@ -561,7 +539,7 @@ function buildCondenadosSummaryWhereClause({
 
   const hasLocationFilter = ['lugar', 'centroId', 'departamento', 'municipio']
     .some((key) => String(filters?.[key] || '').trim());
-  if (hasLocationFilter) clauses.push('NVL(s.ACTIVO, 0) = 1');
+  if (hasLocationFilter && !includeInactiveSituations) clauses.push('NVL(s.ACTIVO, 0) = 1');
 
   const rawDefensorId = String(filters?.defensorId || '').trim();
   const defensorId = rawDefensorId.replace(/\D+/g, '');
@@ -569,10 +547,13 @@ function buildCondenadosSummaryWhereClause({
   if (defensorId) {
     binds.defensorId = defensorId;
     if (defensor) {
-      binds.defensorFilter = `${defensor}%`;
+      binds.defensorFilter = defensor;
       clauses.push(`(
         TO_CHAR(a.CEDULA_DEFENSOR) = :defensorId
-        OR ${normalizedMojibakeSqlExpr(DEFENSOR_ACTIVO_EXPR)} LIKE :defensorFilter
+        OR (
+          a.CEDULA_DEFENSOR IS NULL
+          AND ${normalizedMojibakeSqlExpr('a.NOMBRE_DEFENSOR')} = :defensorFilter
+        )
       )`);
     } else {
       clauses.push('TO_CHAR(a.CEDULA_DEFENSOR) = :defensorId');
@@ -683,14 +664,14 @@ function buildCondenadosSummaryFromAndWhere({
   filters = {},
   scopeDepartamentos = DEFAULT_SCOPE_DEPARTAMENTOS,
   includeUserFilters = true,
-  includeAssignedUsersHistory = false,
+  includeInactiveSituations = false,
 } = {}) {
   const { clause, binds } = buildCondenadosSummaryWhereClause({
     tipo,
     filters,
     scopeDepartamentos,
     includeUserFilters,
-    includeAssignedUsersHistory,
+    includeInactiveSituations,
   });
 
   const fromAndWhere = `
@@ -735,11 +716,10 @@ async function listCondenadosSummary({
   const accionCodigo = resolveAccionCodigo(rawAccionCodigo) || resolveAccionCodigo(rawAccionLegada);
   const hasAccionFilter = Boolean(rawAccionCodigo || rawAccionLegada);
   const accionCatalogada = getAccionByCodigo(accionCodigo);
-  const hasAssignedUsersIdentityFilter = ['documento', 'defensor', 'defensorId', 'nombre']
-    .some((key) => String(filters?.[key] || '').trim() !== '');
-  const includeAssignedUsersHistory =
+  const includeInactiveSituations =
     String(tipo || '').trim().toLowerCase() === 'all' &&
-    hasAssignedUsersIdentityFilter;
+    (filters?.incluirFueraPrision === true ||
+      ['1', 'true', 'si', 'sí'].includes(String(filters?.incluirFueraPrision || '').trim().toLowerCase()));
   const repositoryFilters = {
     ...(filters && typeof filters === 'object' ? filters : {}),
     estadoCodigo: '',
@@ -779,7 +759,7 @@ async function listCondenadosSummary({
     filters: repositoryFilters,
     scopeDepartamentos,
     includeUserFilters: true,
-    includeAssignedUsersHistory,
+    includeInactiveSituations,
   });
 
   const baseSelectSql = `
@@ -1289,6 +1269,109 @@ async function listDistinctDefensores({ tipo = '', scopeDepartamentos = DEFAULT_
     .filter(Boolean);
 }
 
+async function listAssignedCasesForReport({
+  defensorCedula = '',
+  defensorNombre = '',
+  scopeDepartamentos = DEFAULT_SCOPE_DEPARTAMENTOS,
+} = {}) {
+  const rawDefensorCedula = String(defensorCedula || '').trim();
+  const normalizedDefensorCedula = rawDefensorCedula.replace(/\D+/g, '');
+  const normalizedDefensorNombre = normalizeSearchText(defensorNombre);
+  const binds = {};
+  let defensorClause = '1=0';
+
+  if (normalizedDefensorCedula) {
+    binds.defensorCedula = normalizedDefensorCedula;
+    if (normalizedDefensorNombre) {
+      binds.defensorNombre = normalizedDefensorNombre;
+      defensorClause = `(
+        TO_CHAR(a.CEDULA_DEFENSOR) = :defensorCedula
+        OR (
+          a.CEDULA_DEFENSOR IS NULL
+          AND ${normalizedMojibakeSqlExpr('a.NOMBRE_DEFENSOR')} = :defensorNombre
+        )
+      )`;
+    } else {
+      defensorClause = 'TO_CHAR(a.CEDULA_DEFENSOR) = :defensorCedula';
+    }
+  } else if (normalizedDefensorNombre) {
+    binds.defensorNombre = normalizedDefensorNombre;
+    defensorClause = `(
+      a.CEDULA_DEFENSOR IS NULL
+      AND ${normalizedMojibakeSqlExpr('a.NOMBRE_DEFENSOR')} = :defensorNombre
+    )`;
+  }
+
+  const { clause: scopeClause, binds: scopeBinds } = buildScopeWhereClause(
+    's.DEPARTAMENTO',
+    'reportDep',
+    scopeDepartamentos
+  );
+  Object.assign(binds, scopeBinds);
+  const activeSituacionCte = buildActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
+  const sql = `
+    WITH
+    ${activeSituacionCte},
+    latest_gestion AS (
+      SELECT
+        g.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY g.ID_SITUACION
+          ORDER BY ${GESTION_MEANINGFUL_ORDER_EXPR}, g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
+        ) AS RN
+      FROM DNDP.GESTION_JURIDICA g
+    ),
+    active_asignacion AS (
+      SELECT
+        a.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY a.ID_PERSONA
+          ORDER BY a.FECHA_ASIGNACION DESC NULLS LAST, a.ID_ASIGNACION DESC
+        ) AS RN
+      FROM DNDP.ASIGNACION a
+      WHERE a.FECHA_FIN IS NULL
+    ),
+    assigned_rows AS (
+      SELECT
+        p.ID_PERSONA,
+        TO_CHAR(p.NOMBRE) AS NOMBRE_USUARIO,
+        TO_CHAR(p.NUMERO) AS IDENTIFICACION,
+        COALESCE(
+          NULLIF(TRIM(TO_CHAR(s.ESTABLECIMIENTO)), ''),
+          NULLIF(TRIM(TO_CHAR(s.LUGAR_PRIVACION)), ''),
+          'Sin información'
+        ) AS LUGAR_PRIVACION,
+        ${ESTADO_CODIGO_EXPR} AS ESTADO_CODIGO
+      FROM DNDP.PERSONA p
+      JOIN ranked_situacion s
+        ON s.ID_PERSONA = p.ID_PERSONA
+       AND s.RN = 1
+      JOIN active_asignacion a
+        ON a.ID_PERSONA = p.ID_PERSONA
+       AND a.RN = 1
+      LEFT JOIN DNDP.DEFENSORES d
+        ON d.CEDULA = a.CEDULA_DEFENSOR
+      LEFT JOIN latest_gestion g
+        ON g.ID_SITUACION = s.ID_SITUACION
+       AND g.RN = 1
+      WHERE ${defensorClause}
+        AND ${scopeClause}
+    )
+    SELECT
+      assigned_rows.*,
+      CASE WHEN ESTADO_CODIGO = 'CASO_CERRADO' THEN 0 ELSE 1 END AS ACTIVO
+    FROM assigned_rows
+    ORDER BY NOMBRE_USUARIO, IDENTIFICACION
+  `;
+
+  const result = await execute(sql, binds, { operation: 'reportes.atenciones.listAssignedCases' });
+  return (Array.isArray(result?.rows) ? result.rows : []).map((row) => ({
+    ...row,
+    ESTADO: getEstadoEtiqueta(row?.ESTADO_CODIGO) || 'Analizar el caso',
+    ACTIVO: Number(row?.ACTIVO) === 1 ? 1 : 0,
+  }));
+}
+
 async function updatePersonaById(idPersona, fields = {}) {
   const updates = Object.entries(fields || {}).filter(([column]) => PERSONA_COLUMNS.has(String(column || '').toUpperCase()));
   if (!updates.length) return 0;
@@ -1324,6 +1407,7 @@ module.exports = {
   listDistinctCondenadosFilterOptions,
   findActiveContextByDocumento,
   listDistinctDefensores,
+  listAssignedCasesForReport,
   updatePersonaById,
   PERSONA_COLUMNS,
 };
