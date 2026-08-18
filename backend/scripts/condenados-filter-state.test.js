@@ -92,7 +92,7 @@ async function testEstadoUsesDerivedWorkflowMilestones() {
 
 async function testCanonicalDefenderIdKeepsHistoricalNameFallback() {
   const captured = await captureStateSearch({
-    defensor: 'Nombre histÃ³rico',
+    defensor: 'Nombre hist\u00C3\u00B3rico',
     defensorId: '123456',
     estadoCodigo: 'ENTREVISTAR_USUARIO',
   });
@@ -378,7 +378,7 @@ async function testReportUsesTheSameAssignedUsersUniverseAndState() {
   const { captured, result } = await captureAssignedCasesReport(
     {
       defensorCedula: '1.234.567',
-      defensorNombre: 'Lubiána HistÃ³rica',
+      defensorNombre: 'Lubiána Hist\u00C3\u00B3rica',
     },
     [{ ESTADO_CODIGO: 'CASO_CERRADO', ACTIVO: 0 }]
   );

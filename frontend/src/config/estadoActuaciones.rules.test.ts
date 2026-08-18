@@ -18,8 +18,17 @@ function formatDateDaysAgo(daysAgo: number): string {
 
 function buildBloque3Base(): Record<string, unknown> {
   return {
+    'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'DEFENSOR DE PRUEBA',
     'Fecha de analisis juridico del caso': formatDateDaysAgo(5),
+    [AURORA_FIELD_CATALOG.q30]: 'Sí',
+    [AURORA_FIELD_CATALOG.q31]: 'No',
+    [AURORA_FIELD_CATALOG.q33]: 'No',
+    [AURORA_FIELD_CATALOG.q34]: 'No',
+    [AURORA_FIELD_CATALOG.q36]: 'Ninguna',
     [AURORA_FIELD_CATALOG.q37]: 'Resumen del caso',
+    [AURORA_FIELD_CATALOG.q39]: 'Sí, desea que el defensor(a) público(a) avance con la solicitud',
+    [AURORA_FIELD_CATALOG.q41]: 'No',
+    'Poder en caso de avanzar con la solicitud': 'Sí',
   };
 }
 
@@ -205,6 +214,7 @@ describe('estadoActuaciones.rules', () => {
       nombreUsuario: 'OTONIEL MERA',
       situacionJuridica: 'Condenado',
       estadoSource: {
+        ...buildBloque3Base(),
         'Fecha de analisis juridico del caso': formatDateDaysAgo(2),
         [AURORA_FIELD_CATALOG.q37]: 'Resumen vigente',
         [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(1),
@@ -228,7 +238,7 @@ describe('estadoActuaciones.rules', () => {
     expect(display.className).toBe('estado--azul');
   });
 
-  it('ESTADO.SOURCE.AURORA_RECURSO.1 - fila resumida cierra con fecha de decision del recurso', () => {
+  it('ESTADO.SOURCE.AURORA_RECURSO.1 - fila resumida queda pendiente si falta el sentido del recurso', () => {
     const display = getEstadoDisplayInfo({
       estadoSource: {
         ...buildBloque3Base(),
@@ -242,8 +252,8 @@ describe('estadoActuaciones.rules', () => {
       },
     });
 
-    expect(display.label).toBe('Caso cerrado');
-    expect(display.className).toBe('estado--gris');
+    expect(display.label).toBe('Pendiente decisión');
+    expect(display.className).toBe('estado--azul');
   });
 
   it('ESTADO.ACTUACION_RECIENTE.1 - cuando hay multiples actuaciones toma la mas reciente', () => {
