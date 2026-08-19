@@ -4877,6 +4877,24 @@ export default function FormularioAtencion({ numeroInicial }) {
                       onChange={handleChange}
                       required
                     />
+                    <div className="question-40-highlight">
+                      <Campo
+                        label="Fuente de información"
+                        name="Fuente de información"
+                        value={registro['Fuente de información'] ?? registro.fuenteInformacion ?? ''}
+                        onChange={handleChange}
+                        readOnly
+                        required={false}
+                      />
+                      <Campo
+                        label="Fecha de actualización de los datos (corte)"
+                        name="Fecha de actualización de los datos (corte)"
+                        value={registro['Fecha de corte'] ?? registro.fechaCorte ?? ''}
+                        onChange={handleChange}
+                        readOnly
+                        required={false}
+                      />
+                    </div>
                     <Campo
                       label="18. Tiempo que la persona lleva privada de la libertad (en meses)"
                       name="TIEMPO QUE LA PERSONA LLEVA PRIVADA DE LA LIBERTAD (EN MESES)"
