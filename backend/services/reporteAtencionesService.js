@@ -1,6 +1,11 @@
 const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const reporteRepo = require('../repositories/oracle/reporteAtencionesRepository');
 const { listAcciones, resolveAccionCodigo } = require('../domain/catalogosHomologacion');
+const {
+  choosePreferredDisplayText,
+  normalizeWhitespace,
+  repairKnownMojibake,
+} = require('../utils/textNormalization');
 
 const EVENT_KEYS = Object.freeze(['analisis', 'entrevista', 'solicitud', 'reiteracion', 'recurso', 'cierre']);
 const CASE_STATE_ORDER = new Map(
@@ -45,7 +50,7 @@ function buildDefensorOptions(rows = []) {
   const mapped = rows
     .map((row) => {
       const cedula = defensoresRepo.normalizeCedula(row?.CEDULA);
-      const nombre = String(row?.NOMBRE || '').replace(/\s+/g, ' ').trim();
+      const nombre = normalizeWhitespace(repairKnownMojibake(row?.NOMBRE));
       if (!nombre) return null;
       const normalizedName = reporteRepo.normalizeDefensorName(nombre);
       return {
@@ -59,27 +64,71 @@ function buildDefensorOptions(rows = []) {
     })
     .filter(Boolean);
 
-  const counts = mapped.reduce((map, item) => {
-    map.set(item.normalizedName, (map.get(item.normalizedName) || 0) + 1);
-    return map;
-  }, new Map());
-
-  const deduped = new Map();
+  const groups = new Map();
   mapped.forEach((item) => {
-    const key = item.id;
-    if (deduped.has(key)) return;
-    const duplicatedName = counts.get(item.normalizedName) > 1;
-    deduped.set(key, {
-      id: item.id,
-      nombre: item.nombre,
-      label: duplicatedName
-        ? `${item.nombre} (${item.cedula ? `ID terminada en ${item.cedula.slice(-4)}` : 'sin identificación'})`
-        : item.nombre,
-      regional: item.regional,
-      correo: item.correo,
-    });
+    const group = groups.get(item.normalizedName) || [];
+    group.push(item);
+    groups.set(item.normalizedName, group);
   });
-  return Array.from(deduped.values()).sort((left, right) => left.label.localeCompare(right.label, 'es'));
+
+  const options = [];
+  groups.forEach((group) => {
+    const identifiedByCedula = new Map();
+    group.filter((item) => item.cedula).forEach((item) => {
+      const previous = identifiedByCedula.get(item.cedula);
+      identifiedByCedula.set(item.cedula, {
+        ...item,
+        nombre: choosePreferredDisplayText(previous?.nombre, item.nombre),
+        regional: previous?.regional || item.regional,
+        correo: previous?.correo || item.correo,
+      });
+    });
+
+    const identified = Array.from(identifiedByCedula.values());
+    if (identified.length <= 1) {
+      // Las asignaciones históricas podían guardar solo el nombre. Cuando ese
+      // nombre tiene una única cédula canónica, ambas filas representan al
+      // mismo defensor y el reporte con cédula ya consulta los dos orígenes.
+      const canonical = identified[0] || group[0];
+      const displayName = group.reduce(
+        (current, item) => choosePreferredDisplayText(current, item.nombre),
+        canonical.nombre
+      );
+      options.push({
+        id: canonical.id,
+        nombre: displayName,
+        label: displayName,
+        regional: canonical.regional || group.find((item) => item.regional)?.regional || '',
+        correo: canonical.correo || group.find((item) => item.correo)?.correo || '',
+      });
+      return;
+    }
+
+    // Dos cédulas distintas con el mismo nombre sí son identidades ambiguas y
+    // deben conservarse separadas. La fila sin cédula tampoco puede asociarse
+    // de forma segura a una de ellas.
+    identified.forEach((item) => {
+      options.push({
+        id: item.id,
+        nombre: item.nombre,
+        label: `${item.nombre} (ID terminada en ${item.cedula.slice(-4)})`,
+        regional: item.regional,
+        correo: item.correo,
+      });
+    });
+    if (group.some((item) => !item.cedula)) {
+      const unidentified = group.find((item) => !item.cedula);
+      options.push({
+        id: unidentified.id,
+        nombre: unidentified.nombre,
+        label: `${unidentified.nombre} (sin identificación)`,
+        regional: unidentified.regional,
+        correo: unidentified.correo,
+      });
+    }
+  });
+
+  return options.sort((left, right) => left.label.localeCompare(right.label, 'es'));
 }
 
 async function getReportOptions() {

@@ -1,11 +1,13 @@
 const { execute } = require('../../db/oraclePool');
 const personaRepo = require('./personaRepository');
+const { normalizedMojibakeSqlExpr } = require('./sqlFragments');
+const { normalizeSearchText } = require('../../utils/textNormalization');
 
 const DEFENSOR_MATCH_SQL = `(
   TO_CHAR(a.CEDULA_DEFENSOR) = :defensorCedula
   OR (
     a.CEDULA_DEFENSOR IS NULL
-    AND TRANSLATE(UPPER(TRIM(a.NOMBRE_DEFENSOR)), 'ÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÑ', 'AEIOUAEIOUAEIOUN') = :defensorNombre
+    AND ${normalizedMojibakeSqlExpr('a.NOMBRE_DEFENSOR')} = :defensorNombre
   )
 )`;
 
@@ -85,12 +87,7 @@ function buildEventSelect(tipo, dateExpression) {
 }
 
 function normalizeDefensorName(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/\s+/g, ' ')
-    .trim();
+  return normalizeSearchText(value);
 }
 
 function reportBinds({ fechaInicio, fechaFin, defensorCedula, defensorNombre }) {

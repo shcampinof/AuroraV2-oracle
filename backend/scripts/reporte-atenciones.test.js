@@ -45,6 +45,27 @@ function run() {
     correo: '',
   });
 
+  const consolidatedDefensorOptions = buildDefensorOptions([
+    { CEDULA: null, NOMBRE: 'GERMAN ARTURO PUENTES CUELLAR', REGIONAL: null, CORREO: null },
+    { CEDULA: '7001', NOMBRE: 'GERMAN ARTURO PUENTES CUELLAR', REGIONAL: 'CUNDINAMARCA', CORREO: 'g@example.test' },
+    { CEDULA: '7001', NOMBRE: 'GERMAN ARTURO PUENTES CUELLAR', REGIONAL: 'CUNDINAMARCA', CORREO: 'g@example.test' },
+  ]);
+  assert.deepStrictEqual(consolidatedDefensorOptions, [{
+    id: '7001',
+    nombre: 'GERMAN ARTURO PUENTES CUELLAR',
+    label: 'GERMAN ARTURO PUENTES CUELLAR',
+    regional: 'CUNDINAMARCA',
+    correo: 'g@example.test',
+  }], 'la fila histórica sin cédula debe consolidarse con la identidad canónica');
+
+  const mojibakeDefensorOptions = buildDefensorOptions([
+    { CEDULA: null, NOMBRE: 'LubiÃ¡na  Histórica' },
+    { CEDULA: '8002', NOMBRE: 'Lubiána Histórica', REGIONAL: 'BOGOTÁ' },
+  ]);
+  assert.strictEqual(mojibakeDefensorOptions.length, 1);
+  assert.strictEqual(mojibakeDefensorOptions[0].id, '8002');
+  assert.strictEqual(mojibakeDefensorOptions[0].nombre, 'Lubiána Histórica');
+
   const eventRows = [
     rawEvent('analisis'),
     rawEvent('entrevista'),
