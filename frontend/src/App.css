@@ -2793,7 +2793,7 @@ input[list]{
 }
 
 .historial-actuaciones-table{
-  min-width: 1080px;
+  min-width: 960px;
   table-layout: fixed;
 }
 
@@ -2803,29 +2803,8 @@ input[list]{
   overflow-wrap: anywhere;
 }
 
-.historial-actuaciones-table th:nth-child(1),
-.historial-actuaciones-table td:nth-child(1){
-  width: 16%;
-}
-
-.historial-actuaciones-table th:nth-child(2),
-.historial-actuaciones-table td:nth-child(2){
-  width: 29%;
-}
-
-.historial-actuaciones-table th:nth-child(3),
-.historial-actuaciones-table td:nth-child(3){
-  width: 20%;
-}
-
-.historial-actuaciones-table th:nth-child(4),
-.historial-actuaciones-table td:nth-child(4){
-  width: 20%;
-}
-
 .historial-actuaciones-table th:nth-child(5),
 .historial-actuaciones-table td:nth-child(5){
-  width: 15%;
   white-space: nowrap;
 }
 
@@ -3621,7 +3600,7 @@ input[list]{
   }
 
   .historial-actuaciones-table{
-    min-width: 980px;
+    min-width: 960px;
   }
 
   .calificacion-resumen-table{

@@ -5,32 +5,32 @@
 
 .tabla-historial-actuaciones {
   width: 100%;
-  min-width: 0;
+  min-width: 960px;
   table-layout: fixed;
 }
 
 .tabla-historial-actuaciones .historial-col-numero {
-  width: 8%;
+  width: 9%;
 }
 
 .tabla-historial-actuaciones .historial-col-fecha {
-  width: 16%;
+  width: 15%;
 }
 
 .tabla-historial-actuaciones .historial-col-resumen {
-  width: 22%;
+  width: 24%;
 }
 
 .tabla-historial-actuaciones .historial-col-actuacion {
-  width: 17%;
+  width: 20%;
 }
 
 .tabla-historial-actuaciones .historial-col-accion {
-  width: 13%;
+  width: 14%;
 }
 
 .tabla-historial-actuaciones .historial-col-botones {
-  width: 12%;
+  width: 18%;
 }
 
 .tabla-historial-actuaciones thead th {
@@ -87,10 +87,10 @@
 
 @media (max-width: 900px) {
   .tabla-historial-actuaciones {
-    min-width: 1040px;
+    min-width: 960px;
   }
 
   .tabla-historial-actuaciones thead th {
-    white-space: nowrap;
+    font-size: 0.9rem;
   }
 }
