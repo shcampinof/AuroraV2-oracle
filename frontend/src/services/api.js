@@ -216,7 +216,15 @@ export async function getPplListado(tipo) {
 // CONSULTA POR CEDULA (unificada)
 // GET /api/ppl/:documento
 export async function getPplByDocumento(documento) {
-  const res = await fetchJson(`${API_BASE}/ppl/${encodeURIComponent(documento)}`);
+  const doc = String(documento ?? '').trim();
+  const freshQuery = new URLSearchParams({ fresh: String(Date.now()) });
+  const res = await fetchJson(`${API_BASE}/ppl/${encodeURIComponent(doc)}?${freshQuery.toString()}`, {
+    cache: 'no-store',
+    headers: {
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+    },
+  });
   if (!res.ok) throw new Error('Registro no encontrado');
   return readJsonOrThrow(res, 'Registro no encontrado'); // { tipo, registro }
 }
@@ -257,7 +265,17 @@ export async function getPplActuacionesByDocumento(documento) {
   const doc = String(documento ?? '').trim();
   if (!doc) return { documento: '', actuaciones: [] };
 
-  const res = await fetchJson(`${API_BASE}/ppl/${encodeURIComponent(doc)}/actuaciones`);
+  const freshQuery = new URLSearchParams({ fresh: String(Date.now()) });
+  const res = await fetchJson(
+    `${API_BASE}/ppl/${encodeURIComponent(doc)}/actuaciones?${freshQuery.toString()}`,
+    {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+      },
+    }
+  );
   if (!res.ok) throw new Error('Error consultando historial de actuaciones');
   return readJsonOrThrow(res, 'Error consultando historial de actuaciones'); // { documento, actuaciones }
 }

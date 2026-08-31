@@ -262,14 +262,14 @@ async function testPagClosedFilterKeepsMandatoryActiveRuleWithoutHistoricalExpan
   assert.doesNotMatch(captured.sql, /historical_a/);
 }
 
-async function testCanonicalCenterUsesControlledAliases() {
+async function testSelectedCenterUsesCurrentDatabaseName() {
   const captured = await captureStateSearch({
     centroId: 'INPEC_150',
-    lugar: 'Texto que no debe gobernar la consulta',
+    lugar: 'CPAMS EL BARNÉ',
   });
-  assert.strictEqual(captured.binds.centroAlias0, 'CPAMS EL BARNE');
-  assert(!Object.prototype.hasOwnProperty.call(captured.binds, 'lugarFilter'));
-  assert.match(captured.sql, /s\.ESTABLECIMIENTO/);
+  assert.strictEqual(captured.binds.lugarFilter, 'CPAMS EL BARNE');
+  assert(!Object.prototype.hasOwnProperty.call(captured.binds, 'centroAlias0'));
+  assert.match(captured.sql, /s\.ESTABLECIMIENTO[\s\S]*= :lugarFilter/);
   assert.match(captured.sql, /NVL\(s\.ACTIVO, 0\) = 1/);
 }
 
@@ -414,7 +414,7 @@ async function testReportWithoutDefenderIdentityFailsClosed() {
   await testAssignedUsersCheckboxExplicitlyIncludesInactiveSituations();
   await testAssignedUsersClosedFilterDoesNotControlInactiveUniverse();
   await testPagClosedFilterKeepsMandatoryActiveRuleWithoutHistoricalExpansion();
-  await testCanonicalCenterUsesControlledAliases();
+  await testSelectedCenterUsesCurrentDatabaseName();
   await testOtherActiveLocationsExcludeOfficialAliases();
   await testActionCodeFiltersThroughCanonicalStateIdentity();
   await testEveryActionFiltersThroughItsCanonicalStates();

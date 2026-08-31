@@ -412,6 +412,27 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
+  it.each(['ninguna', 'NINGUNA', '["ninguna"]'])(
+    'AURORA.CIERRE.REGLA1.2B - reconoce el formato histórico %s cargado desde Oracle',
+    (storedValue) => {
+      const answers = {
+        ...buildNegativeClosureBase(),
+        [AURORA_FIELD_CATALOG.q36]: storedValue,
+      };
+
+      expect(evaluateAuroraRules({ answers }).derivedStatus).toBe('Caso cerrado');
+    }
+  );
+
+  it('AURORA.CIERRE.REGLA1.2C - reconoce solicitudes históricas separadas por coma', () => {
+    const answers = {
+      ...buildNegativeClosureBase(),
+      [AURORA_FIELD_CATALOG.q36]: 'Solicitud de actualización de conducta, Acción de tutela',
+    };
+
+    expect(evaluateAuroraRules({ answers }).derivedStatus).not.toBe('Caso cerrado');
+  });
+
   it('AURORA.CIERRE.REGLA1.3 - no cierra si Q36 no fue respondida explícitamente con Ninguna', () => {
     const answers = {
       ...buildBloque3Base(),

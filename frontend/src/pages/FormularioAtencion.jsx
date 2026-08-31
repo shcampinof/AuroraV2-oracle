@@ -558,11 +558,25 @@ function computeFlow(formData, fallbackTipo = '') {
 }
 
 function parseP36Selections(rawValue) {
-  const text = String(rawValue ?? '').trim();
-  if (!text) return [];
+  const rawItems = (() => {
+    if (Array.isArray(rawValue)) return rawValue;
 
-  const parts = text
-    .split(/\r?\n|\s*\|\s*|\s*;\s*/g)
+    const text = String(rawValue ?? '').trim();
+    if (!text) return [];
+
+    if (text.startsWith('[') && text.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // Continúa con los formatos históricos delimitados.
+      }
+    }
+
+    return text.split(/\r?\n|\s*\|\s*|\s*;\s*|\s*,\s*/g);
+  })();
+
+  const parts = rawItems
     .map((item) => String(item ?? '').trim())
     .filter(Boolean);
 
@@ -582,7 +596,10 @@ function parseP36Selections(rawValue) {
     }
     if (seen.has(normalized)) continue;
     seen.add(normalized);
-    selected.push(part);
+    const canonicalOption = OPCIONES_OTRAS_SOLICITUDES.find(
+      (option) => normalizeFieldName(option) === normalized
+    );
+    selected.push(canonicalOption || part);
   }
   return selected;
 }
@@ -1658,6 +1675,8 @@ function CampoCheckboxMultiple({
   const isDisabled = Boolean(readOnly || disabled);
   const selected = Array.isArray(value) ? value.map((item) => String(item ?? '').trim()).filter(Boolean) : [];
   const selectedSet = new Set(selected.map((item) => normalizeFieldName(item)));
+  const optionSet = new Set((options || []).map((item) => normalizeFieldName(item)));
+  const unmatchedSelected = selected.filter((item) => !optionSet.has(normalizeFieldName(item)));
   const normalizedExclusive = normalizeFieldName(exclusiveOption);
 
   const toggleOption = (option, checked) => {
@@ -1718,6 +1737,31 @@ function CampoCheckboxMultiple({
             </label>
           );
         })}
+        {unmatchedSelected.map((item, idx) => (
+          <label
+            key={`db-${idx}-${item}`}
+            className="checkbox-multiple-option is-selected"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'auto minmax(0, 1fr)',
+              alignItems: 'start',
+              justifyContent: 'flex-start',
+              columnGap: '0.45rem',
+              cursor: isDisabled ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked
+              disabled={isDisabled}
+              onChange={(e) => toggleOption(item, e.target.checked)}
+              style={{ marginTop: '0.12rem' }}
+            />
+            <span style={{ textAlign: 'left' }}>
+              {displayText(item)} <small>(valor almacenado en la base de datos)</small>
+            </span>
+          </label>
+        ))}
       </div>
     </div>
   );

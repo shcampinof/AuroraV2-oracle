@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
+const pplService = require('./pplService');
 
 function configuredSchema() {
   return String(process.env.ORACLE_SCHEMA || process.env.ORACLE_USER || 'DNDP').trim().toUpperCase() || 'DNDP';
@@ -404,6 +405,15 @@ function summarizePythonFailure(logPath, fallback) {
   return fallback;
 }
 
+function invalidatePplCachesAfterSuccessfulCarga(record, log = () => {}) {
+  const version = pplService.invalidateDataCache();
+  log(
+    `[${nowIso()}] Cache de consultas PPL invalidada despues del cargue ` +
+      `${String(record?.sourceId || 'desconocido')} (version ${version})\n`
+  );
+  return version;
+}
+
 function startCargaJob(record) {
   if (RUNNING_JOBS.has(record.id)) return;
 
@@ -470,6 +480,7 @@ function startCargaJob(record) {
       exitCode: code,
       error: success ? '' : summarizePythonFailure(record.logPath, fallbackError),
     });
+    if (success) invalidatePplCachesAfterSuccessfulCarga(record, log);
   });
 }
 
@@ -634,4 +645,5 @@ module.exports = {
   retryCarga,
   safeFileName,
   shutdownCargaJobs,
+  invalidatePplCachesAfterSuccessfulCarga,
 };

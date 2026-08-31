@@ -301,16 +301,38 @@ function areAllNegativeInProcedencias30a34(record: FormRecord): boolean {
   return !isFilled(utilidadPublica) || isNegativeProcedencia(utilidadPublica);
 }
 
+function parseP36StoredSelections(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => toText(item)).filter(Boolean);
+  }
+
+  const raw = toText(value);
+  if (!raw) return [];
+  if (raw.startsWith('[') && raw.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => toText(item)).filter(Boolean);
+      }
+    } catch {
+      // Continúa con los formatos delimitados usados por datos históricos.
+    }
+  }
+
+  return raw
+    .split(/\r?\n|\s*\|\s*|\s*;\s*|\s*,\s*/g)
+    .map((item) => toText(item))
+    .filter(Boolean);
+}
+
 function hasExplicitNingunaInP36(record: FormRecord): boolean {
-  const raw = String(getAny(record, [
+  const raw = getAny(record, [
     FIELD.q36,
     AURORA_FIELD_IDS.B3_ANALISIS_ACTUACION,
     AURORA_FIELD_IDS.B3_OTRAS_SOLICITUDES,
-  ]) ?? '').trim();
-  if (!raw) return false;
+  ]);
 
-  const selections = raw
-    .split(/\r?\n|\s*\|\s*|\s*;\s*/g)
+  const selections = parseP36StoredSelections(raw)
     .map((item) => normalize(item))
     .filter(Boolean);
 
@@ -318,15 +340,13 @@ function hasExplicitNingunaInP36(record: FormRecord): boolean {
 }
 
 function hasPositiveP36Request(record: FormRecord): boolean {
-  const raw = String(getAny(record, [
+  const raw = getAny(record, [
     FIELD.q36,
     AURORA_FIELD_IDS.B3_ANALISIS_ACTUACION,
     AURORA_FIELD_IDS.B3_OTRAS_SOLICITUDES,
-  ]) ?? '').trim();
-  if (!raw) return false;
+  ]);
 
-  return raw
-    .split(/\r?\n|\s*\|\s*|\s*;\s*/g)
+  return parseP36StoredSelections(raw)
     .map((item) => normalize(item))
     .filter(Boolean)
     .some((item) =>

@@ -484,14 +484,15 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     }));
   }
 
-  const cargarRowsFromBackend = useCallback(async (nextFiltros = {}, nextPage = 1) => {
+  const cargarRowsFromBackend = useCallback(async (nextFiltros = {}, nextPage = 1, forceRefresh = false) => {
     const request = {
       tipo: 'all',
       page: nextPage,
       pageSize: PAGE_SIZE,
       filters: buildAssignedUsersFilters(nextFiltros),
+      forceRefresh,
     };
-    const hasCachedRows = Boolean(getCachedCondenados(request));
+    const hasCachedRows = !forceRefresh && Boolean(getCachedCondenados(request));
     setCargando(!hasCachedRows);
     setErrorCarga('');
     try {
@@ -711,7 +712,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
     setFiltrosAplicados(next);
     setBusquedaRealizada(true);
-    await cargarRowsFromBackend(next, 1);
+    await cargarRowsFromBackend(next, 1, true);
   }
 
   async function cambiarPagina(nextPage) {

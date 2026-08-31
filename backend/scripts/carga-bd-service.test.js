@@ -4,12 +4,14 @@ const os = require('os');
 const path = require('path');
 
 const {
+  invalidatePplCachesAfterSuccessfulCarga,
   listCargas,
   listSources,
   repairRegistryOnStartup,
   safeFileName,
   SOURCE_DEFINITIONS,
 } = require('../services/cargaBdService');
+const pplService = require('../services/pplService');
 
 function testSourcesMetadata() {
   assert.ok(SOURCE_DEFINITIONS.aurora_10, 'Debe existir fuente aurora_10');
@@ -191,6 +193,21 @@ function testLongErrorIsTruncatedForPublicList() {
   }
 }
 
+function testSuccessfulCargaInvalidatesPplCaches() {
+  const previousVersion = pplService.getDataVersion();
+  const logLines = [];
+
+  const nextVersion = invalidatePplCachesAfterSuccessfulCarga(
+    { sourceId: 'sisipec' },
+    (line) => logLines.push(line)
+  );
+
+  assert.equal(nextVersion, previousVersion + 1);
+  assert.equal(pplService.getDataVersion(), previousVersion + 1);
+  assert.ok(logLines.join('').includes('Cache de consultas PPL invalidada'));
+  assert.ok(logLines.join('').includes('sisipec'));
+}
+
 testSourcesMetadata();
 testAuroraToggle();
 testSafeFileName();
@@ -199,5 +216,6 @@ testLegacyRegistryIsMigratedAndErrorsAreBoundedOnDisk();
 testRegistryRetentionKeepsOnlyRecentEntries();
 testRegistryClearOnStartupWithBackup();
 testLongErrorIsTruncatedForPublicList();
+testSuccessfulCargaInvalidatesPplCaches();
 
 console.log('carga-bd-service.test.js OK');

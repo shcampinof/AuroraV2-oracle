@@ -80,7 +80,7 @@ AURORA_DATE_COLUMNS = {
 AURORA_NUMBER_COLUMNS = {
     "PENA_ANIOS", "PENA_MESES", "PENA_DIAS", "PENA_TOTAL_DIAS",
     "REDENCION", "TIEMPO_PRIVACION", "TIEMPO_EFECTIVO",
-    "PORCENTAJE_AVANCE", "CALIFICACION_CONDUCTA",
+    "PORCENTAJE_AVANCE",
 }
 
 AURORA_MAPPING = {
@@ -227,7 +227,7 @@ CREATE TABLE {qualified_name("AURORA_10")} (
     TIEMPO_PRIVACION                    NUMBER,
     TIEMPO_EFECTIVO                     NUMBER,
     PORCENTAJE_AVANCE                   NUMBER,
-    CALIFICACION_CONDUCTA               NUMBER,
+    CALIFICACION_CONDUCTA               NVARCHAR2(255),
     FECHA_ULTIMA_CALIFICACION           DATE,
     REQUERIMIENTOS                      NVARCHAR2(255),
     DEFENSOR                            NVARCHAR2(400),
@@ -483,6 +483,36 @@ def table_exists(cursor, table, schema=DEFAULT_SCHEMA):
     return cursor.fetchone()[0] > 0
 
 
+def ensure_aurora_conducta_type(cursor, connection, config):
+    if config.key != "aurora_10":
+        return
+    owner, table_name = parse_qualified_object(config.qualified_table)
+    cursor.execute(
+        """
+        SELECT DATA_TYPE, CHAR_LENGTH
+          FROM ALL_TAB_COLUMNS
+         WHERE OWNER = :1
+           AND TABLE_NAME = :2
+           AND COLUMN_NAME = 'CALIFICACION_CONDUCTA'
+        """,
+        [owner, table_name],
+    )
+    row = cursor.fetchone()
+    if row is None:
+        raise RuntimeError(
+            f"La tabla {config.qualified_table} no contiene la columna CALIFICACION_CONDUCTA."
+        )
+    data_type, char_length = row
+    if str(data_type).upper() == "NVARCHAR2" and int(char_length or 0) >= 255:
+        return
+    cursor.execute(
+        f"ALTER TABLE {config.qualified_table} "
+        "MODIFY (CALIFICACION_CONDUCTA NVARCHAR2(255))"
+    )
+    connection.commit()
+    print("  CALIFICACION_CONDUCTA ajustada a NVARCHAR2(255).")
+
+
 def parse_qualified_object(name):
     parts = [part.strip().upper() for part in str(name or "").split(".") if part.strip()]
     if len(parts) == 1:
@@ -633,6 +663,7 @@ def prepare_table(cursor, connection, config):
         cursor.execute(f"TRUNCATE TABLE {target}")
         connection.commit()
         print("  Tabla truncada.")
+        ensure_aurora_conducta_type(cursor, connection, config)
         return
 
     if exists:

@@ -43,6 +43,7 @@ En Docker, `AURORA_CARGAS_DIR` debe apuntar a `/app/backend/storage/cargas_bd`, 
 
 ```bash
 npm --prefix backend test
+python3 -m unittest discover -s scripts/cargas_bd -p 'test_*.py' -v
 python3 -m py_compile scripts/cargas_bd/*.py
 ```
 

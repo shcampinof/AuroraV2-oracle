@@ -9,7 +9,6 @@ const {
   listAcciones,
   resolveAccionPendiente,
   resolveCentro,
-  listCentros,
 } = require('../domain/catalogosHomologacion');
 const {
   homologateIdentityOptions,
@@ -43,6 +42,13 @@ const CONDENADOS_COLUMNS = [
 ];
 const MAX_ROUTE_CACHE_VARIANTS = 12;
 const FILTER_OPTIONS_CACHE_TTL_MS = 5 * 60 * 1000;
+const rawCondenadosListCacheTtlMs = String(process.env.CONDENADOS_LIST_CACHE_TTL_MS || '').trim();
+const configuredCondenadosListCacheTtlMs = rawCondenadosListCacheTtlMs
+  ? Number(rawCondenadosListCacheTtlMs)
+  : Number.NaN;
+const CONDENADOS_LIST_CACHE_TTL_MS = Number.isFinite(configuredCondenadosListCacheTtlMs)
+  ? Math.max(1000, configuredCondenadosListCacheTtlMs)
+  : 30 * 1000;
 const pplListCache = new Map();
 const condenadosListCache = new Map();
 const condenadosListInFlight = new Map();
@@ -51,6 +57,13 @@ const condenadosCountInFlight = new Map();
 const condenadosFilterOptionsCache = new Map();
 const homologationAuditCache = new Map();
 
+function setFreshOracleResponseHeaders(res) {
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('X-Aurora-Data-Source', 'oracle-live');
+}
+
 function boundedCacheSet(map, key, value, maxEntries = MAX_ROUTE_CACHE_VARIANTS) {
   if (map.size >= maxEntries && !map.has(key)) {
     map.clear();
@@ -58,10 +71,10 @@ function boundedCacheSet(map, key, value, maxEntries = MAX_ROUTE_CACHE_VARIANTS)
   map.set(key, value);
 }
 
-function getTimedCache(map, key) {
+function getTimedCache(map, key, ttlMs = FILTER_OPTIONS_CACHE_TTL_MS) {
   const hit = map.get(key);
   if (!hit) return null;
-  if (Date.now() - Number(hit.createdAt || 0) > FILTER_OPTIONS_CACHE_TTL_MS) {
+  if (Date.now() - Number(hit.createdAt || 0) > ttlMs) {
     map.delete(key);
     return null;
   }
@@ -557,11 +570,15 @@ function mapCondenadoRow(row) {
     situacionActiva,
     numeroIdentificacion: getValueWithFallback(row, 'Numero de identificacion', 'numero', ''),
     nombreUsuario: getValueWithFallback(row, 'Nombre', 'Nombre usuario', ''),
-    lugarReclusion: centroReclusion?.label || lugarOriginal,
+    // Mostrar el establecimiento vigente de la situación, sin sustituirlo
+    // por la etiqueta histórica del catálogo de homologación.
+    lugarReclusion: lugarOriginal,
     lugarReclusionOriginal: lugarOriginal,
     centroId: centroReclusion?.id || '',
     centroHomologado: centroReclusion?.homologado === true,
-    centroReclusion,
+    centroReclusion: centroReclusion
+      ? { ...centroReclusion, label: lugarOriginal }
+      : null,
     departamentoLugarReclusion: getValueWithFallback(
       row,
       'Departamento del lugar de privacion de la libertad',
@@ -649,25 +666,25 @@ function hasCondenadosFilters(filters) {
   return Object.values(filters || {}).some((value) => String(value || '').trim() !== '');
 }
 
-function buildCentrosFiltro(lugares, tipo = 'all') {
-  const centrosById = new Map();
+function buildCentrosFiltro(lugares) {
+  const centrosByValue = new Map();
   for (const rawValue of Array.isArray(lugares) ? lugares : []) {
-    const centro = resolveCentro(rawValue);
-    if (!centro) continue;
-    if (tipo === 'condenado' && !centro.homologado) continue;
-    const previous = centrosById.get(centro.id);
-    if (previous) {
-      previous.valoresOriginales.push(centro.valorOriginal);
-      continue;
-    }
-    centrosById.set(centro.id, {
+    const label = String(rawValue || '').trim();
+    const valueKey = normalizeText(label);
+    if (!label || !valueKey || centrosByValue.has(valueKey)) continue;
+    const centro = resolveCentro(label);
+    centrosByValue.set(valueKey, {
       id: centro.id,
-      label: centro.label,
+      // La situación activa es la fuente de verdad del texto visible. El ID
+      // queda como metadato de compatibilidad, pero no renombra el centro.
+      label,
       homologado: centro.homologado,
-      valoresOriginales: [centro.valorOriginal],
+      valoresOriginales: [label],
     });
   }
-  return Array.from(centrosById.values()).sort((a, b) => a.label.localeCompare(b.label));
+  return Array.from(centrosByValue.values()).sort((a, b) =>
+    a.label.localeCompare(b.label, 'es', { sensitivity: 'base' })
+  );
 }
 
 function matchesPrefix(value, filterValue) {
@@ -901,29 +918,16 @@ router.get('/condenados/filter-options', async (req, res) => {
       defensorOptions,
       defensores,
     };
-    // PAG/condenados usa la lista blanca de ERON oficiales; tipo=all conserva
-    // además CDT y otros lugares activos reportados por SISIPEC.
-    const hasDependentLocationFilter = Boolean(filters.departamento || filters.municipio);
-    const centros = tipo === 'condenado' && !hasDependentLocationFilter
-      ? listCentros()
-          .filter((item) => item.id !== 'INPEC_514')
-          .map((item) => ({
-            id: item.id,
-            label: item.label,
-            homologado: true,
-            valoresOriginales: [...item.aliases],
-          }))
-          .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
-      : buildCentrosFiltro(lugares, tipo);
+    // Los lugares activos de la base son la fuente de verdad. No reemplazar
+    // sus nombres con etiquetas históricas del catálogo INPEC.
+    const centros = buildCentrosFiltro(lugares, tipo);
     const lugaresNoOficiales = tipo === 'condenado'
       ? buildCentrosFiltro(lugares, 'all').filter((item) => !item.homologado)
       : [];
     const centrosVisibles = centros;
     const centrosHomologados = centros.filter((item) => item.homologado).length;
     const centrosNoHomologados = centros.length - centrosHomologados;
-    const lugaresVisibles = tipo === 'condenado'
-      ? centrosVisibles.map((item) => item.label)
-      : lugares;
+    const lugaresVisibles = centrosVisibles.map((item) => item.label);
     const payload = {
       ...homologatedOptions,
       lugares: lugaresVisibles,
@@ -1012,10 +1016,11 @@ router.get('/condenados', async (req, res) => {
   const version = Number(consolidado.getDataVersion?.() || 0);
   const filtersKey = hasFilters ? JSON.stringify(filters) : 'nofilter';
   const cacheKey = `${version}|${tipo}|${page}|${pageSize}|${filtersKey}`;
-  if (condenadosListCache.has(cacheKey)) {
+  const cachedPayload = getTimedCache(condenadosListCache, cacheKey, CONDENADOS_LIST_CACHE_TTL_MS);
+  if (cachedPayload) {
     res.setHeader('Server-Timing', 'condenados;dur=0;desc="cache-hit"');
     res.setHeader('X-Aurora-Cache', 'HIT');
-    return res.json(condenadosListCache.get(cacheKey));
+    return res.json(cachedPayload);
   }
 
   const startedAt = Date.now();
@@ -1059,7 +1064,10 @@ router.get('/condenados', async (req, res) => {
               (page - 1) * pageSize + rows.length < totalMatched,
           },
         };
-        boundedCacheSet(condenadosListCache, cacheKey, payload);
+        boundedCacheSet(condenadosListCache, cacheKey, {
+          createdAt: Date.now(),
+          value: payload,
+        });
         return payload;
       })();
 
@@ -1213,6 +1221,7 @@ router.post('/desasignar-defensor', requirePag, async (req, res) => {
 // Historial de actuaciones por documento
 router.get('/:documento/actuaciones', async (req, res) => {
   const doc = req.params.documento;
+  setFreshOracleResponseHeaders(res);
   try {
     const base = await consolidado.getByDocumento(doc);
     if (!base) return res.status(404).json({ message: 'No encontrado' });
@@ -1270,6 +1279,7 @@ router.post('/:documento/actuaciones', async (req, res) => {
 // Busqueda unificada por documento: devuelve tipo + registro
 router.get('/:documento', async (req, res) => {
   const doc = req.params.documento;
+  setFreshOracleResponseHeaders(res);
 
   try {
     const r = await consolidado.getByDocumento(doc);

@@ -18,15 +18,18 @@
 | Reporte de atenciones | Defensor | Asignaciones con actividad histórica | Selección exacta por cédula o, para datos antiguos sin cédula, por nombre normalizado |
 | Reporte de atenciones | Casos asignados | Misma asignación, situación y estado de Usuarios asignados | Incluye personas dentro y fuera de prisión |
 
-## 2. Centro canónico
+## 2. Identidad de centro para compatibilidad
 
-Un centro canónico es una identidad estable del catálogo, compuesta por:
+El catálogo conserva una identidad estable para integraciones antiguas, compuesta por:
 
 - código del establecimiento, por ejemplo `INPEC_601`;
-- nombre visible preferido, por ejemplo `CPMS MANIZALES`;
+- una etiqueta histórica de referencia;
 - nombres históricos o variantes asociados al mismo establecimiento.
 
-La homologación agrupa variantes de escritura, no establecimientos distintos. Las siglas `CPMS` y `CPMSM` conservan identidades separadas cuando corresponden a centros masculino y femenino.
+La identidad ya no reemplaza el nombre visible ni agrupa opciones del filtro. El
+texto mostrado y consultado proviene de `ESTABLECIMIENTO` en la situación activa.
+Las siglas `CPMS` y `CPMSM` conservan identidades separadas cuando corresponden a
+centros masculino y femenino.
 
 | Nombre | Identidad |
 |---|---|
@@ -170,12 +173,16 @@ FROM (
 WHERE ROWNUM <= :maxRows;
 ```
 
-Los valores obtenidos se resuelven contra `centros-reclusion.v1.json`. Las variantes se agrupan por código `INPEC_*`.
+Los valores obtenidos se muestran directamente. `centros-reclusion.v1.json` aporta
+un `centroId` de compatibilidad cuando reconoce el nombre, pero no modifica su
+etiqueta. Si el usuario selecciona una opción de la lista, la consulta usa el
+valor vigente de `ESTABLECIMIENTO` de forma exacta; una escritura libre sin
+`centroId` conserva la búsqueda por prefijo.
 
 Política por módulo:
 
-- PAG muestra 124 establecimientos del corte SISIPEC del 7 de julio. El catálogo oficial contiene 125 y excluye `INPEC_514` para este flujo.
-- Usuarios asignados y Atención conservan todos los lugares activos observados, incluidos CDT, URI, estaciones y otros centros no incluidos en los 124 establecimientos de condenados.
+- PAG, Usuarios asignados y Atención muestran los lugares observados en las situaciones activas de la base.
+- No se utiliza una lista blanca ni una etiqueta histórica para renombrar el establecimiento.
 - Los filtros dependientes reducen la lista según departamento y municipio.
 
 ### 4.4 Defensor actual
@@ -357,7 +364,7 @@ Blindajes adicionales:
 
 - documento y cédula se reducen a dígitos;
 - un identificador inválido produce `1 = 0` y nunca elimina silenciosamente el filtro;
-- defensor y establecimiento usan identificadores estables cuando existe catálogo;
+- defensor usa un identificador estable; establecimiento usa primero el nombre vigente y conserva `centroId` solo para compatibilidad;
 - Atención rechaza defensores que no pertenezcan a `DNDP.DEFENSORES`, incluso si se intenta enviar el nombre directamente al API;
 - un código de acción, estado o centro desconocido no devuelve resultados sin filtrar;
 - PAG aplica `ACTIVO = 1` de forma obligatoria;

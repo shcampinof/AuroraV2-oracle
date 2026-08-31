@@ -59,7 +59,7 @@ function run() {
   }], 'la fila histórica sin cédula debe consolidarse con la identidad canónica');
 
   const mojibakeDefensorOptions = buildDefensorOptions([
-    { CEDULA: null, NOMBRE: 'LubiÃ¡na  Histórica' },
+    { CEDULA: null, NOMBRE: 'Lubi\u00C3\u00A1na  Histórica' },
     { CEDULA: '8002', NOMBRE: 'Lubiána Histórica', REGIONAL: 'BOGOTÁ' },
   ]);
   assert.strictEqual(mojibakeDefensorOptions.length, 1);

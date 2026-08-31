@@ -1123,6 +1123,11 @@ function getDataVersion() {
   return dataVersion;
 }
 
+function invalidateDataCache() {
+  dataVersion += 1;
+  return dataVersion;
+}
+
 module.exports = {
   getAll,
   getColumns,
@@ -1135,6 +1140,7 @@ module.exports = {
   getDefensoresDistinct,
   computeTipo,
   getDataVersion,
+  invalidateDataCache,
   normalizeText,
   SCOPE_DEPARTAMENTOS,
 };

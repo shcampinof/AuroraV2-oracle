@@ -564,14 +564,16 @@ function buildCondenadosSummaryWhereClause({
 
   const centroId = String(filters?.centroId || '').trim();
   const centroCatalogado = getCentroById(centroId);
-  if (centroId === 'INPEC_130') {
+  const rawLugar = String(filters?.lugar || '').trim();
+  const useCurrentLugar = Boolean(rawLugar);
+  if (!useCurrentLugar && centroId === 'INPEC_130') {
     clauses.push(`EXISTS (
       SELECT 1
       FROM DNDP.SISIPEC source_si
       WHERE TO_CHAR(source_si.NUMERO) = TO_CHAR(p.NUMERO)
         AND ${normalizedMojibakeSqlExpr('source_si.ESTABLECIMIENTO')} = 'CPOMS ACACIAS'
     )`);
-  } else if (centroId === 'INPEC_148') {
+  } else if (!useCurrentLugar && centroId === 'INPEC_148') {
     clauses.push(`${normalizedMojibakeSqlExpr('s.ESTABLECIMIENTO')} = 'CPMS ACACIAS'`);
     clauses.push(`NOT EXISTS (
       SELECT 1
@@ -579,7 +581,7 @@ function buildCondenadosSummaryWhereClause({
       WHERE TO_CHAR(source_si.NUMERO) = TO_CHAR(p.NUMERO)
         AND ${normalizedMojibakeSqlExpr('source_si.ESTABLECIMIENTO')} = 'CPOMS ACACIAS'
     )`);
-  } else if (centroId === OTROS_LUGARES_ACTIVOS_ID) {
+  } else if (!useCurrentLugar && centroId === OTROS_LUGARES_ACTIVOS_ID) {
     const aliases = getAllCentroNormalizedAliases();
     const placeholders = aliases.map((alias, index) => {
       const bindKey = `centroOficial${index}`;
@@ -590,7 +592,7 @@ function buildCondenadosSummaryWhereClause({
     // Oracle trata '' como NULL; comparar <> '' descartaría todas las filas.
     clauses.push('TRIM(s.ESTABLECIMIENTO) IS NOT NULL');
     if (placeholders.length) clauses.push(`${normalizedCentro} NOT IN (${placeholders.join(', ')})`);
-  } else if (centroCatalogado) {
+  } else if (!useCurrentLugar && centroCatalogado) {
     const aliases = getCentroNormalizedAliases(centroCatalogado.id);
     const placeholders = aliases.map((alias, index) => {
       const bindKey = `centroAlias${index}`;
@@ -600,16 +602,16 @@ function buildCondenadosSummaryWhereClause({
     if (placeholders.length) {
       clauses.push(`${normalizedMojibakeSqlExpr('s.ESTABLECIMIENTO')} IN (${placeholders.join(', ')})`);
     }
-  } else if (centroId && !String(filters?.lugar || '').trim()) {
+  } else if (centroId && !useCurrentLugar) {
     clauses.push('1=0');
   }
 
   const textFilters = [
     ['nombre', 'p.NOMBRE', 'contains'],
     ...(defensorId ? [] : [['defensor', DEFENSOR_ACTIVO_EXPR, 'prefix']]),
-    ...(centroCatalogado || centroId === OTROS_LUGARES_ACTIVOS_ID
+    ...(!useCurrentLugar && (centroCatalogado || centroId === OTROS_LUGARES_ACTIVOS_ID)
       ? []
-      : [['lugar', 's.ESTABLECIMIENTO', 'prefix']]),
+      : [['lugar', 's.ESTABLECIMIENTO', centroId ? 'exact' : 'prefix']]),
     ['departamento', 's.DEPARTAMENTO', 'prefix'],
     ['municipio', 's.MUNICIPIO', 'prefix'],
     ['estadoAccion', `(${ESTADO_ACCION_EXPR})`, 'contains'],
@@ -619,9 +621,9 @@ function buildCondenadosSummaryWhereClause({
     const value = normalizeSearchText(filters?.[key]);
     if (!value) return;
     const bindKey = `${key}Filter`;
-    binds[bindKey] = mode === 'contains' ? `%${value}%` : `${value}%`;
+    binds[bindKey] = mode === 'contains' ? `%${value}%` : mode === 'exact' ? value : `${value}%`;
     const normalizedColumn = normalizedMojibakeSqlExpr(columnRef);
-    clauses.push(`${normalizedColumn} LIKE :${bindKey}`);
+    clauses.push(`${normalizedColumn} ${mode === 'exact' ? '=' : 'LIKE'} :${bindKey}`);
   });
 
   const potencial = String(filters?.potencialSubrogado || '').trim().toLowerCase();

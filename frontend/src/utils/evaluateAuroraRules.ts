@@ -131,10 +131,22 @@ function isAffirmativeProcedencia(value: unknown): boolean {
 }
 
 function parseOtrasSolicitudesSelection(value: unknown): string[] {
-  const text = toText(value);
-  if (!text) return [];
-  const parts = text
-    .split(/\r?\n|\s*\|\s*|\s*;\s*/g)
+  const parts = (() => {
+    if (Array.isArray(value)) return value;
+
+    const text = toText(value);
+    if (!text) return [];
+    if (text.startsWith('[') && text.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // Continúa con los formatos delimitados usados por datos históricos.
+      }
+    }
+
+    return text.split(/\r?\n|\s*\|\s*|\s*;\s*|\s*,\s*/g);
+  })()
     .map((item) => toText(item))
     .filter(Boolean);
 
