@@ -67,6 +67,7 @@ const CONFIGURED_API_BASE = ensureApiSuffix(
 const DEFAULT_API_BASE = '/api';
 
 export const API_BASE = shouldUseConfiguredApiBase(CONFIGURED_API_BASE) ? CONFIGURED_API_BASE : DEFAULT_API_BASE;
+export const PPL_DATA_UPDATED_EVENT = 'aurora:ppl-data-updated';
 
 const DEFAULT_FETCH_TIMEOUT_MS = 120000;
 const CONDENADOS_CLIENT_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -118,6 +119,22 @@ async function loadWithClientCache(cache, key, loader, forceRefresh = false) {
 export function invalidateCondenadosClientCache() {
   condenadosClientCache.clear();
   condenadosFilterOptionsClientCache.clear();
+}
+
+export async function getPplDataVersion() {
+  const res = await fetchJson(`${API_BASE}/ppl/data-version`, {
+    cache: 'no-store',
+    headers: {
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+    },
+  });
+  const data = await readJsonOrThrow(res, 'Error consultando la versión de datos');
+  if (!res.ok) throw new Error(String(data?.message || 'Error consultando la versión de datos'));
+  return {
+    version: Number(data?.version || 0),
+    updatedAt: data?.updatedAt || null,
+  };
 }
 
 function createFetchTimeoutError(timeoutMs) {

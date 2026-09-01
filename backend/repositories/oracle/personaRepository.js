@@ -13,6 +13,7 @@ const {
   getAllCentroNormalizedAliases,
   getCentroById,
   getCentroNormalizedAliases,
+  listAcciones,
   resolveAccionCodigo,
   OTROS_LUGARES_ACTIVOS_ID,
 } = require('../../domain/catalogosHomologacion');
@@ -467,6 +468,26 @@ const DERIVED_ESTADO_CODIGO_EXPR = `
 `;
 
 const ESTADO_CODIGO_EXPR = DERIVED_ESTADO_CODIGO_EXPR;
+
+function sqlLiteral(value) {
+  return `'${String(value ?? '').replace(/'/g, "''")}'`;
+}
+
+function buildAccionRealizarCalculadaExpr(estadoCodigoExpr = ESTADO_CODIGO_EXPR) {
+  const mappings = listAcciones().flatMap((accion) =>
+    accion.estadoCodigos.map((estadoCodigo) => ({
+      estadoCodigo,
+      etiqueta: accion.etiqueta,
+    }))
+  );
+  return `CASE (${estadoCodigoExpr})\n${mappings
+    .map(({ estadoCodigo, etiqueta }) =>
+      `      WHEN ${sqlLiteral(estadoCodigo)} THEN ${sqlLiteral(etiqueta)}`
+    )
+    .join('\n')}\n      ELSE 'Analizar el caso'\n    END`;
+}
+
+const ACCION_REALIZAR_CALCULADA_EXPR = buildAccionRealizarCalculadaExpr();
 
 const ESTADO_ACCION_EXPR = `
   TRIM(
@@ -966,6 +987,118 @@ async function countCondenadosSummary(options = {}) {
   return Number(summary?.totalMatched || 0);
 }
 
+function buildCurrentGestionActionCalculationSql() {
+  const activeSituacionCte = buildActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
+  return `
+    WITH
+    ${activeSituacionCte},
+    latest_gestion AS (
+      SELECT
+        g.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY g.ID_SITUACION
+          ORDER BY ${GESTION_MEANINGFUL_ORDER_EXPR}, g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
+        ) AS RN
+      FROM DNDP.GESTION_JURIDICA g
+    ),
+    active_asignacion AS (
+      SELECT
+        a.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY a.ID_PERSONA
+          ORDER BY a.FECHA_ASIGNACION DESC NULLS LAST, a.ID_ASIGNACION DESC
+        ) AS RN
+      FROM DNDP.ASIGNACION a
+      WHERE a.FECHA_FIN IS NULL
+    )
+    SELECT
+      g.ID_GESTION,
+      ${ACCION_REALIZAR_CALCULADA_EXPR} AS ACCION_CALCULADA
+    FROM ranked_situacion s
+    JOIN latest_gestion g
+      ON g.ID_SITUACION = s.ID_SITUACION
+     AND g.RN = 1
+    LEFT JOIN active_asignacion a
+      ON a.ID_PERSONA = s.ID_PERSONA
+     AND a.RN = 1
+    LEFT JOIN DNDP.DEFENSORES d
+      ON d.CEDULA = a.CEDULA_DEFENSOR
+    WHERE s.RN = 1
+      AND NVL(s.ACTIVO, 0) = 1
+  `;
+}
+
+const GESTION_ACTION_MISMATCH_PREDICATE = `
+  NVL(TRIM(TO_CHAR(target.ACCION_REALIZAR)), '__AURORA_NULL__') <>
+  NVL(TRIM(TO_CHAR(calculated.ACCION_CALCULADA)), '__AURORA_NULL__')
+`;
+
+async function previewCurrentGestionActionReconciliation({ summaryLimit = 20 } = {}) {
+  const calculationSql = buildCurrentGestionActionCalculationSql();
+  const countSql = `
+    SELECT COUNT(*) AS TOTAL
+    FROM (${calculationSql}) calculated
+    JOIN DNDP.GESTION_JURIDICA target
+      ON target.ID_GESTION = calculated.ID_GESTION
+    WHERE ${GESTION_ACTION_MISMATCH_PREDICATE}
+  `;
+  const summarySql = `
+    SELECT ACCION_ANTERIOR, ACCION_CALCULADA, TOTAL
+    FROM (
+      SELECT
+        NVL(TRIM(TO_CHAR(target.ACCION_REALIZAR)), '(vacia)') AS ACCION_ANTERIOR,
+        calculated.ACCION_CALCULADA,
+        COUNT(*) AS TOTAL
+      FROM (${calculationSql}) calculated
+      JOIN DNDP.GESTION_JURIDICA target
+        ON target.ID_GESTION = calculated.ID_GESTION
+      WHERE ${GESTION_ACTION_MISMATCH_PREDICATE}
+      GROUP BY
+        NVL(TRIM(TO_CHAR(target.ACCION_REALIZAR)), '(vacia)'),
+        calculated.ACCION_CALCULADA
+      ORDER BY TOTAL DESC, ACCION_ANTERIOR, ACCION_CALCULADA
+    )
+    WHERE ROWNUM <= :summaryLimit
+  `;
+  const safeLimit = Math.max(1, Math.min(100, Number(summaryLimit) || 20));
+  const [countResult, summaryResult] = await Promise.all([
+    execute(countSql, {}, {
+      operation: 'persona.previewCurrentGestionActionReconciliation.count',
+    }),
+    execute(summarySql, { summaryLimit: safeLimit }, {
+      operation: 'persona.previewCurrentGestionActionReconciliation.summary',
+    }),
+  ]);
+  return {
+    pending: Number(countResult?.rows?.[0]?.TOTAL || 0),
+    summary: (Array.isArray(summaryResult?.rows) ? summaryResult.rows : []).map((row) => ({
+      previous: String(row?.ACCION_ANTERIOR || '').trim(),
+      calculated: String(row?.ACCION_CALCULADA || '').trim(),
+      total: Number(row?.TOTAL || 0),
+    })),
+  };
+}
+
+async function reconcileCurrentGestionActions() {
+  const calculationSql = buildCurrentGestionActionCalculationSql();
+  const sql = `
+    MERGE INTO DNDP.GESTION_JURIDICA target
+    USING (${calculationSql}) calculated
+      ON (target.ID_GESTION = calculated.ID_GESTION)
+    WHEN MATCHED THEN UPDATE
+      SET target.ACCION_REALIZAR = calculated.ACCION_CALCULADA
+      WHERE ${GESTION_ACTION_MISMATCH_PREDICATE}
+  `;
+
+  const result = await execute(sql, {}, {
+    autoCommit: true,
+    operation: 'persona.reconcileCurrentGestionActions',
+  });
+  return {
+    updated: Number(result?.rowsAffected || 0),
+  };
+}
+
 async function listDistinctCondenadosFilterOptions({
   tipo = 'all',
   filters = {},
@@ -1410,6 +1543,8 @@ module.exports = {
   findActiveContextByDocumento,
   listDistinctDefensores,
   listAssignedCasesForReport,
+  previewCurrentGestionActionReconciliation,
+  reconcileCurrentGestionActions,
   updatePersonaById,
   PERSONA_COLUMNS,
 };

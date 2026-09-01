@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import Header from './components/Header.jsx';
 import Sidebar from './components/Sidebar.jsx';
@@ -15,7 +15,12 @@ import CajaHerramientas from './pages/CajaHerramientas.jsx';
 import ManualInteractivo from './pages/ManualInteractivo.jsx';
 import ReporteAtencionesDefensores from './pages/ReporteAtencionesDefensores.jsx';
 import { completeAzureAdRedirect, getAuthConfig, logout, refreshSession } from './services/auth.js';
-import { getCondenadosFilterOptions } from './services/api.js';
+import {
+  PPL_DATA_UPDATED_EVENT,
+  getCondenadosFilterOptions,
+  getPplDataVersion,
+  invalidateCondenadosClientCache,
+} from './services/api.js';
 import { FEATURE_FLAGS } from './config/featureFlags.js';
 
 const VISTAS = new Set([
@@ -29,6 +34,7 @@ const VISTAS = new Set([
   'admin-cargas',
   'admin-usuarios',
 ]);
+const PPL_DATA_VERSION_POLL_MS = 10 * 1000;
 
 function normalizarRoles(roles) {
   const input = Array.isArray(roles) ? roles : [];
@@ -89,6 +95,7 @@ function App() {
   const [session, setSession] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [conditionsAccepted, setConditionsAccepted] = useState(false);
+  const pplDataVersionRef = useRef(null);
   const isMsalResponse = esRespuestaMsal();
 
   useEffect(() => {
@@ -147,6 +154,44 @@ function App() {
 
     precargarFiltrosUsuariosAsignados();
     return undefined;
+  }, [session, conditionsAccepted]);
+
+  useEffect(() => {
+    if (!session || !conditionsAccepted) return undefined;
+    let alive = true;
+    let checking = false;
+    pplDataVersionRef.current = null;
+
+    async function checkDataVersion() {
+      if (!alive || checking || document.visibilityState === 'hidden') return;
+      checking = true;
+      try {
+        const info = await getPplDataVersion();
+        if (!alive) return;
+        const previous = pplDataVersionRef.current;
+        pplDataVersionRef.current = info.version;
+        if (previous !== null && previous !== info.version) {
+          invalidateCondenadosClientCache();
+          window.dispatchEvent(new CustomEvent(PPL_DATA_UPDATED_EVENT, { detail: info }));
+        }
+      } catch (error) {
+        console.warn('[datos-ppl:version] No fue posible verificar cambios:', error);
+      } finally {
+        checking = false;
+      }
+    }
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') checkDataVersion();
+    };
+    checkDataVersion();
+    const timer = window.setInterval(checkDataVersion, PPL_DATA_VERSION_POLL_MS);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [session, conditionsAccepted]);
 
   useEffect(() => {

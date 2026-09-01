@@ -7,6 +7,7 @@ const {
   invalidatePplCachesAfterSuccessfulCarga,
   listCargas,
   listSources,
+  reconcilePplStateAfterSuccessfulCarga,
   repairRegistryOnStartup,
   safeFileName,
   SOURCE_DEFINITIONS,
@@ -208,14 +209,47 @@ function testSuccessfulCargaInvalidatesPplCaches() {
   assert.ok(logLines.join('').includes('sisipec'));
 }
 
-testSourcesMetadata();
-testAuroraToggle();
-testSafeFileName();
-testCorruptRegistryDoesNotBreakList();
-testLegacyRegistryIsMigratedAndErrorsAreBoundedOnDisk();
-testRegistryRetentionKeepsOnlyRecentEntries();
-testRegistryClearOnStartupWithBackup();
-testLongErrorIsTruncatedForPublicList();
-testSuccessfulCargaInvalidatesPplCaches();
+async function testSuccessfulCargaReconcilesBeforeInvalidatingCaches() {
+  const originalReconcile = pplService.reconcileCurrentGestionActions;
+  const previousVersion = pplService.getDataVersion();
+  const calls = [];
+  const logLines = [];
 
-console.log('carga-bd-service.test.js OK');
+  pplService.reconcileCurrentGestionActions = async () => {
+    calls.push('reconcile');
+    return { updated: 12 };
+  };
+  try {
+    const result = await reconcilePplStateAfterSuccessfulCarga(
+      { sourceId: 'aurora_10' },
+      (line) => logLines.push(line)
+    );
+
+    assert.deepStrictEqual(calls, ['reconcile']);
+    assert.equal(result.updated, 12);
+    assert.equal(result.skipped, false);
+    assert.equal(result.dataVersion, previousVersion + 1);
+    assert.ok(logLines.join('').includes('Recalculando acciones vigentes'));
+    assert.ok(logLines.join('').includes('12 gestion(es) vigente(s) actualizada(s)'));
+  } finally {
+    pplService.reconcileCurrentGestionActions = originalReconcile;
+  }
+}
+
+(async () => {
+  testSourcesMetadata();
+  testAuroraToggle();
+  testSafeFileName();
+  testCorruptRegistryDoesNotBreakList();
+  testLegacyRegistryIsMigratedAndErrorsAreBoundedOnDisk();
+  testRegistryRetentionKeepsOnlyRecentEntries();
+  testRegistryClearOnStartupWithBackup();
+  testLongErrorIsTruncatedForPublicList();
+  testSuccessfulCargaInvalidatesPplCaches();
+  await testSuccessfulCargaReconcilesBeforeInvalidatingCaches();
+
+  console.log('carga-bd-service.test.js OK');
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

@@ -73,6 +73,29 @@ async function captureAssignedCasesReport(params, rows = []) {
   }
 }
 
+async function captureGestionActionReconciliation(rowsAffected = 0) {
+  const oraclePoolPath = require.resolve('../db/oraclePool');
+  const repositoryPath = require.resolve('../repositories/oracle/personaRepository');
+  const oraclePool = require(oraclePoolPath);
+  const originalExecute = oraclePool.execute;
+  let captured = null;
+
+  oraclePool.execute = async (sql, binds, options) => {
+    captured = { sql, binds, options };
+    return { rowsAffected };
+  };
+  delete require.cache[repositoryPath];
+
+  try {
+    const repository = require(repositoryPath);
+    const result = await repository.reconcileCurrentGestionActions();
+    return { captured, result };
+  } finally {
+    oraclePool.execute = originalExecute;
+    delete require.cache[repositoryPath];
+  }
+}
+
 async function testEstadoUsesDerivedWorkflowMilestones() {
   const captured = await captureStateSearch({
     defensor: 'PEDRO PABLO DIAZ CRISTANCHO',
@@ -175,6 +198,23 @@ async function testFilterOptionsOnlyUseActivePrisonSituations() {
     oraclePool.execute = originalExecute;
     delete require.cache[repositoryPath];
   }
+}
+
+async function testCargaReconcilesLatestGestionWithCalculatedAction() {
+  const { captured, result } = await captureGestionActionReconciliation(7);
+
+  assert.strictEqual(result.updated, 7);
+  assert.strictEqual(captured.options.operation, 'persona.reconcileCurrentGestionActions');
+  assert.strictEqual(captured.options.autoCommit, true);
+  assert.deepStrictEqual(captured.binds, {});
+  assert.match(captured.sql, /MERGE INTO DNDP\.GESTION_JURIDICA target/);
+  assert.match(captured.sql, /PARTITION BY s\.ID_PERSONA/);
+  assert.match(captured.sql, /PARTITION BY g\.ID_SITUACION/);
+  assert.match(captured.sql, /WHERE s\.RN = 1/);
+  assert.match(captured.sql, /WHEN 'CASO_CERRADO' THEN 'Caso cerrado'/);
+  assert.match(captured.sql, /WHEN 'ANALIZAR_CASO' THEN 'Analizar el caso'/);
+  assert.match(captured.sql, /SET target\.ACCION_REALIZAR = calculated\.ACCION_CALCULADA/);
+  assert.match(captured.sql, /__AURORA_NULL__/);
 }
 
 async function testLugarKeepsPrefixFilterAlongsideEstado() {
@@ -408,6 +448,7 @@ async function testReportWithoutDefenderIdentityFailsClosed() {
   await testTypedDefenderWithoutIdRemainsAPrefixSearch();
   await testFilterOptionsExposeDefenderIdentity();
   await testFilterOptionsOnlyUseActivePrisonSituations();
+  await testCargaReconcilesLatestGestionWithCalculatedAction();
   await testUnknownStateNeverFallsBackToUnfilteredResults();
   await testQueryContainsBothBusinessFlows();
   await testAssignedUsersDefaultAlwaysRequiresActiveSituation();

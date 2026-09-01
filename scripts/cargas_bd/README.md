@@ -28,6 +28,16 @@ pip install -r scripts/cargas_bd/requirements.txt
 
 El backend inicia `loader_service.py` como proceso hijo con argumentos explícitos, sin intérprete de comandos. La conexión usa las variables `ORACLE_*` del ambiente y los nombres de objetos Oracle se validan antes de formar SQL dinámico.
 
+Cuando el ETL termina correctamente, el backend recalcula la acción vigente de
+la última gestión asociada a cada situación activa usando las mismas reglas de
+Usuarios asignados. El cargue solo se marca como exitoso después de persistir
+esa reconciliación. Finalmente incrementa la versión global de datos; los
+navegadores abiertos la detectan, eliminan sus cachés de PPL y refrescan las
+consultas visibles sin recargar formularios que puedan tener cambios sin guardar.
+
+Los cargues ejecutados con `CARGUEBD_SKIP_ETL=true` omiten la reconciliación,
+porque solo modifican staging.
+
 ## Almacenamiento y operación
 
 - `AURORA_CARGAS_DIR`: carpeta persistente para archivos recibidos, `cargas.json` y logs.

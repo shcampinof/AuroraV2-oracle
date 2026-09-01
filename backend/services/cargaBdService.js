@@ -414,6 +414,25 @@ function invalidatePplCachesAfterSuccessfulCarga(record, log = () => {}) {
   return version;
 }
 
+async function reconcilePplStateAfterSuccessfulCarga(record, log = () => {}, { skipEtl = false } = {}) {
+  let reconciliation = { updated: 0, skipped: skipEtl };
+  if (skipEtl) {
+    log(`[${nowIso()}] Recalculo de acciones omitido porque el cargue se ejecuto con --no-etl.\n`);
+  } else {
+    log(`[${nowIso()}] Recalculando acciones vigentes con las reglas actuales de Aurora.\n`);
+    reconciliation = {
+      ...(await pplService.reconcileCurrentGestionActions()),
+      skipped: false,
+    };
+    log(
+      `[${nowIso()}] Recalculo finalizado: ` +
+        `${Number(reconciliation.updated || 0)} gestion(es) vigente(s) actualizada(s).\n`
+    );
+  }
+  const dataVersion = invalidatePplCachesAfterSuccessfulCarga(record, log);
+  return { ...reconciliation, dataVersion };
+}
+
 function startCargaJob(record) {
   if (RUNNING_JOBS.has(record.id)) return;
 
@@ -434,7 +453,8 @@ function startCargaJob(record) {
   }
 
   const args = ['-u', script, '--fuente', record.sourceId, '--archivo', record.filePath];
-  if (boolEnv('CARGUEBD_SKIP_ETL', false)) args.push('--no-etl');
+  const skipEtl = boolEnv('CARGUEBD_SKIP_ETL', false);
+  if (skipEtl) args.push('--no-etl');
 
   log(`[${nowIso()}] Iniciando carga ${record.id}\n`);
   log(`Comando: ${python} ${args.map((arg) => JSON.stringify(arg)).join(' ')}\n\n`);
@@ -469,18 +489,46 @@ function startCargaJob(record) {
     });
   });
 
-  child.on('close', (code) => {
-    RUNNING_JOBS.delete(record.id);
-    const success = code === 0;
+  child.on('close', async (code) => {
     const fallbackError = `El proceso Python termino con codigo ${code}. Revise el log.`;
     log(`\n[${nowIso()}] Proceso finalizado con codigo ${code}\n`);
-    updateRecord(record.id, {
-      status: success ? 'exitoso' : 'fallido',
-      finishedAt: nowIso(),
-      exitCode: code,
-      error: success ? '' : summarizePythonFailure(record.logPath, fallbackError),
-    });
-    if (success) invalidatePplCachesAfterSuccessfulCarga(record, log);
+    if (code !== 0) {
+      RUNNING_JOBS.delete(record.id);
+      updateRecord(record.id, {
+        status: 'fallido',
+        finishedAt: nowIso(),
+        exitCode: code,
+        error: summarizePythonFailure(record.logPath, fallbackError),
+      });
+      return;
+    }
+
+    try {
+      const reconciliation = await reconcilePplStateAfterSuccessfulCarga(record, log, { skipEtl });
+      updateRecord(record.id, {
+        status: 'exitoso',
+        finishedAt: nowIso(),
+        exitCode: code,
+        error: '',
+        reconciledActions: Number(reconciliation.updated || 0),
+        dataVersion: reconciliation.dataVersion,
+      });
+    } catch (error) {
+      const message =
+        `El ETL termino, pero no fue posible recalcular las acciones vigentes: ` +
+        `${String(error?.message || error)}`;
+      log(`[${nowIso()}] ERROR: ${message}\n`);
+      const dataVersion = invalidatePplCachesAfterSuccessfulCarga(record, log);
+      updateRecord(record.id, {
+        status: 'fallido',
+        finishedAt: nowIso(),
+        exitCode: code,
+        error: message,
+        dataVersion,
+      });
+    } finally {
+      RUNNING_JOBS.delete(record.id);
+    }
   });
 }
 
@@ -548,6 +596,8 @@ function publicRecord(record) {
     startedAt: record.startedAt,
     finishedAt: record.finishedAt,
     exitCode: record.exitCode,
+    reconciledActions: Number(record.reconciledActions || 0),
+    dataVersion: Number(record.dataVersion || 0),
     error: publicError(error),
     running: RUNNING_JOBS.has(record.id),
   };
@@ -646,4 +696,5 @@ module.exports = {
   safeFileName,
   shutdownCargaJobs,
   invalidatePplCachesAfterSuccessfulCarga,
+  reconcilePplStateAfterSuccessfulCarga,
 };

@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  PPL_DATA_UPDATED_EVENT,
   getCachedCondenados,
   getCachedCondenadosFilterOptions,
   getCondenados,
@@ -535,6 +536,17 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   useEffect(() => {
     cargarOpcionesFiltro();
   }, [cargarOpcionesFiltro]);
+
+  useEffect(() => {
+    const refreshAfterCarga = () => {
+      cargarOpcionesFiltro();
+      if (busquedaRealizada) {
+        cargarRowsFromBackend(filtrosAplicados, pagina, true);
+      }
+    };
+    window.addEventListener(PPL_DATA_UPDATED_EVENT, refreshAfterCarga);
+    return () => window.removeEventListener(PPL_DATA_UPDATED_EVENT, refreshAfterCarga);
+  }, [busquedaRealizada, cargarOpcionesFiltro, cargarRowsFromBackend, filtrosAplicados, pagina]);
 
   useEffect(() => {
     setDefensores((prev) => {

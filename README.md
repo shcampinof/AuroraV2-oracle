@@ -160,6 +160,12 @@ aurora_cargas_bd:/app/backend/storage/cargas_bd
 
 `aurora_auth_users` conserva la lista interna de usuarios autorizados cuando `AUTH_USER_ACCESS_MODE=managed`.
 
+Después de cada ETL exitoso, Aurora recalcula y persiste `ACCION_REALIZAR` en la
+última gestión de cada situación activa. El cargue permanece en ejecución hasta
+que concluye esta reconciliación. Luego se invalidan las cachés del backend y
+los clientes abiertos detectan la nueva versión de datos para actualizar sus
+filtros y consultas sin reiniciar toda la aplicación.
+
 Los videos institucionales de `backend/tutorial-videos/` se versionan y se copian dentro de la imagen. No requieren un volumen Docker. Si el ambiente necesita sustituir el catálogo completo, puede montar una carpeta de solo lectura y apuntar `AURORA_VIDEOS_DIR` a ella.
 
 El historial se conserva por 2 dias y hasta 50 registros por defecto. Ambos limites pueden ajustarse con `CARGUEBD_REGISTRY_RETENTION_DAYS` (1 a 30) y `CARGUEBD_REGISTRY_MAX_RECORDS` (1 a 200). Los errores se limitan antes de persistir y el archivo se reemplaza de forma atomica.

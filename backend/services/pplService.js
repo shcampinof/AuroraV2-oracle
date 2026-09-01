@@ -9,6 +9,7 @@ const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const { DEFAULT_SCOPE_DEPARTAMENTOS } = require('../repositories/oracle/sqlFragments');
 
 let dataVersion = 0;
+let dataVersionUpdatedAt = null;
 
 const SCOPE_DEPARTAMENTOS = [...DEFAULT_SCOPE_DEPARTAMENTOS];
 
@@ -1123,9 +1124,21 @@ function getDataVersion() {
   return dataVersion;
 }
 
+function getDataVersionInfo() {
+  return {
+    version: dataVersion,
+    updatedAt: dataVersionUpdatedAt,
+  };
+}
+
 function invalidateDataCache() {
   dataVersion += 1;
+  dataVersionUpdatedAt = new Date().toISOString();
   return dataVersion;
+}
+
+async function reconcileCurrentGestionActions() {
+  return personaRepo.reconcileCurrentGestionActions();
 }
 
 module.exports = {
@@ -1140,7 +1153,9 @@ module.exports = {
   getDefensoresDistinct,
   computeTipo,
   getDataVersion,
+  getDataVersionInfo,
   invalidateDataCache,
+  reconcileCurrentGestionActions,
   normalizeText,
   SCOPE_DEPARTAMENTOS,
 };

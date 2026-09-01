@@ -687,6 +687,11 @@ function buildCentrosFiltro(lugares) {
   );
 }
 
+router.get('/data-version', (_req, res) => {
+  setFreshOracleResponseHeaders(res);
+  return res.json(consolidado.getDataVersionInfo());
+});
+
 function matchesPrefix(value, filterValue) {
   const needle = normalizeText(filterValue);
   if (!needle) return true;
