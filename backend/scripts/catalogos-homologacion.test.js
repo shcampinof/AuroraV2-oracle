@@ -87,6 +87,21 @@ function testActionsAreSeparatedFromStateAndKeepOriginalValue() {
   assert(listAcciones().some((item) => item.codigo === 'SIN_ACCION_PENDIENTE'));
 }
 
+function testCanonicalPersistedActionsNeverProduceHomologationWarning() {
+  for (const action of listAcciones()) {
+    for (const estadoCodigo of action.estadoCodigos) {
+      const resolved = resolveAccionPendiente({
+        estadoCodigo,
+        valorOriginal: action.etiqueta,
+      });
+      assert.strictEqual(resolved.codigo, action.codigo);
+      assert.strictEqual(resolved.etiqueta, action.etiqueta);
+      assert.strictEqual(resolved.homologada, true);
+      assert.strictEqual(resolved.valorOriginal, action.etiqueta);
+    }
+  }
+}
+
 function testFilterCatalogsRequireActivePrisonStatus() {
   const sql = buildStrictActiveSituacionCte();
   assert.match(sql, /WHERE\s+s\.RN\s*=\s*1\s+AND\s+NVL\(s\.ACTIVO,\s*0\)\s*=\s*1/i);
@@ -109,6 +124,7 @@ testArmeniaCentersKeepSeparateCanonicalIdentities();
 testMaleAndFemaleCentersRemainSeparate();
 testUnknownCentersRemainVisibleAndStable();
 testActionsAreSeparatedFromStateAndKeepOriginalValue();
+testCanonicalPersistedActionsNeverProduceHomologationWarning();
 testFilterCatalogsRequireActivePrisonStatus();
 testCurrentSituationPrioritizesLatestCutoff();
 console.log('OK catalogos-homologacion.test');

@@ -1,4 +1,5 @@
 const assert = require('assert');
+const { listAcciones } = require('../domain/catalogosHomologacion');
 
 async function captureStateSearch(filters, tipo = 'all') {
   const oraclePoolPath = require.resolve('../db/oraclePool');
@@ -211,8 +212,15 @@ async function testCargaReconcilesLatestGestionWithCalculatedAction() {
   assert.match(captured.sql, /PARTITION BY s\.ID_PERSONA/);
   assert.match(captured.sql, /PARTITION BY g\.ID_SITUACION/);
   assert.match(captured.sql, /WHERE s\.RN = 1/);
-  assert.match(captured.sql, /WHEN 'CASO_CERRADO' THEN 'Caso cerrado'/);
-  assert.match(captured.sql, /WHEN 'ANALIZAR_CASO' THEN 'Analizar el caso'/);
+  assert.match(captured.sql, /AND NVL\(s\.ACTIVO, 0\) = 1/);
+  for (const action of listAcciones()) {
+    for (const estadoCodigo of action.estadoCodigos) {
+      assert.ok(
+        captured.sql.includes(`WHEN '${estadoCodigo}' THEN '${action.etiqueta}'`),
+        `Falta persistir ${estadoCodigo} como ${action.etiqueta}`
+      );
+    }
+  }
   assert.match(captured.sql, /SET target\.ACCION_REALIZAR = calculated\.ACCION_CALCULADA/);
   assert.match(captured.sql, /__AURORA_NULL__/);
 }

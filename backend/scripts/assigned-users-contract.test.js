@@ -76,6 +76,17 @@ function testInactiveRowsCloseStateAndAction() {
   assert.equal(mapped.estadoSource['Acción a impulsar'], 'Caso cerrado');
 }
 
+function testPersistedCalculatedActionDoesNotExposeHomologationWarning() {
+  const mapped = contract.mapRow({
+    ...activeRawRow(),
+    'Accion a realizar': 'Entrevistar al usuario',
+  });
+  assert.equal(mapped.estadoCodigo, 'ENTREVISTAR_USUARIO');
+  assert.equal(mapped.accionPendiente.etiqueta, 'Entrevistar al usuario');
+  assert.equal(mapped.accionPendiente.valorOriginal, 'Entrevistar al usuario');
+  assert.equal(mapped.accionPendiente.homologada, true);
+}
+
 function testAllApiFiltersAreParsedAndTrimmed() {
   const keys = [
     'defensor',
@@ -151,6 +162,7 @@ function testActiveCenterNamesRemainTheSourceOfTruth() {
 
 testEveryColumnHasMappedDataContract();
 testInactiveRowsCloseStateAndAction();
+testPersistedCalculatedActionDoesNotExposeHomologationWarning();
 testAllApiFiltersAreParsedAndTrimmed();
 testLegacyInMemoryFiltersRemainNormalized();
 testInactiveRowsRequireExplicitFilter();
