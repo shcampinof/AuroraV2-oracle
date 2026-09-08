@@ -54,6 +54,7 @@ module.exports = {
   getDefensoresDistinct: (options) => pplService.getDefensoresDistinct(options),
   computeTipo: (row) => pplService.computeTipo(row),
   getDataVersion: () => pplService.getDataVersion(),
+  getDataVersionInfo: () => pplService.getDataVersionInfo(),
   getHeaderKey,
   getValue,
   setValue,

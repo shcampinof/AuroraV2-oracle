@@ -35,11 +35,13 @@ COPY scripts/cargas_bd/ ../scripts/cargas_bd/
 COPY scripts/docker-entrypoint.sh /usr/local/bin/aurora-entrypoint.sh
 COPY --from=frontend-builder /app/frontend/dist ./public/app
 
-RUN cd tutorial-videos \
+RUN sed -i 's/\r$//' /usr/local/bin/aurora-entrypoint.sh \
+  && test "$(head -n 1 /usr/local/bin/aurora-entrypoint.sh)" = '#!/bin/sh' \
+  && cd tutorial-videos \
   && sha256sum --check SHA256SUMS \
   && cd .. \
   && chown -R node:node /app \
-  && chmod +x /usr/local/bin/aurora-entrypoint.sh
+  && chmod 0755 /usr/local/bin/aurora-entrypoint.sh
 
 EXPOSE 7860
 
