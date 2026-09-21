@@ -167,24 +167,43 @@ describe('estadoActuaciones.rules', () => {
     expect(getSemaforoClassByDays(15)).toBe('estado--verde');
   });
 
-  it('ESTADO.SEMAFORO.AMARILLO.1 - dias entre 16 y 30 retorna amarillo', () => {
+  it('ESTADO.SEMAFORO.AMARILLO.1 - dias entre 16 y 45 retorna amarillo', () => {
     expect(getSemaforoClassByDays(16)).toBe('estado--amarillo');
     expect(getSemaforoClassByDays(30)).toBe('estado--amarillo');
+    expect(getSemaforoClassByDays(45)).toBe('estado--amarillo');
   });
 
-  it('ESTADO.SEMAFORO.ROJO.1 - dias > 30 retorna rojo', () => {
-    expect(getSemaforoClassByDays(31)).toBe('estado--rojo');
+  it('ESTADO.SEMAFORO.ROJO.1 - dias > 45 retorna rojo', () => {
+    expect(getSemaforoClassByDays(46)).toBe('estado--rojo');
   });
 
   it('ESTADO.SEMAFORO.CANONICO.1 - colorea Entrevistar con su fecha aunque otros datos históricos sugieran cierre', () => {
     const row = {
       estadoEtiqueta: 'Entrevistar al usuario',
       estadoSource: {
-        'Fecha de análisis jurídico del caso': formatDateDaysAgo(31),
+        'Fecha de análisis jurídico del caso': formatDateDaysAgo(46),
         'Sentido de la decisión': 'Concede la solicitud',
       },
     };
     expect(getEstadoClassForRecord(row, row.estadoEtiqueta)).toBe('estado--rojo');
+  });
+
+  it('ESTADO.CANONICO.1 - un registro guardado usa el código del servidor aunque el navegador derive otro', () => {
+    const display = getEstadoDisplayInfo({
+      estadoCodigo: 'ENTREVISTAR_USUARIO',
+      estadoEtiqueta: 'Entrevistar al usuario',
+      'Estado del trámite': 'Analizar el caso',
+      estadoSource: { 'Sentido de la decisión': 'Concede la solicitud' },
+    });
+    expect(display.label).toBe('Entrevistar al usuario');
+  });
+
+  it('ESTADO.CANONICO.2 - un estado confirmado Analizar no es promovido por una acción histórica', () => {
+    const display = getEstadoDisplayInfo({
+      estadoCodigo: 'ANALIZAR_CASO',
+      'Acción a impulsar': 'Presentar solicitud',
+    });
+    expect(display.label).toBe('Analizar el caso');
   });
 
   it('ESTADO.PAG.RESUMEN.1 - fila resumida de PAG resuelve Analizar el caso', () => {

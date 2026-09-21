@@ -850,7 +850,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     if (col === '__nombreUsuario__') return 'NOMBRE USUARIO';
     if (col === '__defensor__') return 'DEFENSOR';
     if (col === '__lugarPrivacion__') return 'NOMBRE DEL LUGAR DE PRIVACIÓN DE LA LIBERTAD';
-    if (col === '__accionPendiente__') return 'ACCIÓN A IMPULSAR';
+    if (col === '__accionPendiente__') return 'ESTADO / ACCIÓN A IMPULSAR';
     if (col === '__fuenteInformacion__') return 'FUENTE DE INFORMACIÓN';
     if (col === '__fechaCorte__') return 'FECHA DE CORTE';
     if (col === '__departamentoReclusion__') return 'DEPARTAMENTO';
@@ -866,18 +866,22 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     if (col === '__lugarPrivacion__') return displayOrDash(getLugarPrivacionValue(row));
     if (col === '__accionPendiente__') {
       const accion = row?.accionPendiente;
-      const etiqueta = String(accion?.etiqueta || row?.accionImpulsar || '').trim();
+      const etiqueta = String(row?.estadoEtiqueta || accion?.etiqueta || row?.accionImpulsar || '').trim();
+      const accionEtiqueta = String(accion?.etiqueta || row?.accionImpulsar || '').trim();
       const original = String(accion?.valorOriginal || '').trim();
       if (!etiqueta) return '\u2014';
       const situacionActiva = isSituacionActiva(pickActiveCaseData(row));
-      const estadoCanonico = String(row?.estadoEtiqueta || etiqueta).trim();
+      const estadoCanonico = etiqueta;
       const estadoClass = situacionActiva
         ? String(getEstadoClassForRecord(row, estadoCanonico)).trim()
         : 'estado--fuera-prision';
       return (
         <div>
           <span className={`estadoBadge${estadoClass ? ` ${estadoClass}` : ''}`}>{etiqueta}</span>
-          {accion?.homologada === false && original && normalize(original) !== normalize(etiqueta) && (
+          {accionEtiqueta && normalize(accionEtiqueta) !== normalize(etiqueta) && (
+            <small style={{ display: 'block', marginTop: '0.25rem' }}>Acción: {accionEtiqueta}</small>
+          )}
+          {accion?.homologada === false && original && normalize(original) !== normalize(accionEtiqueta) && (
             <small style={{ display: 'block', color: '#8a5a00', marginTop: '0.25rem' }}>
               Valor original no homologado: {original}
             </small>

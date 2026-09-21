@@ -86,7 +86,19 @@ export function normalizeEstadoActuacion(value: unknown): string {
 }
 
 function canonicalEstadoLabel(value: unknown): string {
-  const key = normalizeEstadoActuacion(value);
+  const code = toText(value).toUpperCase();
+  const codeLabels: Record<string, string> = {
+    ANALIZAR_CASO: 'Analizar el caso',
+    ENTREVISTAR_USUARIO: 'Entrevistar al usuario',
+    PENDIENTE_AUDIENCIA: 'Pendiente audiencia',
+    PENDIENTE_DECISION_AUDIENCIA: 'Pendiente decisión de audiencia',
+    PRESENTAR_SOLICITUD: 'Presentar solicitud',
+    PRESENTAR_RECURSO: 'Presentar recurso',
+    PENDIENTE_DECISION: 'Pendiente decisión',
+    CASO_CERRADO: 'Caso cerrado',
+  };
+  if (codeLabels[code]) return codeLabels[code];
+  const key = normalizeEstadoActuacion(value).replace(/[_-]+/g, ' ').trim();
   if (key === 'analizar el caso') return 'Analizar el caso';
   if (key === 'entrevistar al usuario') return 'Entrevistar al usuario';
   if (key === 'pendiente audiencia') return 'Pendiente audiencia';
@@ -199,7 +211,7 @@ export function getSemaforoClassByDays(days: number | null): string {
   // Regla: ESTADO.SEMAFORO.VERDE.1
   if (days <= 15) return 'estado--verde';
   // Regla: ESTADO.SEMAFORO.AMARILLO.1
-  if (days <= 30) return 'estado--amarillo';
+  if (days <= 45) return 'estado--amarillo';
   // Regla: ESTADO.SEMAFORO.ROJO.1
   return 'estado--rojo';
 }
@@ -272,13 +284,18 @@ function buildEstadoInfo(
 export function obtenerEstadoActuacion(record: unknown): EstadoActuacionInfo {
   const safeRecord = record && typeof record === 'object' ? (record as AnyRecord) : {};
   const data = resolveEstadoSource(safeRecord);
+  // Para registros guardados, el código calculado por Oracle es la única fuente
+  // de verdad. El navegador solo calcula una vista previa al editar sin guardar.
+  const confirmedStatus = canonicalEstadoLabel(
+    firstFilledValue(safeRecord?.estadoCodigo, safeRecord?.estadoEtiqueta)
+  );
   const flow = resolveFlow(safeRecord, data);
   const derivedStatus = canonicalEstadoLabel(
     flow === 'sindicado'
       ? evaluateCelesteRules({ answers: data || {} }).derivedStatus
       : evaluateAuroraRules({ answers: data || {} }).derivedStatus
   );
-  const derivedKey = normalizeEstadoActuacion(derivedStatus);
+  const derivedKey = normalizeEstadoActuacion(confirmedStatus || derivedStatus);
   const fallbackStatus = canonicalEstadoLabel(getEstadoTramiteValue(safeRecord));
   const fallbackKey = normalizeEstadoActuacion(fallbackStatus);
   const canPromoteFallback = new Set([
@@ -290,8 +307,11 @@ export function obtenerEstadoActuacion(record: unknown): EstadoActuacionInfo {
     'pendiente decision',
     'caso cerrado',
   ]);
-  const estadoKey =
-    derivedKey === 'analizar el caso' && canPromoteFallback.has(fallbackKey) ? fallbackKey : derivedKey;
+  const estadoKey = confirmedStatus
+    ? derivedKey
+    : derivedKey === 'analizar el caso' && canPromoteFallback.has(fallbackKey)
+      ? fallbackKey
+      : derivedKey;
 
   // Regla: ESTADO.CASO_CERRADO.1
   if (estadoKey === 'caso cerrado') {

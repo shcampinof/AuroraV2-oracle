@@ -7,6 +7,7 @@ const asignacionRepo = require('../repositories/oracle/asignacionRepository');
 const calificacionConductaRepo = require('../repositories/oracle/calificacionConductaRepository');
 const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const { DEFAULT_SCOPE_DEPARTAMENTOS } = require('../repositories/oracle/sqlFragments');
+const { getEstadoEtiqueta, resolveEstadoCodigo } = require('../domain/estadoCaso');
 
 let dataVersion = 0;
 let dataVersionUpdatedAt = null;
@@ -547,6 +548,10 @@ function toLegacyRecord(raw = {}) {
   const numero = coalesce(raw.P_NUMERO, '');
   const numeroText = numero === '' ? '' : String(numero);
   const situacionActiva = Number(raw.S_ACTIVO) === 1;
+  const estadoCodigo = situacionActiva
+    ? resolveEstadoCodigo(raw.ESTADO_CODIGO) || 'ANALIZAR_CASO'
+    : 'CASO_CERRADO';
+  const estadoEtiqueta = getEstadoEtiqueta(estadoCodigo);
 
   const record = {
     Nombre: String(raw.P_NOMBRE ?? ''),
@@ -666,8 +671,10 @@ function toLegacyRecord(raw = {}) {
     'Cierre del caso por imposibilidad de avanzar (si aplica)': String(raw.G_CIERRE_CASO ?? ''),
     'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública': String(raw.G_CIERRE_CASO ?? ''),
     'Sentido de la decisión que resuelve la solicitud': String(raw.G_SENTIDO_DECISION_RESUELVE_RECURSO ?? ''),
+    estadoCodigo,
+    estadoEtiqueta,
     'Estado del caso': situacionActiva ? '' : 'Caso cerrado',
-    'Estado del trámite': situacionActiva ? '' : 'Caso cerrado',
+    'Estado del trámite': estadoEtiqueta,
     posibleActuacionJudicial: String(raw.G_ACTUACION_ADELANTAR ?? ''),
 
     __oracleIdPersona: raw.P_ID_PERSONA == null ? null : Number(raw.P_ID_PERSONA),

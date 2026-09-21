@@ -32,6 +32,7 @@ async function testFechaInsistenciaRoundTrip() {
     S_SITUACION: 'Condenado',
     G_ID_GESTION: 30,
     G_ACCION_REALIZAR: 'Presentar solicitud',
+    ESTADO_CODIGO: 'PENDIENTE_DECISION',
     G_INSISTENCIAS: 5,
     G_FECHA_INSISTENCIA_1: new Date('2026-08-01T00:00:00Z'),
     G_FECHA_INSISTENCIA_2: new Date('2026-08-08T00:00:00Z'),
@@ -79,6 +80,9 @@ async function testFechaInsistenciaRoundTrip() {
     assert.strictEqual(updated['Fecha de insistencia 3'], '2026-08-15');
     assert.strictEqual(updated['Fecha de insistencia 4'], '2026-08-22');
     assert.strictEqual(updated['Fecha de insistencia 5'], '2026-08-29');
+    assert.strictEqual(updated.estadoCodigo, 'PENDIENTE_DECISION');
+    assert.strictEqual(updated.estadoEtiqueta, 'Pendiente decisión');
+    assert.strictEqual(updated['Estado del trámite'], 'Pendiente decisión');
   } finally {
     personaRepo.findActiveContextByDocumento = originals.findActiveContextByDocumento;
     personaRepo.listRowsWithActiveSituacionAndGestiones = originals.listRowsWithActiveSituacionAndGestiones;

@@ -1321,7 +1321,8 @@ async function listRowsWithActiveSituacionAndGestiones({
   const sql = `
     ${buildActiveSituacionCte()}
     SELECT
-      ${BASE_SELECT_COLUMNS}
+      ${BASE_SELECT_COLUMNS},
+      ${ESTADO_CODIGO_EXPR} AS ESTADO_CODIGO
     FROM DNDP.PERSONA p
     JOIN ranked_situacion s
       ON s.ID_PERSONA = p.ID_PERSONA

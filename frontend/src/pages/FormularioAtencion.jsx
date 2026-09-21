@@ -2092,6 +2092,10 @@ export default function FormularioAtencion({ numeroInicial }) {
     if (personaFueraPrision) return;
     setRegistro((prev) => {
       const base = { ...unwrapRegistro(prev) };
+      // Al editar, la etiqueta del servidor deja de representar este borrador.
+      // Se vuelve a obtener calculada por Oracle después de guardar.
+      delete base.estadoCodigo;
+      delete base.estadoEtiqueta;
       if (isDefensorFieldName(name)) {
         const nextValue = String(value ?? '');
         const shouldClear = nextValue.trim() === '';
@@ -3015,7 +3019,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   useEffect(() => {
     if (!registro || !auroraActivo) return;
-    const next = String(auroraRuleState?.derivedStatus || '').trim();
+    const next = String(registro?.estadoEtiqueta || auroraRuleState?.derivedStatus || '').trim();
     if (!next) return;
     const current = String(registro['Estado del trámite'] ?? '').trim();
     const currentAction = String(registro['Acción a impulsar'] ?? '').trim();
@@ -3049,7 +3053,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   useEffect(() => {
     if (!registro || flow !== 'sindicado') return;
-    const estadoTramiteSindicado = String(celesteRuleState?.derivedStatus || '').trim();
+    const estadoTramiteSindicado = String(registro?.estadoEtiqueta || celesteRuleState?.derivedStatus || '').trim();
     if (!estadoTramiteSindicado) return;
 
     setRegistro((prev) => {
