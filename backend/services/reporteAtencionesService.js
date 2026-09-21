@@ -226,8 +226,7 @@ function buildReport({ defensor, fechaInicio, fechaFin, eventRows = [], assigned
         details.entrevista.length +
         details.solicitud.length +
         details.reiteracion.length +
-        details.recurso.length +
-        closedCaseCount,
+        details.recurso.length,
       personasAsignadas: assignedCases.length,
       personasActivas: activeCases.length,
       personasActivasConGestion: activeWithEvents.length,

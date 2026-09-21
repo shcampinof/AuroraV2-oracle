@@ -8,6 +8,13 @@ let msalInitPromise = null;
 
 function mapAzureAdLoginError(err) {
   const rawMessage = String(err?.message || err?.errorMessage || err?.errorCode || '');
+  if (rawMessage.toLowerCase().includes('failed to fetch') || err instanceof TypeError) {
+    const mapped = new Error(
+      'No fue posible conectar con Microsoft para iniciar sesión. Verifique la conexión de red y que el certificado de AURORA sea de confianza, y vuelva a intentarlo.'
+    );
+    mapped.code = 'AZURE_AD_NETWORK_ERROR';
+    return mapped;
+  }
   if (rawMessage.toLowerCase().includes('interaction_in_progress')) {
     clearStaleMsalInteractionState();
     const mapped = new Error(

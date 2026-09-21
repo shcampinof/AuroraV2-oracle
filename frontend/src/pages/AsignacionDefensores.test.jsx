@@ -21,4 +21,13 @@ describe('filtros de asignación de defensores PAG', () => {
     expect(buildAsignacionBackendFilters('reasignacion', { defensorActual: 'LUIS CAMARGO' }))
       .toMatchObject({ defensor: 'LUIS CAMARGO', asignacionEstado: 'con_defensor' });
   });
+
+  it('mantiene la priorización de sindicados como selector visual sin enviarla al backend', () => {
+    const filters = buildAsignacionBackendFilters('asignacion', {
+      departamento: 'BOYACÁ',
+      priorizacionSindicados: 'cumple_vencimiento_terminos',
+    });
+    expect(filters).toMatchObject({ departamento: 'BOYACÁ', asignacionEstado: 'sin_defensor' });
+    expect(filters).not.toHaveProperty('priorizacionSindicados');
+  });
 });

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getReporteAtencionesDefensores, getReporteAtencionesOpciones } from '../services/api.js';
 import { downloadReporteAtencionesPdf, formatReportDate } from '../utils/reporteAtencionesPdf.js';
+import { calculateTotalActuaciones } from '../utils/reporteAtencionesSummary.js';
 
 function currentMonthRange() {
   const now = new Date();
@@ -155,7 +156,7 @@ function ReporteAtencionesDefensores({ user }) {
         ['Reiteraciones', report.resumen.reiteracionesPresentadas],
         ['Recursos', report.resumen.recursosPresentados],
         ['Casos cerrados', report.resumen.casosCerrados],
-        ['Total actuaciones', report.resumen.totalActuaciones],
+        ['Total actuaciones', calculateTotalActuaciones(report.resumen)],
         ['Personas activas con gestión', report.resumen.personasActivasConGestion],
         ['Total personas con casos cerrados', report.resumen.totalPersonasConCasosCerrados],
       ]

@@ -5,15 +5,16 @@ const consolidado = require('../db/oracleConsolidado.repo');
 const router = express.Router();
 
 // GET /api/defensores
-// ?source=condenados -> lista unica desde asignaciones/gestiones Oracle de PPL condenadas.
+// ?source=condenados|sindicados -> lista unica desde asignaciones/gestiones Oracle por tipo de PPL.
 router.get('/', async (req, res) => {
   const source = String(req.query.source || '').trim().toLowerCase();
   try {
-    if (source === 'condenados') {
-      const defensoresCondenados = await consolidado.getDefensoresDistinct({ tipo: 'condenado' });
+    if (source === 'condenados' || source === 'sindicados') {
+      const tipo = source === 'sindicados' ? 'sindicado' : 'condenado';
+      const defensoresPorTipo = await consolidado.getDefensoresDistinct({ tipo });
       return res.json({
-        defensores: defensoresCondenados,
-        opciones: defensoresRepo.toOptions(defensoresCondenados),
+        defensores: defensoresPorTipo,
+        opciones: defensoresRepo.toOptions(defensoresPorTipo),
       });
     }
     const defensores = await defensoresRepo.listAll();

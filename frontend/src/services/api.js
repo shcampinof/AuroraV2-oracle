@@ -475,8 +475,28 @@ export async function getReporteAtencionesOpciones() {
   return data;
 }
 
+export async function getReporteGeneral() {
+  const res = await fetchJson(`${API_BASE}/reportes/general`, {
+    cache: 'no-store',
+    headers: {
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+    },
+  });
+  const data = await readJsonOrThrow(res, 'Error consultando el reporte general');
+  if (!res.ok) {
+    throw new Error(String(data?.message || 'No fue posible consultar el reporte general.'));
+  }
+  return data;
+}
+
 export async function getDefensoresCondenados() {
-  const res = await fetchJson(`${API_BASE}/defensores?source=condenados`, { cache: 'no-store' });
+  return getDefensoresPpl('condenado');
+}
+
+export async function getDefensoresPpl(tipo = 'condenado') {
+  const source = String(tipo || '').trim().toLowerCase() === 'sindicado' ? 'sindicados' : 'condenados';
+  const res = await fetchJson(`${API_BASE}/defensores?source=${source}`, { cache: 'no-store' });
   if (!res.ok) throw new Error('Error consultando defensores');
   return readJsonOrThrow(res, 'Error consultando defensores'); // { defensores }
 }

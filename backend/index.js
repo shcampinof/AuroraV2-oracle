@@ -18,6 +18,7 @@ const reportesRoutes = require('./routes/reportes');
 const { requireAuth } = require('./middleware/auth');
 const { closePool } = require('./db/oraclePool');
 const { repairRegistryOnStartup, shutdownCargaJobs } = require('./services/cargaBdService');
+const { startGeneralReportScheduler, stopGeneralReportScheduler } = require('./services/reporteGeneralService');
 
 const app = express();
 const PORT = process.env.PORT || 7860;
@@ -193,19 +194,19 @@ server.listen(PORT, '0.0.0.0', () => {
   setImmediate(async () => {
     if (!enableStartupWarmup) {
       console.log('[warmup] Deshabilitado. Define ENABLE_STARTUP_WARMUP=true para activarlo.');
-      return;
-    }
-
-    try {
-      const warmupCondenadosStartedAt = Date.now();
-      if (typeof pplRoutes.warmupCondenadosIndex === 'function') {
-        await pplRoutes.warmupCondenadosIndex();
+    } else {
+      try {
+        const warmupCondenadosStartedAt = Date.now();
+        if (typeof pplRoutes.warmupCondenadosIndex === 'function') {
+          await pplRoutes.warmupCondenadosIndex();
+        }
+        const warmupCondenadosElapsed = Date.now() - warmupCondenadosStartedAt;
+        console.log(`[warmup] Filtros de usuarios asignados precalculados (${warmupCondenadosElapsed} ms)`);
+      } catch (err) {
+        console.error('[warmup] No fue posible precargar cache de condenados:', err?.message || err);
       }
-      const warmupCondenadosElapsed = Date.now() - warmupCondenadosStartedAt;
-      console.log(`[warmup] Filtros de usuarios asignados precalculados (${warmupCondenadosElapsed} ms)`);
-    } catch (err) {
-      console.error('[warmup] No fue posible precargar cache de condenados:', err?.message || err);
     }
+    startGeneralReportScheduler();
   });
 });
 
@@ -213,6 +214,7 @@ async function shutdown(signal) {
   console.log(`[shutdown] Señal ${signal}. Cerrando pool Oracle...`);
   try {
     shutdownCargaJobs(signal);
+    stopGeneralReportScheduler();
     await closePool();
   } catch (err) {
     console.error('[shutdown] Error cerrando pool Oracle:', err?.message || err);

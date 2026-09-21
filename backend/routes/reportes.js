@@ -1,5 +1,6 @@
 const express = require('express');
 const reporteAtencionesService = require('../services/reporteAtencionesService');
+const reporteGeneralService = require('../services/reporteGeneralService');
 
 const router = express.Router();
 
@@ -23,6 +24,18 @@ router.get('/atenciones-defensores', async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
+});
+
+router.get('/general', (_req, res) => {
+  const snapshot = reporteGeneralService.getGeneralReportSnapshot();
+  res.setHeader('Cache-Control', 'private, no-cache, must-revalidate');
+  if (!snapshot) {
+    return res.status(503).json({
+      message: 'El reporte general se está preparando. Intente nuevamente en unos minutos.',
+      code: 'GENERAL_REPORT_NOT_READY',
+    });
+  }
+  return res.json(snapshot);
 });
 
 module.exports = router;

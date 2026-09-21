@@ -4,7 +4,7 @@ import {
   createDefensor,
   getCondenados,
   getCondenadosFilterOptions,
-  getDefensoresCondenados,
+  getDefensoresPpl,
   getDefensoresCatalogo,
   extractDefensoresCatalogo,
   isQueuedResponse,
@@ -101,7 +101,9 @@ const AsignacionRow = memo(function AsignacionRow({ row, selected, onToggle }) {
   );
 });
 
-function AsignacionDefensores() {
+function AsignacionDefensores({ tipo = 'condenado' }) {
+  const tipoAsignacion = String(tipo || '').trim().toLowerCase() === 'sindicado' ? 'sindicado' : 'condenado';
+  const esSindicado = tipoAsignacion === 'sindicado';
   const [tab, setTab] = useState('asignacion'); // 'asignacion' | 'reasignacion' | 'eliminarAsignaciones' | 'crearDefensor'
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
@@ -144,6 +146,7 @@ function AsignacionDefensores() {
   const [fMunicipio, setFMunicipio] = useState('');
   const [fLugar, setFLugar] = useState('');
   const [fPotencialSubrogado, setFPotencialSubrogado] = useState('');
+  const [fPriorizacionSindicados, setFPriorizacionSindicados] = useState('todos');
   const [fDefensorActual, setFDefensorActual] = useState('');
   const [filtrosAplicados, setFiltrosAplicados] = useState({
     documento: '',
@@ -152,6 +155,7 @@ function AsignacionDefensores() {
     lugar: '',
     centroId: '',
     potencialSubrogado: '',
+    priorizacionSindicados: '',
     defensorActual: '',
   });
   const [metaConsulta, setMetaConsulta] = useState(null);
@@ -164,7 +168,7 @@ function AsignacionDefensores() {
     setError('');
     try {
       const data = await getCondenados({
-        tipo: 'condenado',
+        tipo: tipoAsignacion,
         page: nextPage,
         pageSize: PAGE_SIZE,
         filters: buildAsignacionBackendFilters(currentTab, filtros),
@@ -183,7 +187,7 @@ function AsignacionDefensores() {
     } finally {
       setCargando(false);
     }
-  }, []);
+  }, [tipoAsignacion]);
 
   const cargarDefensoresActuales = useCallback(async () => {
     const normalizarLista = (catalogo) => {
@@ -204,7 +208,7 @@ function AsignacionDefensores() {
       // Fallback: si el catalogo principal viene vacio en runtime, intenta
       // reconstruir opciones desde el consolidado para no bloquear asignacion.
       if (!normalizados.length) {
-        const fallbackRaw = await getDefensoresCondenados();
+        const fallbackRaw = await getDefensoresPpl(tipoAsignacion);
         normalizados = normalizarLista(extractDefensoresCatalogo(fallbackRaw));
       }
 
@@ -215,7 +219,7 @@ function AsignacionDefensores() {
     } catch (e) {
       reportError(e, 'asignacion-defensores:cargar-defensores');
       try {
-        const fallbackRaw = await getDefensoresCondenados();
+        const fallbackRaw = await getDefensoresPpl(tipoAsignacion);
         const fallback = normalizarLista(extractDefensoresCatalogo(fallbackRaw));
         setDefensores(fallback);
         setDefensoresError(
@@ -229,16 +233,16 @@ function AsignacionDefensores() {
         setDefensoresError('No fue posible cargar defensores.');
       }
     }
-  }, []);
+  }, [tipoAsignacion]);
 
   const cargarOpcionesFiltro = useCallback(async (filters = {}) => {
     try {
-      return await getCondenadosFilterOptions({ tipo: 'condenado', filters });
+      return await getCondenadosFilterOptions({ tipo: tipoAsignacion, filters });
     } catch (e) {
       reportError(e, 'asignacion-defensores:cargar-opciones-filtro');
       return null;
     }
-  }, []);
+  }, [tipoAsignacion]);
 
   useEffect(() => {
     cargarDefensoresActuales();
@@ -455,7 +459,8 @@ function AsignacionDefensores() {
       municipio: String(fMunicipio || '').trim(),
       lugar: String(fLugar || '').trim(),
       centroId,
-      potencialSubrogado: String(fPotencialSubrogado || '').trim(),
+      potencialSubrogado: esSindicado ? '' : String(fPotencialSubrogado || '').trim(),
+      priorizacionSindicados: esSindicado ? String(fPriorizacionSindicados || 'todos').trim() : '',
       defensorActual: tabGestionaAsignacionesExistentes ? String(fDefensorActual || '').trim() : '',
     };
 
@@ -490,6 +495,7 @@ function AsignacionDefensores() {
       lugar: '',
       centroId: '',
       potencialSubrogado: '',
+      priorizacionSindicados: '',
       defensorActual: '',
     };
     setFDocumento('');
@@ -497,6 +503,7 @@ function AsignacionDefensores() {
     setFMunicipio('');
     setFLugar('');
     setFPotencialSubrogado('');
+    setFPriorizacionSindicados('todos');
     setFDefensorActual('');
     setFiltrosAplicados(emptyFiltros);
     setSeleccionados(new Set());
@@ -782,7 +789,7 @@ function AsignacionDefensores() {
 
   return (
     <div className="card loading-layer-host">
-      <h2>PAG - Asignación de casos de condenados</h2>
+      <h2>PAG - Asignación de casos de {esSindicado ? 'sindicados' : 'condenados'}</h2>
 
       <Toast
         open={toastOpen}
@@ -1028,24 +1035,40 @@ function AsignacionDefensores() {
             />
           </div>
 
-          <div className="form-field">
-            <label>Potenciales candidatos de solicitudes</label>
-            <select
-              value={fPotencialSubrogado}
-              onChange={(e) => setFPotencialSubrogado(String(e.target.value || '').trim())}
-            >
-              <option value="">Todas las personas condenadas</option>
-              <option value="potenciales_beneficiarios">Potenciales beneficiarios</option>
-              <option value="mujeres_potenciales_utilidad_publica">
-                Mujeres potenciales beneficiarias únicamente de Utilidad Pública
-              </option>
-              <option value="proximos_requisito_temporal">Personas próximas a cumplir requisito temporal</option>
-              <option value="no_reunen_requisitos">Condenados que no reúnen los requisitos</option>
-            </select>
-            <p className="hint-text">
-              Criterio: campo CATEGORIZACION de situación carcelaria.
-            </p>
-          </div>
+          {esSindicado ? (
+            <div className="form-field">
+              <label>Priorización</label>
+              <select
+                value={fPriorizacionSindicados}
+                onChange={(e) => setFPriorizacionSindicados(String(e.target.value || 'todos').trim())}
+              >
+                <option value="todos">Todos los sindicados</option>
+                <option value="cumple_vencimiento_terminos">Cumple vencimiento de términos</option>
+              </select>
+              <p className="hint-text">
+                Selector informativo. El criterio de vencimiento de términos se habilitará cuando exista una regla de priorización aprobada.
+              </p>
+            </div>
+          ) : (
+            <div className="form-field">
+              <label>Potenciales candidatos de solicitudes</label>
+              <select
+                value={fPotencialSubrogado}
+                onChange={(e) => setFPotencialSubrogado(String(e.target.value || '').trim())}
+              >
+                <option value="">Todas las personas condenadas</option>
+                <option value="potenciales_beneficiarios">Potenciales beneficiarios</option>
+                <option value="mujeres_potenciales_utilidad_publica">
+                  Mujeres potenciales beneficiarias únicamente de Utilidad Pública
+                </option>
+                <option value="proximos_requisito_temporal">Personas próximas a cumplir requisito temporal</option>
+                <option value="no_reunen_requisitos">Condenados que no reúnen los requisitos</option>
+              </select>
+              <p className="hint-text">
+                Criterio: campo CATEGORIZACION de situación carcelaria.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="actions-center" style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
@@ -1062,21 +1085,26 @@ function AsignacionDefensores() {
           filtrosAplicados.lugar ||
           filtrosAplicados.documento ||
           filtrosAplicados.potencialSubrogado ||
+          (esSindicado && filtrosAplicados.priorizacionSindicados) ||
           (tabGestionaAsignacionesExistentes && filtrosAplicados.defensorActual)) && (
           <p className="hint-text" style={{ marginTop: '0.75rem' }}>
             Filtros aplicados:{' '}
             {tabGestionaAsignacionesExistentes ? `${filtrosAplicados.defensorActual || '-'} / ` : ''}
             {filtrosAplicados.departamento || '-'} / {filtrosAplicados.municipio || '-'} /{' '}
             {filtrosAplicados.lugar || '-'} / {filtrosAplicados.documento || '-'} /{' '}
-            {filtrosAplicados.potencialSubrogado === 'potenciales_beneficiarios'
-              ? 'Potenciales beneficiarios'
-              : filtrosAplicados.potencialSubrogado === 'mujeres_potenciales_utilidad_publica'
-                ? 'Mujeres potenciales beneficiarias únicamente de Utilidad Pública'
-              : filtrosAplicados.potencialSubrogado === 'proximos_requisito_temporal'
-                ? 'Próximos a cumplir requisito temporal'
-                : filtrosAplicados.potencialSubrogado === 'no_reunen_requisitos'
-                  ? 'No reúnen requisitos'
-                  : 'Todas las personas condenadas'}
+            {esSindicado
+              ? filtrosAplicados.priorizacionSindicados === 'cumple_vencimiento_terminos'
+                ? 'Cumple vencimiento de términos (informativo)'
+                : 'Todos los sindicados'
+              : filtrosAplicados.potencialSubrogado === 'potenciales_beneficiarios'
+                ? 'Potenciales beneficiarios'
+                : filtrosAplicados.potencialSubrogado === 'mujeres_potenciales_utilidad_publica'
+                  ? 'Mujeres potenciales beneficiarias únicamente de Utilidad Pública'
+                : filtrosAplicados.potencialSubrogado === 'proximos_requisito_temporal'
+                  ? 'Próximos a cumplir requisito temporal'
+                  : filtrosAplicados.potencialSubrogado === 'no_reunen_requisitos'
+                    ? 'No reúnen requisitos'
+                    : 'Todas las personas condenadas'}
           </p>
         )}
       </div>

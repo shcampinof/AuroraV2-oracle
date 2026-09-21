@@ -14,6 +14,7 @@ import AdminUsuarios from './pages/AdminUsuarios.jsx';
 import CajaHerramientas from './pages/CajaHerramientas.jsx';
 import ManualInteractivo from './pages/ManualInteractivo.jsx';
 import ReporteAtencionesDefensores from './pages/ReporteAtencionesDefensores.jsx';
+import ReporteGeneral from './pages/ReporteGeneral.jsx';
 import { completeAzureAdRedirect, getAuthConfig, logout, refreshSession } from './services/auth.js';
 import {
   PPL_DATA_UPDATED_EVENT,
@@ -28,8 +29,10 @@ const VISTAS = new Set([
   'formulario',
   'registros',
   'asignacion',
+  'asignacion-sindicados',
   'herramientas',
   'reporte-atenciones',
+  'reporte-general',
   ...(FEATURE_FLAGS.manualInteractivo ? ['manual'] : []),
   'admin-cargas',
   'admin-usuarios',
@@ -202,7 +205,7 @@ function App() {
     if (vistaActual === 'admin-usuarios' && !esAdmin(session.user)) {
       window.location.hash = '/inicio';
     }
-    if (vistaActual === 'asignacion' && !tieneAccesoPag(session.user)) {
+    if ((vistaActual === 'asignacion' || vistaActual === 'asignacion-sindicados') && !tieneAccesoPag(session.user)) {
       window.location.hash = '/inicio';
     }
   }, [session, vistaActual, conditionsAccepted]);
@@ -212,7 +215,7 @@ function App() {
     if (!VISTAS.has(vista)) return;
     if (vista === 'admin-cargas' && !tieneAccesoCargas(session?.user)) return;
     if (vista === 'admin-usuarios' && !esAdmin(session?.user)) return;
-    if (vista === 'asignacion' && !tieneAccesoPag(session?.user)) return;
+    if ((vista === 'asignacion' || vista === 'asignacion-sindicados') && !tieneAccesoPag(session?.user)) return;
     const nextHash = `/${vista}`;
     if (window.location.hash !== `#${nextHash}`) {
       window.location.hash = nextHash;
@@ -279,7 +282,11 @@ function App() {
   }
 
   if (vistaActual === 'asignacion' && puedeAccederPag) {
-    contenido = <AsignacionDefensores />;
+    contenido = <AsignacionDefensores key="asignacion-condenados" tipo="condenado" />;
+  }
+
+  if (vistaActual === 'asignacion-sindicados' && puedeAccederPag) {
+    contenido = <AsignacionDefensores key="asignacion-sindicados" tipo="sindicado" />;
   }
 
   if (vistaActual === 'herramientas') {
@@ -288,6 +295,10 @@ function App() {
 
   if (vistaActual === 'reporte-atenciones') {
     contenido = <ReporteAtencionesDefensores user={session.user} />;
+  }
+
+  if (vistaActual === 'reporte-general') {
+    contenido = <ReporteGeneral />;
   }
 
   if (FEATURE_FLAGS.manualInteractivo && vistaActual === 'manual') {

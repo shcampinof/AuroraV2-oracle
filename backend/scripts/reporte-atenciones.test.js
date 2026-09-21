@@ -106,7 +106,7 @@ function run() {
   assert.strictEqual(report.resumen.reiteracionesPresentadas, 2);
   assert.strictEqual(report.resumen.casosCerrados, 1, 'un caso cerrado no debe duplicarse por filas repetidas');
   assert.strictEqual(report.resumen.personasConCasoCerrado, 1);
-  assert.strictEqual(report.resumen.totalActuaciones, 7);
+  assert.strictEqual(report.resumen.totalActuaciones, 6, 'los casos cerrados no hacen parte del total de actuaciones');
   assert.strictEqual(report.resumen.personasAsignadas, 2);
   assert.strictEqual(report.resumen.personasActivas, 1);
   assert.strictEqual(report.resumen.personasActivasConGestion, 0);

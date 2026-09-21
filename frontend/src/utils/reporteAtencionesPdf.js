@@ -1,4 +1,5 @@
 import { LOGO_AURORA_URL, LOGO_DEFENSORIA_URL } from '../config/externalAssets.js';
+import { calculateTotalActuaciones } from './reporteAtencionesSummary.js';
 
 const BLUE = [47, 100, 173];
 const DARK_BLUE = [7, 71, 148];
@@ -137,7 +138,7 @@ function buildDocument(pdf, report, logos) {
     ['1.4. Número de reiteraciones presentadas', report.resumen.reiteracionesPresentadas],
     ['1.5. Número de recursos presentados', report.resumen.recursosPresentados],
     ['1.6. Número de casos cerrados durante el periodo', report.resumen.casosCerrados],
-    ['1.7. Número total de actuaciones adelantadas en el periodo', report.resumen.totalActuaciones],
+    ['1.7. Número total de actuaciones adelantadas en el periodo', calculateTotalActuaciones(report.resumen)],
     ['2. Conteo total de personas con actuaciones durante el periodo', ''],
     ['2.1. Número de personas asignadas al defensor público', report.resumen.personasAsignadas],
     ['2.2. Número de personas activas (asignadas que aún no se han cerrado)', report.resumen.personasActivas],

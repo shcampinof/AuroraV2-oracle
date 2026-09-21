@@ -77,6 +77,8 @@ function LoginPage({ onAuthenticated }) {
   const [legalDialog, setLegalDialog] = useState(null);
 
   const isBusy = status === 'loading-config' || status === 'logging-in';
+  const passwordLoginEnabled = Boolean(authConfig?.localAdminEnabled || authConfig?.ldap?.enabled);
+  const azureAdEnabled = Boolean(authConfig?.azureAd?.enabled);
 
   useEffect(() => {
     let alive = true;
@@ -102,23 +104,17 @@ function LoginPage({ onAuthenticated }) {
     setError('');
     setStatus('logging-in');
     try {
-      if (username.trim() && password) {
-        try {
-          const localSession = await loginLocal({ username, password });
-          onAuthenticated(localSession);
-          return;
-        } catch (localErr) {
-          if (authConfig?.ldap?.enabled) {
-            throw localErr;
-          }
-          if (localErr?.message !== 'Usuario o contraseña inválidos.') {
-            throw localErr;
-          }
+      if (passwordLoginEnabled) {
+        if (!username.trim() || !password) {
+          throw new Error('Ingrese su usuario y contraseña institucionales.');
         }
+        const localSession = await loginLocal({ username, password });
+        onAuthenticated(localSession);
+        return;
       }
 
-      if (!authConfig?.azureAd?.enabled) {
-        throw new Error('Usuario o contraseña inválidos.');
+      if (!azureAdEnabled) {
+        throw new Error('El servicio de autenticación institucional no está configurado.');
       }
 
       const session = await loginWithAzureAd(authConfig, { username });
@@ -164,19 +160,25 @@ function LoginPage({ onAuthenticated }) {
               />
             </label>
 
-            <label>
-              <span>CONTRASEÑA</span>
-              <input
-                autoComplete="current-password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="Ingrese su contraseña"
-                disabled={isBusy}
-              />
-            </label>
+            {passwordLoginEnabled ? (
+              <label>
+                <span>CONTRASEÑA</span>
+                <input
+                  autoComplete="current-password"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Ingrese su contraseña"
+                  disabled={isBusy}
+                />
+              </label>
+            ) : null}
 
-            <p>Ingrese con sus credenciales institucionales.</p>
+            <p>
+              {passwordLoginEnabled
+                ? 'Ingrese con sus credenciales institucionales.'
+                : 'Continúe con su cuenta institucional de Microsoft.'}
+            </p>
 
             {error ? <p className="login-error" role="alert">{error}</p> : null}
 
@@ -186,7 +188,11 @@ function LoginPage({ onAuthenticated }) {
               disabled={isBusy}
               title="Iniciar sesión"
             >
-              {status === 'logging-in' ? 'Ingresando...' : 'Iniciar Sesión  ↪'}
+              {status === 'logging-in'
+                ? 'Ingresando...'
+                : passwordLoginEnabled
+                  ? 'Iniciar Sesión  ↪'
+                  : 'Continuar con Microsoft  ↪'}
             </button>
           </form>
 
