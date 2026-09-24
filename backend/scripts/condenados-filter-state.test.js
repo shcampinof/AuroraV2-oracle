@@ -97,6 +97,57 @@ async function captureGestionActionReconciliation(rowsAffected = 0) {
   }
 }
 
+async function captureSingleGestionActionReconciliation(idGestion = 77, rowsAffected = 0) {
+  const oraclePoolPath = require.resolve('../db/oraclePool');
+  const repositoryPath = require.resolve('../repositories/oracle/personaRepository');
+  const oraclePool = require(oraclePoolPath);
+  const originalExecute = oraclePool.execute;
+  let captured = null;
+
+  oraclePool.execute = async (sql, binds, options) => {
+    captured = { sql, binds, options };
+    return { rowsAffected };
+  };
+  delete require.cache[repositoryPath];
+
+  try {
+    const repository = require(repositoryPath);
+    const result = await repository.reconcileGestionActionById(idGestion);
+    return { captured, result };
+  } finally {
+    oraclePool.execute = originalExecute;
+    delete require.cache[repositoryPath];
+  }
+}
+
+async function captureLegacyAutomaticClosureCleanup() {
+  const oraclePoolPath = require.resolve('../db/oraclePool');
+  const repositoryPath = require.resolve('../repositories/oracle/personaRepository');
+  const oraclePool = require(oraclePoolPath);
+  const originalExecute = oraclePool.execute;
+  const captured = [];
+
+  oraclePool.execute = async (sql, binds, options) => {
+    captured.push({ sql, binds, options });
+    if (options?.operation?.endsWith('.count')) return { rows: [{ TOTAL: 2 }] };
+    if (options?.operation?.endsWith('.summary')) {
+      return { rows: [{ CIERRE_CASO: 'Caso cerrado: mensaje automático', TOTAL: 2 }] };
+    }
+    return { rowsAffected: 2 };
+  };
+  delete require.cache[repositoryPath];
+
+  try {
+    const repository = require(repositoryPath);
+    const preview = await repository.previewLegacyAutomaticClosureCleanup();
+    const cleanup = await repository.clearLegacyAutomaticClosures();
+    return { captured, preview, cleanup };
+  } finally {
+    oraclePool.execute = originalExecute;
+    delete require.cache[repositoryPath];
+  }
+}
+
 async function testEstadoUsesDerivedWorkflowMilestones() {
   const captured = await captureStateSearch({
     defensor: 'PEDRO PABLO DIAZ CRISTANCHO',
@@ -210,7 +261,8 @@ async function testCargaReconcilesLatestGestionWithCalculatedAction() {
   assert.deepStrictEqual(captured.binds, {});
   assert.match(captured.sql, /MERGE INTO DNDP\.GESTION_JURIDICA target/);
   assert.match(captured.sql, /PARTITION BY s\.ID_PERSONA/);
-  assert.match(captured.sql, /PARTITION BY g\.ID_SITUACION/);
+  assert.match(captured.sql, /JOIN DNDP\.GESTION_JURIDICA g/);
+  assert.doesNotMatch(captured.sql, /latest_gestion/);
   assert.match(captured.sql, /WHERE s\.RN = 1/);
   assert.match(captured.sql, /AND NVL\(s\.ACTIVO, 0\) = 1/);
   for (const action of listAcciones()) {
@@ -223,6 +275,46 @@ async function testCargaReconcilesLatestGestionWithCalculatedAction() {
   }
   assert.match(captured.sql, /SET target\.ACCION_REALIZAR = calculated\.ACCION_CALCULADA/);
   assert.match(captured.sql, /__AURORA_NULL__/);
+}
+
+async function testSaveReconcilesOneGestionWithOracleState() {
+  const { captured, result } = await captureSingleGestionActionReconciliation(77, 1);
+  assert.strictEqual(result.updated, 1);
+  assert.strictEqual(captured.options.operation, 'persona.reconcileGestionActionById');
+  assert.strictEqual(captured.options.autoCommit, true);
+  assert.strictEqual(captured.binds.idGestion, 77);
+  assert.match(captured.sql, /MERGE INTO DNDP\.GESTION_JURIDICA target/);
+  assert.match(captured.sql, /WHERE g\.ID_GESTION = :idGestion/);
+  assert.match(
+    captured.sql,
+    /WHEN g\.FECHA_DECISION_RECURSO IS NOT NULL[\s\S]+AND NOT \(g\.SENTIDO_DECISION_RESUELVE_RECURSO IS NOT NULL[\s\S]+THEN 'PENDIENTE_DECISION'/
+  );
+  assert.match(captured.sql, /OTRO MOTIVO\./);
+  assert.match(captured.sql, /SE CIERRA PORQUE LA PERSONA YA NO ESTA EN EL ERON/);
+  assert.match(
+    captured.sql,
+    /UTILIDAD PUBLICA%'\)[\s\S]+CUMPLE_REQUISITO_MARGINALIDAD[\s\S]+?= 'NO'\s+OR[\s\S]+?CUMPLE_REQUISITO_JEFATURA_HOGAR[\s\S]+?= 'NO'/
+  );
+  assert.match(
+    captured.sql,
+    /OTRAS_SOLICITUDES_TRAMITAR[\s\S]+g\.FECHA_ANALISIS IS NOT NULL[\s\S]+OR/
+  );
+  assert.doesNotMatch(captured.sql, /CASO CERRADO: EN LAS PREGUNTAS 30 A 34/);
+  assert.doesNotMatch(captured.sql, /LIKE '%HACER SEGUIMIENTO/);
+  assert.doesNotMatch(captured.sql, /LIKE '%ANALIZAR EL CASO%'/);
+}
+
+async function testLegacyAutomaticClosuresHaveAuditableCleanup() {
+  const { captured, preview, cleanup } = await captureLegacyAutomaticClosureCleanup();
+  assert.strictEqual(preview.pending, 2);
+  assert.strictEqual(preview.summary[0].total, 2);
+  assert.strictEqual(cleanup.updated, 2);
+  assert.strictEqual(captured.length, 3);
+  captured.forEach(({ sql }) => assert.match(sql, /LIKE 'CASO CERRADO%'/));
+  const update = captured.find(({ options }) => options?.operation === 'persona.clearLegacyAutomaticClosures');
+  assert(update);
+  assert.match(update.sql, /SET CIERRE_CASO = NULL/);
+  assert.strictEqual(update.options.autoCommit, true);
 }
 
 async function testLugarKeepsPrefixFilterAlongsideEstado() {
@@ -256,7 +348,7 @@ async function testQueryContainsBothBusinessFlows() {
 async function testAssignedUsersDefaultAlwaysRequiresActiveSituation() {
   for (const filters of [
     { estadoCodigo: 'CASO_CERRADO' },
-    { accionCodigo: 'SIN_ACCION_PENDIENTE' },
+    { accionCodigo: 'CASO_CERRADO' },
     { departamento: 'BOGOTA D.C.' },
     { documento: '1000221818' },
     { defensor: 'NANCY LANUZA' },
@@ -330,7 +422,7 @@ async function testOtherActiveLocationsExcludeOfficialAliases() {
 }
 
 async function testActionCodeFiltersThroughCanonicalStateIdentity() {
-  const captured = await captureStateSearch({ accionCodigo: 'REALIZAR_ENTREVISTA' });
+  const captured = await captureStateSearch({ accionCodigo: 'ENTREVISTAR_USUARIO' });
   assert.strictEqual(captured.binds.accionEstado0, 'ENTREVISTAR_USUARIO');
   assert.match(captured.sql, /ESTADO_CODIGO IN \(:accionEstado0\)/);
 }
@@ -457,6 +549,8 @@ async function testReportWithoutDefenderIdentityFailsClosed() {
   await testFilterOptionsExposeDefenderIdentity();
   await testFilterOptionsOnlyUseActivePrisonSituations();
   await testCargaReconcilesLatestGestionWithCalculatedAction();
+  await testSaveReconcilesOneGestionWithOracleState();
+  await testLegacyAutomaticClosuresHaveAuditableCleanup();
   await testUnknownStateNeverFallsBackToUnfilteredResults();
   await testQueryContainsBothBusinessFlows();
   await testAssignedUsersDefaultAlwaysRequiresActiveSituation();

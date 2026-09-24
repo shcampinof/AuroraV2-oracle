@@ -46,6 +46,7 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
   const originals = {
     findActiveContextByDocumento: personaRepo.findActiveContextByDocumento,
     listRowsWithActiveSituacionAndGestiones: personaRepo.listRowsWithActiveSituacionAndGestiones,
+    reconcileGestionActionById: personaRepo.reconcileGestionActionById,
     getLatestBySituacion: gestionRepo.getLatestBySituacion,
     replaceActiveAssignmentByPersona: asignacionRepo.replaceActiveAssignmentByPersona,
     endActiveAssignmentByPersona: asignacionRepo.endActiveAssignmentByPersona,
@@ -70,6 +71,7 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
       G_DEFENSOR: 'DEFENSOR ACTUAL',
     },
   ];
+  personaRepo.reconcileGestionActionById = async () => ({ updated: 1 });
   gestionRepo.getLatestBySituacion = async () => ({ ID_GESTION: 30 });
   asignacionRepo.replaceActiveAssignmentByPersona = async (idPersona, assignment) => {
     assignmentWrites.push({ idPersona, assignment });
@@ -132,6 +134,7 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
   } finally {
     personaRepo.findActiveContextByDocumento = originals.findActiveContextByDocumento;
     personaRepo.listRowsWithActiveSituacionAndGestiones = originals.listRowsWithActiveSituacionAndGestiones;
+    personaRepo.reconcileGestionActionById = originals.reconcileGestionActionById;
     gestionRepo.getLatestBySituacion = originals.getLatestBySituacion;
     asignacionRepo.replaceActiveAssignmentByPersona = originals.replaceActiveAssignmentByPersona;
     asignacionRepo.endActiveAssignmentByPersona = originals.endActiveAssignmentByPersona;
@@ -211,9 +214,11 @@ async function testNewActuacionAlwaysPersistsCanonicalAction() {
   const originals = {
     findActiveContextByDocumento: personaRepo.findActiveContextByDocumento,
     listRowsWithActiveSituacionAndGestiones: personaRepo.listRowsWithActiveSituacionAndGestiones,
+    reconcileGestionActionById: personaRepo.reconcileGestionActionById,
     insertGestion: gestionRepo.insertGestion,
   };
   const writes = [];
+  const reconciled = [];
 
   personaRepo.findActiveContextByDocumento = async () => ({
     P_ID_PERSONA: 10,
@@ -233,6 +238,10 @@ async function testNewActuacionAlwaysPersistsCanonicalAction() {
     writes.push({ idSituacion, fields });
     return 31;
   };
+  personaRepo.reconcileGestionActionById = async (idGestion) => {
+    reconciled.push(idGestion);
+    return { updated: 1 };
+  };
   delete require.cache[servicePath];
 
   try {
@@ -243,14 +252,144 @@ async function testNewActuacionAlwaysPersistsCanonicalAction() {
         'Acción a impulsar': 'Presentar solicitud',
       },
     });
-    assert.strictEqual(writes[0].fields.ACCION_REALIZAR, 'Presentar solicitud');
+    assert(!Object.prototype.hasOwnProperty.call(writes[0].fields, 'ACCION_REALIZAR'));
 
     await service.createActuacionByDocumento('123', { data: {} });
-    assert.strictEqual(writes[1].fields.ACCION_REALIZAR, 'Analizar el caso');
+    assert(!Object.prototype.hasOwnProperty.call(writes[1].fields, 'ACCION_REALIZAR'));
+    assert.deepStrictEqual(reconciled, [31, 31]);
   } finally {
     personaRepo.findActiveContextByDocumento = originals.findActiveContextByDocumento;
     personaRepo.listRowsWithActiveSituacionAndGestiones = originals.listRowsWithActiveSituacionAndGestiones;
+    personaRepo.reconcileGestionActionById = originals.reconcileGestionActionById;
     gestionRepo.insertGestion = originals.insertGestion;
+    delete require.cache[servicePath];
+  }
+}
+
+async function testBothBlock5VariantsPersistEveryFieldInOneSave() {
+  const personaRepo = require('../repositories/oracle/personaRepository');
+  const gestionRepo = require('../repositories/oracle/gestionRepository');
+  const servicePath = require.resolve('../services/pplService');
+  const originals = {
+    findActiveContextByDocumento: personaRepo.findActiveContextByDocumento,
+    listRowsWithActiveSituacionAndGestiones: personaRepo.listRowsWithActiveSituacionAndGestiones,
+    reconcileGestionActionById: personaRepo.reconcileGestionActionById,
+    updateGestionById: gestionRepo.updateGestionById,
+  };
+  const writes = [];
+
+  personaRepo.findActiveContextByDocumento = async () => ({
+    P_ID_PERSONA: 10,
+    S_ID_SITUACION: 20,
+    S_ACTIVO: 1,
+  });
+  personaRepo.listRowsWithActiveSituacionAndGestiones = async () => [{
+    P_ID_PERSONA: 10,
+    P_NUMERO: '123',
+    S_ID_SITUACION: 20,
+    S_ACTIVO: 1,
+    S_SITUACION: 'Condenado',
+    G_ID_GESTION: 77,
+  }];
+  personaRepo.reconcileGestionActionById = async () => ({ updated: 1 });
+  gestionRepo.updateGestionById = async (idGestion, fields) => {
+    writes.push({ idGestion, fields });
+    return 1;
+  };
+  delete require.cache[servicePath];
+
+  try {
+    const service = require(servicePath);
+    await service.updateByDocumento('123', {
+      actuacionId: '123-77',
+      data: {
+        'Fecha de entrevista psicosocial': '2026-09-10',
+        'Cumple el requisito de marginalidad': 'Sí',
+        'Cumple el requisito de jefatura de hogar': 'Sí',
+        'Se requiere misión de trabajo': 'Sí',
+        'Fecha de solicitud de misión de trabajo': '2026-09-11',
+        'Fecha de asignación de investigador': '2026-09-12',
+        'Fecha en la que se reciben todas las pruebas': '2026-09-13',
+        'Fecha de radicación de solicitud de utilidad pública': '2026-09-14',
+        'Fecha de decisión de la autoridad': '',
+        'Sentido de la decisión': '',
+        'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública':
+          'Caso cerrado: en las preguntas 30 a 34 no se marcó procedencia para la solicitud.',
+      },
+    });
+
+    const utilidad = writes[0].fields;
+    assert.strictEqual(writes[0].idGestion, 77);
+    assert(utilidad.FECHA_ENTREVISTA_PSICOSOCIAL instanceof Date);
+    assert.strictEqual(utilidad.CUMPLE_REQUISITO_MARGINALIDAD, 'Sí');
+    assert.strictEqual(utilidad.CUMPLE_REQUISITO_JEFATURA_HOGAR, 'Sí');
+    assert.strictEqual(utilidad.REQUIERE_MISION_TRABAJO, 'Sí');
+    assert(utilidad.FECHA_SOLICITUD_MISION_TRABAJO instanceof Date);
+    assert(utilidad.FECHA_ASIGNACION_INVESTIGADOR instanceof Date);
+    assert(utilidad.FECHA_RECEPCION_TODAS_PRUEBAS instanceof Date);
+    assert(utilidad.FECHA_RADICACION_UTILIDAD instanceof Date);
+    assert.strictEqual(utilidad.CIERRE_CASO, null, 'Un cierre automático legado debe limpiarse.');
+
+    await service.updateByDocumento('123', {
+      actuacionId: '123-77',
+      data: {
+        'Fecha de recepción de pruebas aportadas por el usuario (si aplica)': '2026-09-10',
+        'Fecha de solicitud de documentos al Inpec (si aplica)': '2026-09-11',
+        'Fecha de presentación de la solicitud a la autoridad': '2026-09-12',
+        'Número de insistencias': '2',
+        'Fecha de insistencia 1': '2026-09-13',
+        'Fecha de insistencia 2': '2026-09-14',
+        'Fecha de decisión de la autoridad': '',
+        'Sentido de la decisión': '',
+      },
+    });
+
+    const normal = writes[1].fields;
+    assert(normal.FECHA_RECEPCION_PRUEBAS_USUARIO instanceof Date);
+    assert(normal.FECHA_SOLICITUD_DOCS_INPEC instanceof Date);
+    assert(normal.FECHA_PRESENTACION_SOLICITUD_AUTORIDAD instanceof Date);
+    assert.strictEqual(normal.INSISTENCIAS, 2);
+    assert(normal.FECHA_INSISTENCIA_1 instanceof Date);
+    assert(normal.FECHA_INSISTENCIA_2 instanceof Date);
+
+    await service.updateByDocumento('123', {
+      actuacionId: '123-77',
+      data: {
+        'Cierre del caso por imposibilidad de avanzar (si aplica)': 'Otro motivo.',
+      },
+    });
+    assert.strictEqual(writes[2].fields.CIERRE_CASO, 'Otro motivo.');
+  } finally {
+    personaRepo.findActiveContextByDocumento = originals.findActiveContextByDocumento;
+    personaRepo.listRowsWithActiveSituacionAndGestiones = originals.listRowsWithActiveSituacionAndGestiones;
+    personaRepo.reconcileGestionActionById = originals.reconcileGestionActionById;
+    gestionRepo.updateGestionById = originals.updateGestionById;
+    delete require.cache[servicePath];
+  }
+}
+
+async function testApiAlwaysExposesOracleDerivedStateAsAction() {
+  const personaRepo = require('../repositories/oracle/personaRepository');
+  const servicePath = require.resolve('../services/pplService');
+  const originalList = personaRepo.listRowsWithActiveSituacionAndGestiones;
+  personaRepo.listRowsWithActiveSituacionAndGestiones = async () => [{
+    P_NUMERO: '123',
+    S_ACTIVO: 1,
+    S_SITUACION: 'Condenado',
+    G_ID_GESTION: 77,
+    G_ACCION_REALIZAR: 'Caso cerrado',
+    ESTADO_CODIGO: 'PENDIENTE_DECISION',
+  }];
+  delete require.cache[servicePath];
+
+  try {
+    const service = require(servicePath);
+    const record = await service.getByDocumento('123');
+    assert.strictEqual(record['Estado del trámite'], 'Pendiente de decisión');
+    assert.strictEqual(record['Acción a impulsar'], 'Pendiente de decisión');
+    assert.strictEqual(record['Acción a realizar'], 'Pendiente de decisión');
+  } finally {
+    personaRepo.listRowsWithActiveSituacionAndGestiones = originalList;
     delete require.cache[servicePath];
   }
 }
@@ -287,6 +426,8 @@ function testNewDefenderNameIsUppercaseAndAccentFree() {
   await testInactivePrisonRecordRejectsUpdates();
   await testBulkUnassignmentClosesOnlyEligibleActiveAssignments();
   await testNewActuacionAlwaysPersistsCanonicalAction();
+  await testBothBlock5VariantsPersistEveryFieldInOneSave();
+  await testApiAlwaysExposesOracleDerivedStateAsAction();
   testUpdatedLegalSituationHasPriority();
   testNewDefenderNameIsUppercaseAndAccentFree();
   console.log('OK asignacion-safety.test');

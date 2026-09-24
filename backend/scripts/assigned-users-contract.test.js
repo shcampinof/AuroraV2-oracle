@@ -55,7 +55,7 @@ function testEveryColumnHasMappedDataContract() {
   assert.equal(mapped.tieneHistorialActivoInactivo, true);
   assert.equal(mapped.estadoCodigo, 'ENTREVISTAR_USUARIO');
   assert.equal(mapped.estadoEtiqueta, 'Entrevistar al usuario');
-  assert.equal(mapped.accionPendiente.codigo, 'REALIZAR_ENTREVISTA');
+  assert.equal(mapped.accionPendiente.codigo, 'ENTREVISTAR_USUARIO');
   assert.equal(mapped.accionPendiente.homologada, false);
   assert.equal(mapped.accionPendiente.valorOriginal, 'Texto histórico distinto');
   assert.equal(mapped['Acción a impulsar'], 'Entrevistar al usuario');
@@ -71,7 +71,7 @@ function testInactiveRowsCloseStateAndAction() {
   assert.equal(mapped.estadoCodigo, 'CASO_CERRADO');
   assert.equal(mapped.accionImpulsar, 'Caso cerrado');
   assert.equal(mapped['Acción a impulsar'], 'Caso cerrado');
-  assert.equal(mapped.accionPendiente.codigo, 'SIN_ACCION_PENDIENTE');
+  assert.equal(mapped.accionPendiente.codigo, 'CASO_CERRADO');
   assert.equal(mapped.accionPendiente.homologada, true);
   assert.equal(mapped.estadoSource['Acción a impulsar'], 'Caso cerrado');
 }
@@ -85,6 +85,15 @@ function testPersistedCalculatedActionDoesNotExposeHomologationWarning() {
   assert.equal(mapped.accionPendiente.etiqueta, 'Entrevistar al usuario');
   assert.equal(mapped.accionPendiente.valorOriginal, 'Entrevistar al usuario');
   assert.equal(mapped.accionPendiente.homologada, true);
+}
+
+function testMissingOracleStateNeverFallsBackToStoredActionText() {
+  const row = activeRawRow();
+  delete row.ESTADO_CODIGO;
+  row['Accion a realizar'] = 'Presentar solicitud';
+  const mapped = contract.mapRow(row);
+  assert.equal(mapped.estadoCodigo, 'ANALIZAR_CASO');
+  assert.equal(mapped.estadoEtiqueta, 'Analizar el caso');
 }
 
 function testAllApiFiltersAreParsedAndTrimmed() {
@@ -163,6 +172,7 @@ function testActiveCenterNamesRemainTheSourceOfTruth() {
 testEveryColumnHasMappedDataContract();
 testInactiveRowsCloseStateAndAction();
 testPersistedCalculatedActionDoesNotExposeHomologationWarning();
+testMissingOracleStateNeverFallsBackToStoredActionText();
 testAllApiFiltersAreParsedAndTrimmed();
 testLegacyInMemoryFiltersRemainNormalized();
 testInactiveRowsRequireExplicitFilter();

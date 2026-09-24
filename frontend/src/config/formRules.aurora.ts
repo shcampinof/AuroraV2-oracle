@@ -51,6 +51,7 @@ export interface DependencyRule {
   effects: {
     disable?: string[];
     enable?: string[];
+    finalDisable?: string[];
   };
 }
 
@@ -59,7 +60,7 @@ export type DerivedStatus =
   | 'Entrevistar al usuario'
   | 'Presentar solicitud'
   | 'Presentar recurso'
-  | 'Pendiente decisión'
+  | 'Pendiente de decisión'
   | 'Caso cerrado';
 
 export interface DerivedStatusRule {
@@ -94,6 +95,7 @@ const FIELD = {
   q53: 'Motivo de la decisión negativa',
   q54: 'Se presenta recurso',
   q55: 'Fecha de recurso en caso desfavorable',
+  fechaPresentacionRecurso: 'Fecha de presentación del recurso',
   q56: 'Sentido de la decisión que resuelve recurso',
   fechaDecisionRecurso: 'Fecha de la decisión del recurso',
   b5NormalRecepcionPruebas: 'Fecha de recepción de pruebas aportadas por el usuario (si aplica)',
@@ -107,6 +109,8 @@ const FIELD = {
   b5NormalFechaInsistencia3: 'Fecha de insistencia 3',
   b5NormalFechaInsistencia4: 'Fecha de insistencia 4',
   b5NormalFechaInsistencia5: 'Fecha de insistencia 5',
+  cierreCaso: 'Cierre del caso por imposibilidad de avanzar (si aplica)',
+  cierreCasoUtilidad: 'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública',
 } as const;
 
 // Transitional catalog: keeps stable IDs aligned with current text keys.
@@ -339,6 +343,27 @@ function hasExplicitNingunaInP36(record: FormRecord): boolean {
   return selections.length === 1 && selections[0] === 'ninguna';
 }
 
+function hasExplicitClosure(record: FormRecord): boolean {
+  const allowed = [
+    'Se cierra porque la persona ya no está en el ERON por razón ajena a este trámite.',
+    'Otro motivo.',
+  ];
+  const value = getAny(record, [
+    FIELD.cierreCaso,
+    FIELD.cierreCasoUtilidad,
+    'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad publica',
+  ]);
+  return allowed.some((option) => equalsInsensitive(value, option));
+}
+
+export function isCierreBloque3Aurora(record: FormRecord): boolean {
+  return (
+    areAllNegativeInProcedencias30a34(record) &&
+    hasExplicitNingunaInP36(record) &&
+    isFilled(getAny(record, FECHA_ANALISIS_ALIASES))
+  );
+}
+
 function hasPositiveP36Request(record: FormRecord): boolean {
   const raw = getAny(record, [
     FIELD.q36,
@@ -512,11 +537,7 @@ function isCasoCerrado(record: FormRecord): boolean {
   const q54 = get(record, FIELD.q54);
   const isUtilidad = isUtilidadPublicaFlow(record);
 
-  if (
-    areAllNegativeInProcedencias30a34(record) &&
-    hasExplicitNingunaInP36(record) &&
-    isFilled(getAny(record, FECHA_ANALISIS_ALIASES))
-  ) return true;
+  if (isCierreBloque3Aurora(record)) return true;
   // Los registros históricos usan "-"/"--" como marcador de campo vacío.
   // Solo una respuesta real y negativa puede cerrar el caso.
   if (isFilled(decisionUsuario) && !decisionUsuarioPermiteContinuar(decisionUsuario)) {
@@ -526,7 +547,8 @@ function isCasoCerrado(record: FormRecord): boolean {
   // Ignora datos históricos de Bloque 5 cuando el flujo actual todavía no
   // ha completado los bloques 3 y 4. Evita cierres y mensajes automáticos prematuros.
   if (!canEvaluateBlock5State(record)) return false;
-  if (equalsInsensitive(q44, 'No') || equalsInsensitive(q45, 'No')) return true;
+  if (hasExplicitClosure(record)) return true;
+  if (isUtilidad && (equalsInsensitive(q44, 'No') || equalsInsensitive(q45, 'No'))) return true;
   if (isDecisionNegativa(record)) {
     if (isRecursoPresentado(q54)) return hasSentidoDecisionRecurso(record);
     return isRecursoNoPresentado(q54);
@@ -611,14 +633,14 @@ export const mandatoryByBlock: MandatoryByBlock = {
     { key: 'Poder en caso de avanzar con la solicitud', label: '42 Poder en caso de avanzar con la solicitud' },
   ],
   bloque5UtilidadPublica: [
-    { key: FIELD.q43, label: '43 Fecha de entrevista psicosocial' },
+    { key: FIELD.q43, label: '43 Fecha de entrevista social' },
     { key: FIELD.q44, label: '44 Cumple requisito de marginalidad' },
     { key: FIELD.q45, label: '45 Cumple requisito de jefatura de hogar' },
     { key: FIELD.q46, label: '46 Se requiere misión de trabajo' },
-    { key: FIELD.q49, label: '49 Fecha en la que se reciben todas las pruebas' },
-    { key: FIELD.q50, label: '50 Fecha de radicación de utilidad pública' },
-    { key: FIELD.q51, label: '51 Fecha de decisión de la autoridad' },
-    { key: FIELD.q52, label: '52 Sentido de la decisión' },
+    { key: FIELD.q49, label: '49 Fecha en la que se reciben todas las pruebas', optional: true },
+    { key: FIELD.q50, label: '50 Fecha de presentación de la solicitud de utilidad pública' },
+    { key: FIELD.q51, label: '51 Fecha de decisión de la autoridad', optional: true },
+    { key: FIELD.q52, label: '52 Sentido de la decisión', optional: true },
   ],
   bloque5TramiteNormal: [
     {
@@ -631,15 +653,15 @@ export const mandatoryByBlock: MandatoryByBlock = {
       label: '44 Fecha de solicitud de documentos al Inpec',
       optional: true,
     },
-    { key: FIELD.b5NormalRadicacion, label: '45 Fecha de presentación de la solicitud a la autoridad' },
+    { key: FIELD.b5NormalRadicacion, label: '45 Fecha de presentación de la solicitud a la autoridad', optional: true },
     { key: FIELD.b5NormalNumeroInsistencias, label: '46 Número de insistencias', optional: true },
     { key: FIELD.b5NormalFechaInsistencia1, label: '47 Fechas de las insistencias', optional: true },
-    { key: FIELD.b5NormalDecision, label: '48 Fecha de decisión de la autoridad' },
-    { key: FIELD.q52, label: '49 Sentido de la decisión' },
+    { key: FIELD.b5NormalDecision, label: '48 Fecha de decisión de la autoridad', optional: true },
+    { key: FIELD.q52, label: '49 Sentido de la decisión', optional: true },
     { key: FIELD.q53, label: '50 Motivo de la decisión negativa', optional: true },
-    { key: FIELD.q54, label: '51 Se presenta recurso' },
+    { key: FIELD.q54, label: '51 Se presenta recurso', optional: true },
     { key: FIELD.q55, label: '52 Fecha de recurso en caso desfavorable', optional: true },
-    { key: FIELD.b5NormalSentidoResuelveSolicitud, label: '54 Sentido de la decisión que resuelve la solicitud' },
+    { key: FIELD.b5NormalSentidoResuelveSolicitud, label: '54 Sentido de la decisión que resuelve la solicitud', optional: true },
   ],
 };
 
@@ -671,6 +693,57 @@ export const lockRules: LockRule[] = [
 ];
 
 export const dependencyRules: DependencyRule[] = [
+  {
+    id: 'dep_q44_q45_no_bloquea_resto_utilidad_publica',
+    source: { key: FIELD.q44, label: '44/45 Requisitos de elegibilidad para utilidad pública' },
+    description: 'Si marginalidad o jefatura de hogar es No, bloquea los campos posteriores del bloque 5A.',
+    when: (record) =>
+      isUtilidadPublicaFlow(record) &&
+      (equalsInsensitive(get(record, FIELD.q44), 'No') || equalsInsensitive(get(record, FIELD.q45), 'No')),
+    effects: {
+      finalDisable: [
+        FIELD.q46,
+        FIELD.q47,
+        FIELD.q48,
+        FIELD.q49,
+        FIELD.q50,
+        FIELD.q51,
+        FIELD.q52,
+        FIELD.q53,
+        FIELD.q54,
+        FIELD.q55,
+        FIELD.fechaPresentacionRecurso,
+        FIELD.fechaDecisionRecurso,
+        FIELD.q56,
+        FIELD.cierreCasoUtilidad,
+      ],
+    },
+  },
+  {
+    id: 'dep_q46_sin_respuesta_bloquea_resto_utilidad_publica',
+    source: { key: FIELD.q46, label: '46 Se requiere misión de trabajo' },
+    description: 'En utilidad pública, los campos posteriores se habilitan después de responder la pregunta 46.',
+    when: (record) =>
+      isUtilidadPublicaFlow(record) &&
+      !equalsAnyInsensitive(get(record, FIELD.q46), ['Sí', 'Si', 'S?', 'No']),
+    effects: {
+      finalDisable: [
+        FIELD.q47,
+        FIELD.q48,
+        FIELD.q49,
+        FIELD.q50,
+        FIELD.q51,
+        FIELD.q52,
+        FIELD.q53,
+        FIELD.q54,
+        FIELD.q55,
+        FIELD.fechaPresentacionRecurso,
+        FIELD.fechaDecisionRecurso,
+        FIELD.q56,
+        FIELD.cierreCasoUtilidad,
+      ],
+    },
+  },
   // Regla: AURORA.B5B.DEPENDENCIA.5
   {
     id: 'dep_q41_no_deshabilita_q43_en_5b',
@@ -700,7 +773,7 @@ export const dependencyRules: DependencyRule[] = [
     id: 'dep_q46_no_deshabilita_47_48',
     source: { key: FIELD.q46, label: '46 Se requiere misión de trabajo' },
     description: 'Si Q46 = NO, deshabilita 47 y 48.',
-    when: (record) => equalsInsensitive(get(record, FIELD.q46), 'No'),
+    when: (record) => isUtilidadPublicaFlow(record) && equalsInsensitive(get(record, FIELD.q46), 'No'),
     effects: {
       disable: [FIELD.q47, FIELD.q48],
     },
@@ -796,7 +869,7 @@ export const derivedStatusRules: DerivedStatusRule[] = [
   },
   {
     id: 'estado_pendiente_decision_recurso',
-    status: 'Pendiente decisi\u00f3n',
+    status: 'Pendiente de decisi\u00f3n',
     when: (record) => {
       if (!canEvaluateBlock5State(record)) return false;
       if (!isDecisionNegativa(record)) return false;
@@ -806,7 +879,7 @@ export const derivedStatusRules: DerivedStatusRule[] = [
   },
   {
     id: 'estado_pendiente_sentido_decision_recurso',
-    status: 'Pendiente decisi\u00f3n',
+    status: 'Pendiente de decisi\u00f3n',
     when: (record) => canEvaluateBlock5State(record) && hasFechaDecisionRecursoSinSentido(record),
   },
   {
@@ -820,12 +893,12 @@ export const derivedStatusRules: DerivedStatusRule[] = [
   },
   {
     id: 'estado_pendiente_sentido_decision',
-    status: 'Pendiente decisi\u00f3n',
+    status: 'Pendiente de decisi\u00f3n',
     when: (record) => canEvaluateBlock5State(record) && hasFechaDecisionSinSentido(record),
   },
   {
     id: 'estado_pendiente_decision',
-    status: 'Pendiente decisi\u00f3n',
+    status: 'Pendiente de decisi\u00f3n',
     when: (record) => {
       if (!canEvaluateBlock5State(record)) return false;
       const tieneRadicacion = isFilled(getFechaRadicacion(record));

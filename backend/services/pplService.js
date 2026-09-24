@@ -171,6 +171,11 @@ const NUMERIC_FIELDS = new Set([
   'INSISTENCIAS',
 ]);
 
+const EXPLICIT_CIERRE_CASO_VALUES = new Map([
+  'Se cierra porque la persona ya no está en el ERON por razón ajena a este trámite.',
+  'Otro motivo.',
+].map((value) => [normalizeText(value), value]));
+
 function normalizeText(value) {
   return String(value ?? '')
     .normalize('NFD')
@@ -358,6 +363,11 @@ function toTypedDbValue(column, value) {
   if (col === 'REQUERIMIENTOS') {
     const normalized = normalizeRequerimientosValue(value);
     return normalized === '' ? null : normalized;
+  }
+
+  if (col === 'CIERRE_CASO') {
+    const canonical = EXPLICIT_CIERRE_CASO_VALUES.get(normalizeText(value));
+    return canonical || null;
   }
 
   const text = String(value).trim();
@@ -613,13 +623,12 @@ function toLegacyRecord(raw = {}) {
     Defensor: String(raw.G_DEFENSOR ?? ''),
     defensorAsignado: String(raw.G_DEFENSOR ?? ''),
 
-    'Acción a impulsar': situacionActiva
-      ? String(raw.G_ACCION_REALIZAR ?? '')
-      : 'Caso cerrado',
+    // Estado y acción son el mismo concepto. La respuesta siempre usa el valor
+    // canónico calculado por Oracle, incluso si una fila histórica conserva una
+    // materialización anterior pendiente de la migración de datos.
+    'Acción a impulsar': estadoEtiqueta,
     // Alias legado para actuaciones creadas antes de unificar la terminología.
-    'Acción a realizar': situacionActiva
-      ? String(raw.G_ACCION_REALIZAR ?? '')
-      : 'Caso cerrado',
+    'Acción a realizar': estadoEtiqueta,
     'Fecha de análisis jurídico del caso': toIsoDate(raw.G_FECHA_ANALISIS),
     'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS': String(raw.G_ACTUACION_ADELANTAR ?? raw.G_VENCIMIENTO_TERMINOS ?? ''),
     'Procedencia de utilidad pública (solo para mujeres)': String(raw.G_UTILIDAD_PUBLICA ?? ''),
@@ -777,17 +786,21 @@ function normalizeCalificacionesPayload(payload) {
 function splitUpdatesByTable(payload, { allowBaseUpdates = false } = {}) {
   const clean = stripControlKeys(normalizePayload(payload));
   const grouped = { PERSONA: {}, SITUACION: {}, GESTION: {} };
-  const accionImpulsarKey = Object.keys(clean).find(
-    (key) => normalizeText(key) === normalizeText('Acción a impulsar')
-  );
 
   Object.entries(clean).forEach(([key, value]) => {
     const binding = UPDATE_BINDINGS.get(normalizeText(key));
     if (!binding) return;
+    // Estado y acción son calculados por Oracle a partir de los campos fuente.
+    // Nunca se acepta como autoridad el valor calculado por el cliente.
+    if (binding.table === 'GESTION' && binding.column === 'ACCION_REALIZAR') return;
     if (!allowBaseUpdates && binding.table === 'PERSONA') return;
-    // El formulario puede corregir el enfoque diferencial, pero los demás
-    // campos base de la situación siguen siendo de solo lectura para esta API.
-    if (!allowBaseUpdates && binding.table === 'SITUACION' && binding.column !== 'ENFOQUE') return;
+    // El formulario puede corregir el enfoque y actualizar el flujo jurídico.
+    // Los demás campos base de la situación siguen siendo de solo lectura.
+    if (
+      !allowBaseUpdates &&
+      binding.table === 'SITUACION' &&
+      !['ENFOQUE', 'SITUACION_JURIDICA_ACTUALIZADA'].includes(binding.column)
+    ) return;
     const dbValue = toTypedDbValue(binding.column, value);
     if (
       dbValue == null &&
@@ -798,11 +811,6 @@ function splitUpdatesByTable(payload, { allowBaseUpdates = false } = {}) {
     }
     grouped[binding.table][binding.column] = dbValue;
   });
-
-  // El nombre canónico prevalece si un cliente envía también el alias legado.
-  if (accionImpulsarKey) {
-    grouped.GESTION.ACCION_REALIZAR = toTypedDbValue('ACCION_REALIZAR', clean[accionImpulsarKey]);
-  }
 
   return grouped;
 }
@@ -901,9 +909,6 @@ async function createActuacionByDocumento(documento, payload) {
   assertSituacionEditable(context);
 
   const updates = splitUpdatesByTable(payload);
-  if (!String(updates.GESTION.ACCION_REALIZAR ?? '').trim()) {
-    updates.GESTION.ACCION_REALIZAR = 'Analizar el caso';
-  }
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
   const normalizedPayload = normalizePayload(payload);
   if (Object.keys(updates.PERSONA).length) {
@@ -933,6 +938,8 @@ async function createActuacionByDocumento(documento, payload) {
       });
     }
   }
+
+  await personaRepo.reconcileGestionActionById(gestionId);
 
   dataVersion += 1;
 
@@ -987,16 +994,6 @@ async function updateByDocumento(documento, payload) {
     targetGestionId = Number(latest?.ID_GESTION || 0) || null;
   }
 
-  if (
-    Object.keys(updates.GESTION).length > 0 &&
-    !Object.prototype.hasOwnProperty.call(updates.GESTION, 'ACCION_REALIZAR')
-  ) {
-    const currentGestion = targetGestionId ? await gestionRepo.getById(targetGestionId, context.S_ID_SITUACION) : null;
-    if (!String(currentGestion?.ACCION_REALIZAR ?? '').trim()) {
-      updates.GESTION.ACCION_REALIZAR = 'Analizar el caso';
-    }
-  }
-
   if (Object.keys(updates.GESTION).length) {
     if (targetGestionId) {
       const affected = await gestionRepo.updateGestionById(targetGestionId, updates.GESTION);
@@ -1028,6 +1025,18 @@ async function updateByDocumento(documento, payload) {
       });
       dataVersion += 1;
     }
+  }
+
+  const shouldReconcileState = Boolean(
+    targetGestionId && (
+      Object.keys(updates.GESTION).length > 0 ||
+      Object.prototype.hasOwnProperty.call(updates.SITUACION, 'SITUACION_JURIDICA_ACTUALIZADA') ||
+      payloadHasDefensorField(normalizedPayload) ||
+      normalizedPayload.__desasignarDefensor === true
+    )
+  );
+  if (shouldReconcileState) {
+    await personaRepo.reconcileGestionActionById(targetGestionId);
   }
 
   if (hasMeaningfulUpdates(updates) || Object.keys(calificacionUpdates).length) {

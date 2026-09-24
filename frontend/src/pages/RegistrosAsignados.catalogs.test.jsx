@@ -21,7 +21,7 @@ describe('catálogos de filtros de usuarios asignados', () => {
       ],
       acciones: [
         {
-          codigo: 'REALIZAR_ENTREVISTA',
+          codigo: 'ENTREVISTAR_USUARIO',
           etiqueta: 'Entrevistar al usuario',
           estadoCodigos: ['ENTREVISTAR_USUARIO'],
         },
@@ -35,7 +35,7 @@ describe('catálogos de filtros de usuarios asignados', () => {
     expect(resolveCentroByLabel('Centro histórico', options.centros)?.id).toBe('CENTRO_1');
   });
 
-  it('mantiene las etiquetas operativas de acción aunque la API no entregue el catálogo', () => {
+  it('usa las mismas etiquetas canónicas para estado y acción cuando la API no entrega el catálogo', () => {
     const options = normalizeFilterOptions({ acciones: [] });
 
     expect(options.acciones).toEqual(ACCIONES_IMPULSAR_OPTIONS);
@@ -43,14 +43,19 @@ describe('catálogos de filtros de usuarios asignados', () => {
       'Analizar el caso',
       'Entrevistar al usuario',
       'Presentar solicitud',
-      'Hacer seguimiento a la audiencia',
-      'Hacer seguimiento a la decisión de audiencia',
-      'Hacer seguimiento a la decisión',
+      'Pendiente audiencia',
+      'Pendiente decisión de audiencia',
+      'Pendiente de decisión',
       'Presentar recurso',
       'Caso cerrado',
     ]);
-    expect(options.acciones.map((item) => item.label)).not.toContain('Pendiente audiencia');
-    expect(options.acciones.map((item) => item.label)).not.toContain('Sin acción pendiente');
+    expect(options.acciones.map((item) => item.value)).toEqual(
+      options.estados.map((item) => item.value)
+    );
+    expect(options.acciones.map((item) => item.label)).toEqual(
+      options.estados.map((item) => item.label)
+    );
+    expect(options.acciones.map((item) => item.label).join(' ')).not.toContain('Hacer seguimiento');
   });
 
   it('mantiene completos los ocho estados que alimentan el filtro visible', () => {
@@ -62,7 +67,7 @@ describe('catálogos de filtros de usuarios asignados', () => {
       'Presentar solicitud',
       'Pendiente audiencia',
       'Pendiente decisión de audiencia',
-      'Pendiente decisión',
+      'Pendiente de decisión',
       'Presentar recurso',
       'Caso cerrado',
     ]);

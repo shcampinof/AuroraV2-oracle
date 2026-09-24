@@ -29,7 +29,16 @@ async function run() {
     assert.strictEqual(snapshot.metadata.corte, '2026-09-08');
     assert.deepStrictEqual(snapshot.stages.map((stage) => stage.count), [100, 80, 40, 30, 24, 12, 9]);
     assert.deepStrictEqual(snapshot.stages.map((stage) => stage.percentage), [100, 80, 50, 75, 80, 50, 75]);
+    assert.deepStrictEqual(snapshot.stages.map((stage) => stage.totalPercentage), [100, 80, 40, 30, 24, 12, 9]);
     assert.match(snapshot.stages[6].observation, /Favorables: 6 .* No favorables: 3/);
+
+    const snapshotWithFractions = service.buildSnapshot({
+      USUARIOS_ASIGNADOS: 4169,
+      USUARIOS_ENTREVISTADOS: 317,
+      DECISIONES_JUDICIALES: 6,
+    });
+    assert.strictEqual(snapshotWithFractions.stages[3].totalPercentage, 7.6);
+    assert.strictEqual(snapshotWithFractions.stages[6].totalPercentage, 0.1);
 
     let queryCount = 0;
     repository.getGeneralMetrics = async () => {

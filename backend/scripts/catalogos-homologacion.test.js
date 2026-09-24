@@ -1,4 +1,6 @@
 const assert = require('assert');
+const estadoCasoContract = require('../../shared/estado-caso-scenarios.v1.json');
+const { getEstadoEtiqueta } = require('../domain/estadoCaso');
 const {
   getAccionByCodigo,
   getCentroNormalizedAliases,
@@ -73,18 +75,37 @@ function testUnknownCentersRemainVisibleAndStable() {
   assert.match(first.id, /^LEGACY_CENTRO_[A-F0-9]{12}$/);
 }
 
-function testActionsAreSeparatedFromStateAndKeepOriginalValue() {
+function testActionsShareIdentityWithStateAndKeepOriginalValue() {
   const action = resolveAccionPendiente({
     estadoCodigo: 'ENTREVISTAR_USUARIO',
     valorOriginal: 'Texto histórico no catalogado',
   });
-  assert.strictEqual(action.codigo, 'REALIZAR_ENTREVISTA');
+  assert.strictEqual(action.codigo, 'ENTREVISTAR_USUARIO');
   assert.strictEqual(action.etiqueta, 'Entrevistar al usuario');
   assert.strictEqual(action.homologada, false);
   assert.strictEqual(action.valorOriginal, 'Texto histórico no catalogado');
-  assert.strictEqual(resolveAccionCodigo('Entrevistar al usuario'), 'REALIZAR_ENTREVISTA');
-  assert.deepStrictEqual(getAccionByCodigo('REALIZAR_ENTREVISTA').estadoCodigos, ['ENTREVISTAR_USUARIO']);
-  assert(listAcciones().some((item) => item.codigo === 'SIN_ACCION_PENDIENTE'));
+  assert.strictEqual(resolveAccionCodigo('Entrevistar al usuario'), 'ENTREVISTAR_USUARIO');
+  assert.deepStrictEqual(getAccionByCodigo('ENTREVISTAR_USUARIO').estadoCodigos, ['ENTREVISTAR_USUARIO']);
+  assert(listAcciones().some((item) => item.codigo === 'CASO_CERRADO'));
+  assert.deepStrictEqual(
+    listAcciones().map((item) => item.codigo),
+    listAcciones().flatMap((item) => item.estadoCodigos)
+  );
+  assert.strictEqual(resolveAccionCodigo('Hacer seguimiento a la decisión'), '');
+}
+
+function testSharedStateContractUsesCanonicalCatalog() {
+  assert(estadoCasoContract.scenarios.length > 0);
+  for (const scenario of estadoCasoContract.scenarios) {
+    assert.strictEqual(
+      getEstadoEtiqueta(scenario.expectedCode),
+      scenario.expectedLabel,
+      `Estado no canonico en escenario ${scenario.id}`
+    );
+    const action = getAccionByCodigo(scenario.expectedCode);
+    assert(action, `Accion inexistente para ${scenario.expectedCode}`);
+    assert.strictEqual(action.label, scenario.expectedLabel);
+  }
 }
 
 function testCanonicalPersistedActionsNeverProduceHomologationWarning() {
@@ -123,7 +144,8 @@ testOfficialCenterDirectoryIsLoaded();
 testArmeniaCentersKeepSeparateCanonicalIdentities();
 testMaleAndFemaleCentersRemainSeparate();
 testUnknownCentersRemainVisibleAndStable();
-testActionsAreSeparatedFromStateAndKeepOriginalValue();
+testActionsShareIdentityWithStateAndKeepOriginalValue();
+testSharedStateContractUsesCanonicalCatalog();
 testCanonicalPersistedActionsNeverProduceHomologationWarning();
 testFilterCatalogsRequireActivePrisonStatus();
 testCurrentSituationPrioritizesLatestCutoff();

@@ -147,12 +147,28 @@
 .general-report-percentage {
   display: flex;
   align-items: center;
-  gap: 0.38rem;
+  gap: 0.35rem;
   color: var(--stage-color);
   white-space: nowrap;
 }
 
-.general-report-percentage strong { color: #183671; font-size: 0.85rem; }
+.general-report-percentage-values {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.general-report-percentage-values strong {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.3rem;
+  color: #183671;
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.general-report-percentage-values strong > span { color: #183671; font-size: 0.82rem; }
+.general-report-percentage-values small { color: #657896; font-size: 0.58rem; text-transform: uppercase; }
 .general-report-line { flex: 1; border-top: 1.5px solid var(--stage-color); }
 .general-report-percentage i { width: 7px; height: 7px; border-radius: 50%; background: var(--stage-color); }
 
@@ -217,6 +233,7 @@
 .general-report-summary-item p { display: grid; gap: 0.12rem; margin: 0; color: #233f71; }
 .general-report-summary-item strong { color: var(--stage-color); font-size: 1.25rem; }
 .general-report-summary-item span { font-size: 0.68rem; line-height: 1.25; }
+.general-report-summary-item small { color: #657896; font-size: 0.61rem; line-height: 1.25; }
 
 .general-report-state {
   border: 1px solid #dbe4f2;

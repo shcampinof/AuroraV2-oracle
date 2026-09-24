@@ -88,7 +88,7 @@ describe('estadoActuaciones.rules', () => {
       [AURORA_FIELD_CATALOG.q40]: 'Libertad condicional',
       [AURORA_FIELD_CATALOG.b5NormalRadicacion]: formatDateDaysAgo(2),
     });
-    expect(estado.etiqueta).toBe('Pendiente decisi\u00f3n');
+    expect(estado.etiqueta).toBe('Pendiente de decisi\u00f3n');
     expect(estado.claseFinal).toBe('estado--azul');
   });
 
@@ -125,7 +125,7 @@ describe('estadoActuaciones.rules', () => {
     expect(estado.claseFinal).toBe('estado--rojo');
   });
 
-  it('ESTADO.RECURSO.TRAMITE.2 - con Q49 = "No concede la solicitud" y Q51 = "Sí", queda Pendiente decisión', () => {
+  it('ESTADO.RECURSO.TRAMITE.2 - con Q49 = "No concede la solicitud" y Q51 = "Sí", queda Pendiente de decisión', () => {
     const estado = obtenerEstadoActuacion({
       ...buildBloque3Base(),
       [AURORA_FIELD_CATALOG.q38]: formatDateDaysAgo(1),
@@ -135,7 +135,7 @@ describe('estadoActuaciones.rules', () => {
       [AURORA_FIELD_CATALOG.q54]: 'Sí',
       [AURORA_FIELD_CATALOG.b5NormalSentidoResuelveSolicitud]: '',
     });
-    expect(estado.etiqueta).toBe('Pendiente decisión');
+    expect(estado.etiqueta).toBe('Pendiente de decisión');
     expect(estado.claseFinal).toBe('estado--azul');
   });
 
@@ -206,6 +206,14 @@ describe('estadoActuaciones.rules', () => {
     expect(display.label).toBe('Analizar el caso');
   });
 
+  it('ESTADO.CANONICO.3 - una acción histórica sin código confirmado tampoco reemplaza los campos fuente', () => {
+    const display = getEstadoDisplayInfo({
+      'Acción a impulsar': 'Presentar solicitud',
+      estadoSource: {},
+    });
+    expect(display.label).toBe('Analizar el caso');
+  });
+
   it('ESTADO.PAG.RESUMEN.1 - fila resumida de PAG resuelve Analizar el caso', () => {
     const estado = obtenerEstadoActuacion({
       numeroIdentificacion: '123456',
@@ -244,7 +252,7 @@ describe('estadoActuaciones.rules', () => {
     expect(display.className).toBe('estado--verde');
   });
 
-  it('ESTADO.RADICACION_ALIAS.1 - reconoce alias historico de fecha de presentacion y pasa a pendiente decision', () => {
+  it('ESTADO.RADICACION_ALIAS.1 - reconoce alias historico de fecha de presentacion y pasa a pendiente de decision', () => {
     const display = getEstadoDisplayInfo({
       estadoSource: {
         ...buildBloque3Base(),
@@ -253,7 +261,7 @@ describe('estadoActuaciones.rules', () => {
         'Fecha de presentación de solicitud a la autoridad judicial': formatDateDaysAgo(1),
       },
     });
-    expect(display.label).toBe('Pendiente decisi\u00f3n');
+    expect(display.label).toBe('Pendiente de decisi\u00f3n');
     expect(display.className).toBe('estado--azul');
   });
 
@@ -271,7 +279,7 @@ describe('estadoActuaciones.rules', () => {
       },
     });
 
-    expect(display.label).toBe('Pendiente decisión');
+    expect(display.label).toBe('Pendiente de decisión');
     expect(display.className).toBe('estado--azul');
   });
 
@@ -300,7 +308,7 @@ describe('estadoActuaciones.rules', () => {
         },
       ],
     });
-    expect(display.label).toBe('Pendiente decisi\u00f3n');
+    expect(display.label).toBe('Pendiente de decisi\u00f3n');
   });
 
   it('ESTADO.NO_PROCEDE_NADA.1 - marca Caso cerrado cuando actuacion indica no procede nada', () => {
@@ -369,7 +377,7 @@ describe('estadoActuaciones.rules', () => {
     expect(display.className).toBe('estado--rojo');
   });
 
-  it('ESTADO.SINDICADO.RESUMEN.1 - fila resumida con aliases Oracle cierra con decision de recurso', () => {
+  it('ESTADO.SINDICADO.RESUMEN.1 - fecha de decisión del recurso sin resultado sigue pendiente', () => {
     const display = getEstadoDisplayInfo({
       estadoSource: {
         'Situacion Juridica': 'Sindicado',
@@ -389,8 +397,8 @@ describe('estadoActuaciones.rules', () => {
       },
     });
 
-    expect(display.label).toBe('Caso cerrado');
-    expect(display.className).toBe('estado--gris');
+    expect(display.label).toBe('Pendiente de decisión');
+    expect(display.className).toBe('estado--azul');
   });
 
   it('ESTADO.SINDICADO.3 - con Q24 diligenciada y Q25 vacía, muestra Pendiente audiencia azul', () => {

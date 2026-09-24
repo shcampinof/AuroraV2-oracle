@@ -38,7 +38,7 @@ export type CelesteDerivedStatus =
   | 'Pendiente decisión de audiencia'
   | 'Presentar solicitud'
   | 'Presentar recurso'
-  | 'Pendiente decisión'
+  | 'Pendiente de decisión'
   | 'Caso cerrado';
 
 const FIELD = {
@@ -175,14 +175,15 @@ function deriveBloque5StatusCeleste(answers: CelesteRecord): CelesteDerivedStatu
   const q30 = getAnswerByKey(answers, FIELD.q30);
   const q31 = getAnswerByKey(answers, FIELD.q31);
 
-  if (isFilled(q30) || isFilled(q31)) return 'Caso cerrado';
+  if (isFilled(q31)) return 'Caso cerrado';
+  if (isFilled(q30)) return 'Pendiente de decisión';
   if (isRevocaOSustituyeQ26(answers)) return 'Caso cerrado';
   if (isNiegaQ26(answers)) {
-    if (normalizeYesNo(q28) === 'si') return 'Pendiente decisión';
+    if (normalizeYesNo(q28) === 'si') return 'Pendiente de decisión';
     if (normalizeYesNo(q28) === 'no') return 'Caso cerrado';
     return 'Presentar recurso';
   }
-  if (isFilled(q29) || normalizeYesNo(q28) === 'si') return 'Pendiente decisión';
+  if (isFilled(q29) || normalizeYesNo(q28) === 'si') return 'Pendiente de decisión';
   if (isFilled(q25) && !isFilled(q26)) return 'Pendiente decisión de audiencia';
   if (isFilled(q24) && !isFilled(q25)) return 'Pendiente audiencia';
   if ([q24, q25, q26, q28].some((value) => isFilled(value))) return 'Presentar solicitud';

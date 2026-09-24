@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateAuroraRules } from './evaluateAuroraRules';
 import { AURORA_FIELD_IDS } from '../config/auroraFieldIds';
-import { AURORA_FIELD_CATALOG } from '../config/formRules.aurora';
+import {
+  AURORA_FIELD_CATALOG,
+  mandatoryByBlock,
+} from '../config/formRules.aurora';
 
 function buildBloque3Base(): Record<string, unknown> {
   return {
@@ -257,11 +260,153 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     );
   });
 
+  it('AURORA.B5A.DEPENDENCIA.46.1 - sin respuesta en Q46 bloquea todas las preguntas posteriores', () => {
+    const answers = {
+      ...buildBloque3Base(),
+      ...buildBloque4Base(),
+      [AURORA_FIELD_CATALOG.q40]: 'Utilidad pública (solo mujeres)',
+      [AURORA_FIELD_CATALOG.q44]: 'Sí',
+      [AURORA_FIELD_CATALOG.q45]: 'Sí',
+      [AURORA_FIELD_CATALOG.q46]: '',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.disabledFields).toEqual(
+      expect.arrayContaining([
+        AURORA_FIELD_CATALOG.q47,
+        AURORA_FIELD_CATALOG.q48,
+        AURORA_FIELD_CATALOG.q49,
+        AURORA_FIELD_CATALOG.q50,
+        AURORA_FIELD_CATALOG.q51,
+        AURORA_FIELD_CATALOG.q52,
+        AURORA_FIELD_CATALOG.q53,
+        AURORA_FIELD_CATALOG.q54,
+        AURORA_FIELD_CATALOG.q55,
+        AURORA_FIELD_CATALOG.fechaPresentacionRecurso,
+        AURORA_FIELD_CATALOG.fechaDecisionRecurso,
+        AURORA_FIELD_CATALOG.q56,
+        AURORA_FIELD_CATALOG.cierreCasoUtilidad,
+      ])
+    );
+    expect(result.disabledFields).not.toContain(AURORA_FIELD_CATALOG.q46);
+  });
+
+  it('AURORA.B5A.DEPENDENCIA.46.2 - Q46 = Sí habilita 47 en adelante según sus dependencias propias', () => {
+    const answers = {
+      ...buildBloque3Base(),
+      ...buildBloque4Base(),
+      [AURORA_FIELD_CATALOG.q40]: 'Utilidad pública (solo mujeres)',
+      [AURORA_FIELD_CATALOG.q44]: 'Sí',
+      [AURORA_FIELD_CATALOG.q45]: 'Sí',
+      [AURORA_FIELD_CATALOG.q46]: 'Sí',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.disabledFields).not.toEqual(
+      expect.arrayContaining([
+        AURORA_FIELD_CATALOG.q47,
+        AURORA_FIELD_CATALOG.q48,
+        AURORA_FIELD_CATALOG.q49,
+        AURORA_FIELD_CATALOG.q50,
+        AURORA_FIELD_CATALOG.q51,
+        AURORA_FIELD_CATALOG.q52,
+        AURORA_FIELD_CATALOG.cierreCasoUtilidad,
+      ])
+    );
+  });
+
+  it('AURORA.B5A.DEPENDENCIA.46.3 - Q46 = No omite 47/48 y habilita la continuación desde 49', () => {
+    const answers = {
+      ...buildBloque3Base(),
+      ...buildBloque4Base(),
+      [AURORA_FIELD_CATALOG.q40]: 'Utilidad pública (solo mujeres)',
+      [AURORA_FIELD_CATALOG.q44]: 'Sí',
+      [AURORA_FIELD_CATALOG.q45]: 'Sí',
+      [AURORA_FIELD_CATALOG.q46]: 'No',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.disabledFields).toEqual(
+      expect.arrayContaining([
+        AURORA_FIELD_CATALOG.q47,
+        AURORA_FIELD_CATALOG.q48,
+      ])
+    );
+    expect(result.disabledFields).not.toEqual(
+      expect.arrayContaining([
+        AURORA_FIELD_CATALOG.q49,
+        AURORA_FIELD_CATALOG.q50,
+        AURORA_FIELD_CATALOG.q51,
+        AURORA_FIELD_CATALOG.q52,
+        AURORA_FIELD_CATALOG.cierreCasoUtilidad,
+      ])
+    );
+  });
+
+  it.each([
+    AURORA_FIELD_CATALOG.q44,
+    AURORA_FIELD_CATALOG.q45,
+  ])('AURORA.B5A.CIERRE.VISUAL - %s negativa bloquea los campos posteriores y conserva editables 44/45', (negativeField) => {
+    const answers = {
+      ...buildBloque3Base(),
+      ...buildBloque4Base(),
+      [AURORA_FIELD_CATALOG.q40]: 'Utilidad pública (solo mujeres)',
+      [negativeField]: 'No',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.disabledFields).toEqual(
+      expect.arrayContaining([
+        AURORA_FIELD_CATALOG.q46,
+        AURORA_FIELD_CATALOG.q47,
+        AURORA_FIELD_CATALOG.q48,
+        AURORA_FIELD_CATALOG.q49,
+        AURORA_FIELD_CATALOG.q50,
+        AURORA_FIELD_CATALOG.q51,
+        AURORA_FIELD_CATALOG.q52,
+        AURORA_FIELD_CATALOG.q53,
+        AURORA_FIELD_CATALOG.q54,
+        AURORA_FIELD_CATALOG.q55,
+        AURORA_FIELD_CATALOG.fechaPresentacionRecurso,
+        AURORA_FIELD_CATALOG.fechaDecisionRecurso,
+        AURORA_FIELD_CATALOG.q56,
+        AURORA_FIELD_CATALOG.cierreCasoUtilidad,
+      ])
+    );
+    expect(result.disabledFields).not.toContain(AURORA_FIELD_CATALOG.q44);
+    expect(result.disabledFields).not.toContain(AURORA_FIELD_CATALOG.q45);
+  });
+
+  it('AURORA.B5A.CIERRE.REVERSION - al corregir ambos requisitos a Sí habilita nuevamente el avance', () => {
+    const answers = {
+      ...buildBloque3Base(),
+      ...buildBloque4Base(),
+      [AURORA_FIELD_CATALOG.q40]: 'Utilidad pública (solo mujeres)',
+      [AURORA_FIELD_CATALOG.q44]: 'Sí',
+      [AURORA_FIELD_CATALOG.q45]: 'Sí',
+      [AURORA_FIELD_CATALOG.q46]: 'Sí',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.disabledFields).not.toEqual(
+      expect.arrayContaining([
+        AURORA_FIELD_CATALOG.q46,
+        AURORA_FIELD_CATALOG.q49,
+        AURORA_FIELD_CATALOG.q50,
+        AURORA_FIELD_CATALOG.q51,
+        AURORA_FIELD_CATALOG.q52,
+        AURORA_FIELD_CATALOG.cierreCasoUtilidad,
+      ])
+    );
+    expect(result.derivedStatus).toBe('Presentar solicitud');
+  });
+
   it('AURORA.B5A.DEPENDENCIA.4 - habilita campos de recurso cuando Q52 = "Niega utilidad publica" y Q54 = "Si"', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
       [AURORA_FIELD_CATALOG.q40]: 'Utilidad publica (solo para mujeres)',
+      [AURORA_FIELD_CATALOG.q46]: 'Sí',
       [AURORA_FIELD_CATALOG.q52]: 'Niega utilidad publica',
       [AURORA_FIELD_CATALOG.q54]: 'Si',
     };
@@ -337,7 +482,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     );
   });
 
-  it('AURORA.ESTADO.RADICACION_ALIAS.1 - pasa a "Pendiente decisión" cuando existe fecha de presentación con alias histórico', () => {
+  it('AURORA.ESTADO.RADICACION_ALIAS.1 - pasa a "Pendiente de decisión" cuando existe fecha de presentación con alias histórico', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -345,7 +490,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Pendiente decisión');
+    expect(result.derivedStatus).toBe('Pendiente de decisión');
   });
 
   it('AURORA.ESTADO.RADICACION_ALIAS.2 - reconoce alias sin "la" ni "judicial"', () => {
@@ -356,7 +501,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Pendiente decisión');
+    expect(result.derivedStatus).toBe('Pendiente de decisión');
   });
 
   it('AURORA.ESTADO.INICIAL.1 - con 29 y 37 diligenciadas, pero sin actuación viable, debe seguir en análisis', () => {
@@ -550,6 +695,97 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.visibleBlocks).toContain('bloque4');
   });
 
+  it('AURORA.CIERRE.LEGADO.1 - un mensaje automático residual no puede cerrar un caso con Q32 positiva', () => {
+    const answers = {
+      ...buildNegativeClosureBase(),
+      [AURORA_FIELD_CATALOG.q30]: 'No aplica porque ya se concedió prisión domiciliaria',
+      [AURORA_FIELD_CATALOG.q31]: 'No aplica porque ya está en libertad por pena cumplida',
+      [AURORA_FIELD_CATALOG.q32]: 'Sí cumple requisitos objetivos',
+      [AURORA_FIELD_CATALOG.q33]: 'No',
+      [AURORA_FIELD_CATALOG.q34]: 'No',
+      [AURORA_FIELD_CATALOG.q36]: 'Ninguna',
+      [AURORA_FIELD_CATALOG.cierreCaso]:
+        'Caso cerrado: en las preguntas 30 a 34 no se marcó procedencia para la solicitud.',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.derivedStatus).toBe('Entrevistar al usuario');
+    expect(result.visibleBlocks).toContain('bloque4');
+  });
+
+  it('AURORA.CIERRE.EXPLICITO.1 - una causal seleccionable de imposibilidad sí cierra el caso', () => {
+    const answers = {
+      ...buildBloque3Base(),
+      ...buildBloque4Base(),
+      [AURORA_FIELD_CATALOG.cierreCaso]: 'Otro motivo.',
+    };
+    expect(evaluateAuroraRules({ answers }).derivedStatus).toBe('Caso cerrado');
+  });
+
+  it('AURORA.B5.VARIANTE.1 - datos residuales de utilidad pública no cierran el trámite normal', () => {
+    const answers = {
+      ...buildBloque3Base(),
+      ...buildBloque4Base(),
+      [AURORA_FIELD_CATALOG.q40]: 'Libertad condicional',
+      [AURORA_FIELD_CATALOG.q44]: 'No',
+      [AURORA_FIELD_CATALOG.q45]: 'No',
+    };
+    expect(evaluateAuroraRules({ answers }).derivedStatus).toBe('Presentar solicitud');
+  });
+
+  it('AURORA.B5.GUARDADO.PARCIAL.1 - utilidad exige elegibilidad y presentación, no resultados futuros', () => {
+    expect(
+      mandatoryByBlock.bloque5UtilidadPublica
+        .filter((field) => !field.optional)
+        .map((field) => field.key)
+    ).toEqual([
+      AURORA_FIELD_CATALOG.q43,
+      AURORA_FIELD_CATALOG.q44,
+      AURORA_FIELD_CATALOG.q45,
+      AURORA_FIELD_CATALOG.q46,
+      AURORA_FIELD_CATALOG.q50,
+    ]);
+    expect(mandatoryByBlock.bloque5TramiteNormal.every((field) => field.optional)).toBe(true);
+  });
+
+  it.each([
+    [AURORA_FIELD_CATALOG.q44, AURORA_FIELD_CATALOG.q45],
+    [AURORA_FIELD_CATALOG.q45, AURORA_FIELD_CATALOG.q44],
+  ])('AURORA.B5.UTILIDAD.CIERRE - %s negativa cierra aunque la otra respuesta sea positiva', (negativeField, positiveField) => {
+    const answers = {
+      ...buildBloque3Base(),
+      ...buildBloque4Base(),
+      [AURORA_FIELD_CATALOG.q40]: 'Utilidad pública (solo mujeres)',
+      [negativeField]: 'No',
+      [positiveField]: 'Sí',
+    };
+    expect(evaluateAuroraRules({ answers }).derivedStatus).toBe('Caso cerrado');
+  });
+
+  it.each([
+    AURORA_FIELD_CATALOG.q44,
+    AURORA_FIELD_CATALOG.q45,
+  ])('AURORA.B5.UTILIDAD.CIERRE.INMEDIATO - %s negativa cierra si la otra respuesta está pendiente', (negativeField) => {
+    const answers = {
+      ...buildBloque3Base(),
+      ...buildBloque4Base(),
+      [AURORA_FIELD_CATALOG.q40]: 'Utilidad pública (solo mujeres)',
+      [negativeField]: 'No',
+    };
+    expect(evaluateAuroraRules({ answers }).derivedStatus).toBe('Caso cerrado');
+  });
+
+  it('AURORA.B5.UTILIDAD.CIERRE - marginalidad y jefatura negativas cierran el caso', () => {
+    const answers = {
+      ...buildBloque3Base(),
+      ...buildBloque4Base(),
+      [AURORA_FIELD_CATALOG.q40]: 'Utilidad pública (solo mujeres)',
+      [AURORA_FIELD_CATALOG.q44]: 'No',
+      [AURORA_FIELD_CATALOG.q45]: 'No',
+    };
+    expect(evaluateAuroraRules({ answers }).derivedStatus).toBe('Caso cerrado');
+  });
+
   it.each([
     'Solicitud de actualización de conducta',
     'Solicitud de asignación de JEPMS',
@@ -664,7 +900,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
       [AURORA_FIELD_CATALOG.fechaDecisionRecurso]: '2026-08-12',
     };
 
-    expect(evaluateAuroraRules({ answers: base }).derivedStatus).toBe('Pendiente decisión');
+    expect(evaluateAuroraRules({ answers: base }).derivedStatus).toBe('Pendiente de decisión');
     expect(evaluateAuroraRules({
       answers: {
         ...base,
@@ -683,7 +919,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
       [AURORA_FIELD_CATALOG.fechaDecisionRecurso]: '2026-08-12',
     };
 
-    expect(evaluateAuroraRules({ answers: base }).derivedStatus).toBe('Pendiente decisión');
+    expect(evaluateAuroraRules({ answers: base }).derivedStatus).toBe('Pendiente de decisión');
     expect(evaluateAuroraRules({
       answers: {
         ...base,
@@ -728,7 +964,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Presentar recurso');
   });
 
-  it('AURORA.ESTADO.RECURSO.TRAMITE.2 - si Q49 = "No concede la solicitud" y Q51 = "Sí", pasa a "Pendiente decisión"', () => {
+  it('AURORA.ESTADO.RECURSO.TRAMITE.2 - si Q49 = "No concede la solicitud" y Q51 = "Sí", pasa a "Pendiente de decisión"', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -738,7 +974,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Pendiente decisión');
+    expect(result.derivedStatus).toBe('Pendiente de decisión');
   });
 
   it('AURORA.ESTADO.RECURSO.TRAMITE.2B - blinda Q48/Q49/Q51 aunque falten aliases de bloques previos', () => {
@@ -750,20 +986,20 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Pendiente decisión');
+    expect(result.derivedStatus).toBe('Pendiente de decisión');
   });
 
-  it('AURORA.ESTADO.B5B.DECISION_SIN_SENTIDO.1 - Q48 con fecha y Q49 en "-" queda Pendiente decisión', () => {
+  it('AURORA.ESTADO.B5B.DECISION_SIN_SENTIDO.1 - Q48 con fecha y Q49 en "-" queda Pendiente de decisión', () => {
     const answers = {
       [AURORA_FIELD_CATALOG.b5NormalDecision]: '2026-05-01',
       [AURORA_FIELD_CATALOG.q52]: '-',
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Pendiente decisión');
+    expect(result.derivedStatus).toBe('Pendiente de decisión');
   });
 
-  it('AURORA.ESTADO.B5A.DECISION_SIN_SENTIDO.1 - Q51 con fecha y Q52 en "-" queda Pendiente decisión', () => {
+  it('AURORA.ESTADO.B5A.DECISION_SIN_SENTIDO.1 - Q51 con fecha y Q52 en "-" queda Pendiente de decisión', () => {
     const answers = {
       [AURORA_FIELD_CATALOG.q40]: 'Utilidad publica (solo para mujeres)',
       [AURORA_FIELD_CATALOG.q51]: '2026-05-01',
@@ -771,7 +1007,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Pendiente decisión');
+    expect(result.derivedStatus).toBe('Pendiente de decisión');
   });
 
   it('AURORA.ESTADO.B5.PARCIAL.1 - datos de bloque 5 sin radicación quedan Presentar solicitud, no Analizar', () => {
@@ -783,13 +1019,13 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Presentar solicitud');
   });
 
-  it('AURORA.ESTADO.B5.RADICACION.1 - radicación de bloque 5 sin decisión queda Pendiente decisión, no Analizar', () => {
+  it('AURORA.ESTADO.B5.RADICACION.1 - radicación de bloque 5 sin decisión queda Pendiente de decisión, no Analizar', () => {
     const answers = {
       [AURORA_FIELD_CATALOG.b5NormalRadicacion]: '2026-04-29',
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Pendiente decisión');
+    expect(result.derivedStatus).toBe('Pendiente de decisión');
   });
 
   it('AURORA.CIERRE.RECURSO.TRAMITE.1 - si Q49 = "No", el caso queda cerrado', () => {
@@ -804,7 +1040,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
-  it('AURORA.ESTADO.RECURSO.UTILIDAD.1 - si utilidad pública niega y Q54 = "Sí", pasa a "Pendiente decisión"', () => {
+  it('AURORA.ESTADO.RECURSO.UTILIDAD.1 - si utilidad pública niega y Q54 = "Sí", pasa a "Pendiente de decisión"', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -815,7 +1051,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Pendiente decisión');
+    expect(result.derivedStatus).toBe('Pendiente de decisión');
   });
 
   it('AURORA.ESTADO.RECURSO.UTILIDAD.1B - si utilidad pública niega y Q54 está vacía, la acción es presentar recurso', () => {
@@ -831,7 +1067,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Presentar recurso');
   });
 
-  it('AURORA.ESTADO.UTILIDAD.2 - pasa a "Pendiente decisión" cuando utilidad pública ya tiene radicación', () => {
+  it('AURORA.ESTADO.UTILIDAD.2 - pasa a "Pendiente de decisión" cuando utilidad pública ya tiene radicación', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -845,10 +1081,10 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Pendiente decisión');
+    expect(result.derivedStatus).toBe('Pendiente de decisión');
   });
 
-  it('AURORA.ESTADO.DECISION_SIN_RADICACION.1 - si existe fecha de decisión sin sentido, queda "Pendiente decisión"', () => {
+  it('AURORA.ESTADO.DECISION_SIN_RADICACION.1 - si existe fecha de decisión sin sentido, queda "Pendiente de decisión"', () => {
     const answers = {
       ...buildBloque3Base(),
       ...buildBloque4Base(),
@@ -856,6 +1092,6 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     };
 
     const result = evaluateAuroraRules({ answers });
-    expect(result.derivedStatus).toBe('Pendiente decisión');
+    expect(result.derivedStatus).toBe('Pendiente de decisión');
   });
 });

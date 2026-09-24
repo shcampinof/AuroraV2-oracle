@@ -29,7 +29,6 @@ const VISTAS = new Set([
   'formulario',
   'registros',
   'asignacion',
-  'asignacion-sindicados',
   'herramientas',
   'reporte-atenciones',
   'reporte-general',
@@ -205,7 +204,7 @@ function App() {
     if (vistaActual === 'admin-usuarios' && !esAdmin(session.user)) {
       window.location.hash = '/inicio';
     }
-    if ((vistaActual === 'asignacion' || vistaActual === 'asignacion-sindicados') && !tieneAccesoPag(session.user)) {
+    if (vistaActual === 'asignacion' && !tieneAccesoPag(session.user)) {
       window.location.hash = '/inicio';
     }
   }, [session, vistaActual, conditionsAccepted]);
@@ -215,7 +214,7 @@ function App() {
     if (!VISTAS.has(vista)) return;
     if (vista === 'admin-cargas' && !tieneAccesoCargas(session?.user)) return;
     if (vista === 'admin-usuarios' && !esAdmin(session?.user)) return;
-    if ((vista === 'asignacion' || vista === 'asignacion-sindicados') && !tieneAccesoPag(session?.user)) return;
+    if (vista === 'asignacion' && !tieneAccesoPag(session?.user)) return;
     const nextHash = `/${vista}`;
     if (window.location.hash !== `#${nextHash}`) {
       window.location.hash = nextHash;
@@ -283,10 +282,6 @@ function App() {
 
   if (vistaActual === 'asignacion' && puedeAccederPag) {
     contenido = <AsignacionDefensores key="asignacion-condenados" tipo="condenado" />;
-  }
-
-  if (vistaActual === 'asignacion-sindicados' && puedeAccederPag) {
-    contenido = <AsignacionDefensores key="asignacion-sindicados" tipo="sindicado" />;
   }
 
   if (vistaActual === 'herramientas') {

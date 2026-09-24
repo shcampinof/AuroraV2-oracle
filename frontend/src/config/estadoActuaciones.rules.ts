@@ -94,7 +94,7 @@ function canonicalEstadoLabel(value: unknown): string {
     PENDIENTE_DECISION_AUDIENCIA: 'Pendiente decisión de audiencia',
     PRESENTAR_SOLICITUD: 'Presentar solicitud',
     PRESENTAR_RECURSO: 'Presentar recurso',
-    PENDIENTE_DECISION: 'Pendiente decisión',
+    PENDIENTE_DECISION: 'Pendiente de decisión',
     CASO_CERRADO: 'Caso cerrado',
   };
   if (codeLabels[code]) return codeLabels[code];
@@ -107,8 +107,8 @@ function canonicalEstadoLabel(value: unknown): string {
   if (key === 'presentar recurso') return 'Presentar recurso';
   if (key.includes('pendiente de presentar solicitud')) return 'Presentar solicitud';
   if (key.includes('pendiente presentar solicitud')) return 'Presentar solicitud';
-  if (key === 'pendiente decision') return 'Pendiente decisi\u00f3n';
-  if (key.includes('pendiente de decision')) return 'Pendiente decisi\u00f3n';
+  if (key === 'pendiente de decision') return 'Pendiente de decisi\u00f3n';
+  if (key.includes('pendiente de decision')) return 'Pendiente de decisi\u00f3n';
   if (key === 'caso cerrado') return 'Caso cerrado';
   return toText(value);
 }
@@ -121,7 +121,7 @@ export function getEstadoClassByLabel(estado: unknown): string {
   if (key === 'pendiente decision de audiencia') return 'estado--azul';
   if (key === 'presentar solicitud') return 'estado--rojo';
   if (key === 'presentar recurso') return 'estado--rojo';
-  if (key === 'pendiente decision') return 'estado--azul';
+  if (key === 'pendiente de decision') return 'estado--azul';
   if (key === 'caso cerrado') return 'estado--gris';
   if (key === 'cerrado') return 'estado--gris';
   if (key === 'activo') return 'estado--azul';
@@ -216,25 +216,6 @@ export function getSemaforoClassByDays(days: number | null): string {
   return 'estado--rojo';
 }
 
-function getEstadoTramiteValue(record: unknown): string {
-  const data = resolveEstadoSource(record);
-  return firstFilledValue(
-    data?.['Acci\u00f3n a impulsar'] ??
-      data?.['Accion a impulsar'] ??
-      data?.['Acci\u00f3n a realizar'] ??
-      data?.['Accion a realizar'] ??
-      data?.['Actuaci\u00f3n a adelantar'] ??
-      data?.['Actuacion a adelantar'] ??
-      data?.posibleActuacionJudicial ??
-      data?.['Estado del caso'] ??
-      data?.['Estado del tr\u00e1mite'] ??
-      data?.['Estado del tramite'] ??
-      data?.estado ??
-      data?.estadoEntrevista ??
-      data?.['Estado entrevista']
-  );
-}
-
 function resolveTipoFromText(value: unknown): 'condenado' | 'sindicado' | '' {
   const text = normalizeEstadoActuacion(value);
   if (!text || text === '-') return '';
@@ -295,31 +276,15 @@ export function obtenerEstadoActuacion(record: unknown): EstadoActuacionInfo {
       ? evaluateCelesteRules({ answers: data || {} }).derivedStatus
       : evaluateAuroraRules({ answers: data || {} }).derivedStatus
   );
-  const derivedKey = normalizeEstadoActuacion(confirmedStatus || derivedStatus);
-  const fallbackStatus = canonicalEstadoLabel(getEstadoTramiteValue(safeRecord));
-  const fallbackKey = normalizeEstadoActuacion(fallbackStatus);
-  const canPromoteFallback = new Set([
-    'entrevistar al usuario',
-    'pendiente audiencia',
-    'pendiente decision de audiencia',
-    'presentar solicitud',
-    'presentar recurso',
-    'pendiente decision',
-    'caso cerrado',
-  ]);
-  const estadoKey = confirmedStatus
-    ? derivedKey
-    : derivedKey === 'analizar el caso' && canPromoteFallback.has(fallbackKey)
-      ? fallbackKey
-      : derivedKey;
+  const estadoKey = normalizeEstadoActuacion(confirmedStatus || derivedStatus);
 
   // Regla: ESTADO.CASO_CERRADO.1
   if (estadoKey === 'caso cerrado') {
     return buildEstadoInfo(estadoKey, 'Caso cerrado', 'estado--gris');
   }
   // Regla: ESTADO.PENDIENTE_DECISION.1
-  if (estadoKey === 'pendiente decision') {
-    return buildEstadoInfo(estadoKey, 'Pendiente decisi\u00f3n', 'estado--azul');
+  if (estadoKey === 'pendiente de decision') {
+    return buildEstadoInfo(estadoKey, 'Pendiente de decisi\u00f3n', 'estado--azul');
   }
   // Regla: ESTADO.ANALIZAR.1
   if (estadoKey === 'analizar el caso') {
@@ -375,9 +340,12 @@ export function obtenerEstadoActuacion(record: unknown): EstadoActuacionInfo {
     return buildEstadoInfo(estadoKey, 'Presentar recurso', 'estado--rojo');
   }
 
-  const fallbackLabel = firstFilledValue(getEstadoTramiteValue(safeRecord), derivedStatus);
-  const fallbackClass = getEstadoClassByLabel(fallbackLabel);
-  return buildEstadoInfo(normalizeEstadoActuacion(fallbackLabel), fallbackLabel, fallbackClass);
+  const fallbackLabel = derivedStatus || 'Analizar el caso';
+  return buildEstadoInfo(
+    normalizeEstadoActuacion(fallbackLabel),
+    fallbackLabel,
+    getEstadoClassByLabel(fallbackLabel)
+  );
 }
 
 export function getEstadoDisplayInfo(record: unknown): EstadoDisplayInfo {

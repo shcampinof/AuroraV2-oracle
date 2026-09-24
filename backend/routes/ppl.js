@@ -208,26 +208,9 @@ function canonicalEstadoLabel(value) {
   if (key.includes('pendiente audiencia')) return 'Pendiente audiencia';
   if (key.includes('presentar solicitud')) return 'Presentar solicitud';
   if (key.includes('presentar recurso')) return 'Presentar recurso';
-  if (key.includes('pendiente decision')) return 'Pendiente decisión';
+  if (key.includes('pendiente de decision')) return 'Pendiente de decisión';
   if (key.includes('caso cerrado') || key === 'cerrado') return 'Caso cerrado';
   return '';
-}
-
-function resolveEstadoLabelFromRawRow(row) {
-  const estadoCaso = getValueWithFallback(row, 'Estado del caso', '', '');
-  const estadoTramite = getValueWithFallback(row, 'Estado del trámite', 'Estado del tramite', '');
-  const accionImpulsar = getValueWithFallback(row, 'Acción a impulsar', 'Accion a impulsar', '');
-  const accion = getValueWithFallback(row, 'Acción a realizar', 'Accion a realizar', '');
-  const actuacion = getValueWithFallback(row, 'Actuación a adelantar', 'Actuacion a adelantar', '');
-  const posible = getValueWithFallback(row, 'posibleActuacionJudicial', '', '');
-  return firstFilled(
-    canonicalEstadoLabel(estadoCaso),
-    canonicalEstadoLabel(estadoTramite),
-    canonicalEstadoLabel(accionImpulsar),
-    canonicalEstadoLabel(accion),
-    canonicalEstadoLabel(actuacion),
-    canonicalEstadoLabel(posible)
-  );
 }
 
 function buildEstadoSource(row) {
@@ -533,7 +516,7 @@ function compactFilledFields(source) {
 function mapCondenadoRow(row) {
   const situacionActiva = Number(row?.S_ACTIVO) === 1;
   const estadoCodigoCalculado = situacionActiva
-    ? resolveEstadoCodigo(row?.ESTADO_CODIGO || resolveEstadoLabelFromRawRow(row)) || 'ANALIZAR_CASO'
+    ? resolveEstadoCodigo(row?.ESTADO_CODIGO) || 'ANALIZAR_CASO'
     : 'CASO_CERRADO';
   const estadoEtiquetaCalculada = situacionActiva
     ? getEstadoEtiqueta(estadoCodigoCalculado) || 'Analizar el caso'

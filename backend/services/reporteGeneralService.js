@@ -50,6 +50,11 @@ function percentage(count, previousCount, first = false) {
   return Math.round((count / previousCount) * 100);
 }
 
+function totalPercentage(count, totalCount) {
+  if (!totalCount) return 0;
+  return Math.round((count / totalCount) * 1000) / 10;
+}
+
 function buildSnapshot(metrics = {}, now = new Date()) {
   const counts = {
     asignados: toCount(metrics.USUARIOS_ASIGNADOS),
@@ -87,6 +92,7 @@ function buildSnapshot(metrics = {}, now = new Date()) {
       shortLabel,
       count,
       percentage: percentage(count, previousCount, index === 0),
+      totalPercentage: totalPercentage(count, counts.asignados),
       detail,
       observation,
     };

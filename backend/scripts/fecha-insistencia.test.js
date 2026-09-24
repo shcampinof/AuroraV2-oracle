@@ -7,6 +7,7 @@ async function testFechaInsistenciaRoundTrip() {
   const originals = {
     findActiveContextByDocumento: personaRepo.findActiveContextByDocumento,
     listRowsWithActiveSituacionAndGestiones: personaRepo.listRowsWithActiveSituacionAndGestiones,
+    reconcileGestionActionById: personaRepo.reconcileGestionActionById,
     getLatestBySituacion: gestionRepo.getLatestBySituacion,
     getById: gestionRepo.getById,
     updateGestionById: gestionRepo.updateGestionById,
@@ -40,6 +41,7 @@ async function testFechaInsistenciaRoundTrip() {
     G_FECHA_INSISTENCIA_4: new Date('2026-08-22T00:00:00Z'),
     G_FECHA_INSISTENCIA_5: new Date('2026-08-29T00:00:00Z'),
   }];
+  personaRepo.reconcileGestionActionById = async () => ({ updated: 1 });
   delete require.cache[servicePath];
 
   try {
@@ -81,11 +83,12 @@ async function testFechaInsistenciaRoundTrip() {
     assert.strictEqual(updated['Fecha de insistencia 4'], '2026-08-22');
     assert.strictEqual(updated['Fecha de insistencia 5'], '2026-08-29');
     assert.strictEqual(updated.estadoCodigo, 'PENDIENTE_DECISION');
-    assert.strictEqual(updated.estadoEtiqueta, 'Pendiente decisión');
-    assert.strictEqual(updated['Estado del trámite'], 'Pendiente decisión');
+    assert.strictEqual(updated.estadoEtiqueta, 'Pendiente de decisión');
+    assert.strictEqual(updated['Estado del trámite'], 'Pendiente de decisión');
   } finally {
     personaRepo.findActiveContextByDocumento = originals.findActiveContextByDocumento;
     personaRepo.listRowsWithActiveSituacionAndGestiones = originals.listRowsWithActiveSituacionAndGestiones;
+    personaRepo.reconcileGestionActionById = originals.reconcileGestionActionById;
     gestionRepo.getLatestBySituacion = originals.getLatestBySituacion;
     gestionRepo.getById = originals.getById;
     gestionRepo.updateGestionById = originals.updateGestionById;

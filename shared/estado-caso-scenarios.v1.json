@@ -1,0 +1,289 @@
+{
+  "schemaVersion": 1,
+  "description": "Matriz contractual compartida que especifica el estado provisional del formulario y el estado canonico que debe persistir Oracle.",
+  "scenarios": [
+    {
+      "id": "aurora-sin-analisis",
+      "flow": "aurora",
+      "answers": {},
+      "expectedCode": "ANALIZAR_CASO",
+      "expectedLabel": "Analizar el caso"
+    },
+    {
+      "id": "aurora-analisis-positivo-sin-entrevista",
+      "flow": "aurora",
+      "answers": {
+        "Defensor(a) Público(a) Asignado para tramitar la solicitud": "Defensor prueba",
+        "Fecha de análisis jurídico del caso": "2026-01-10",
+        "Procedencia de libertad condicional": "Sí procede solicitud de libertad condicional",
+        "Procedencia de prisión domiciliaria de mitad de pena": "No aplica",
+        "Procedencia de utilidad pública (solo para mujeres)": "No cumple por tipo de delito",
+        "Procedencia de pena cumplida": "No",
+        "Procedencia de acumulación de penas": "No",
+        "Otras solicitudes a tramitar": "Ninguna",
+        "Resumen del análisis del caso": "Resumen del caso"
+      },
+      "expectedCode": "ENTREVISTAR_USUARIO",
+      "expectedLabel": "Entrevistar al usuario"
+    },
+    {
+      "id": "aurora-entrevista-completa-sin-radicacion",
+      "flow": "aurora",
+      "answers": {
+        "Defensor(a) Público(a) Asignado para tramitar la solicitud": "Defensor prueba",
+        "Fecha de análisis jurídico del caso": "2026-01-10",
+        "Procedencia de libertad condicional": "Sí procede solicitud de libertad condicional",
+        "Procedencia de prisión domiciliaria de mitad de pena": "No aplica",
+        "Procedencia de utilidad pública (solo para mujeres)": "No cumple por tipo de delito",
+        "Procedencia de pena cumplida": "No",
+        "Procedencia de acumulación de penas": "No",
+        "Otras solicitudes a tramitar": "Ninguna",
+        "Resumen del análisis del caso": "Resumen del caso",
+        "Fecha de entrevista": "2026-01-11",
+        "Decisión del usuario": "Si, desea que el defensor avance con la solicitud",
+        "Actuación a adelantar": "Libertad condicional",
+        "Requiere pruebas": "No",
+        "Poder en caso de avanzar con la solicitud": "No requiere poder"
+      },
+      "expectedCode": "PRESENTAR_SOLICITUD",
+      "expectedLabel": "Presentar solicitud"
+    },
+    {
+      "id": "aurora-decision-usuario-negativa",
+      "flow": "aurora",
+      "answers": {
+        "Decisión del usuario": "No desea tramitar la solicitud"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-decision-negativa-sin-definir-recurso",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "No concede la solicitud"
+      },
+      "expectedCode": "PRESENTAR_RECURSO",
+      "expectedLabel": "Presentar recurso"
+    },
+    {
+      "id": "aurora-recurso-presentado-sin-resultado",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "No concede la solicitud",
+        "Se presenta recurso": "Sí",
+        "Fecha de recurso en caso desfavorable": "2026-02-20"
+      },
+      "expectedCode": "PENDIENTE_DECISION",
+      "expectedLabel": "Pendiente de decisión"
+    },
+    {
+      "id": "aurora-fecha-decision-recurso-sin-resultado",
+      "flow": "aurora",
+      "answers": {
+        "Fecha de la decisión del recurso": "2026-03-01"
+      },
+      "expectedCode": "PENDIENTE_DECISION",
+      "expectedLabel": "Pendiente de decisión"
+    },
+    {
+      "id": "aurora-resultado-recurso-diligenciado",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión que resuelve la solicitud": "Confirma la decisión"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-utilidad-avance-parcial-sin-radicacion",
+      "flow": "aurora",
+      "answers": {
+        "Actuación a adelantar": "Utilidad pública (solo mujeres)",
+        "Fecha de entrevista psicosocial": "2026-09-10",
+        "Fecha en la que se reciben todas las pruebas": "2026-09-13"
+      },
+      "expectedCode": "PRESENTAR_SOLICITUD",
+      "expectedLabel": "Presentar solicitud"
+    },
+    {
+      "id": "aurora-utilidad-no-cumple-marginalidad",
+      "flow": "aurora",
+      "answers": {
+        "Actuación a adelantar": "Utilidad pública (solo mujeres)",
+        "Cumple el requisito de marginalidad": "No",
+        "Cumple el requisito de jefatura de hogar": "Sí"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-utilidad-no-cumple-jefatura-hogar",
+      "flow": "aurora",
+      "answers": {
+        "Actuación a adelantar": "Utilidad pública (solo mujeres)",
+        "Cumple el requisito de marginalidad": "Sí",
+        "Cumple el requisito de jefatura de hogar": "No"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-utilidad-no-cumple-ambos-requisitos",
+      "flow": "aurora",
+      "answers": {
+        "Actuación a adelantar": "Utilidad pública (solo mujeres)",
+        "Cumple el requisito de marginalidad": "No",
+        "Cumple el requisito de jefatura de hogar": "No"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-utilidad-radicada-sin-decision",
+      "flow": "aurora",
+      "answers": {
+        "Actuación a adelantar": "Utilidad pública (solo mujeres)",
+        "Fecha en la que se reciben todas las pruebas": "2026-09-13",
+        "Fecha de radicación de solicitud de utilidad pública": "2026-09-14"
+      },
+      "expectedCode": "PENDIENTE_DECISION",
+      "expectedLabel": "Pendiente de decisión"
+    },
+    {
+      "id": "aurora-tramite-normal-radicado-sin-decision",
+      "flow": "aurora",
+      "answers": {
+        "Actuación a adelantar": "Libertad condicional",
+        "Fecha de presentación de la solicitud a la autoridad": "2026-09-14"
+      },
+      "expectedCode": "PENDIENTE_DECISION",
+      "expectedLabel": "Pendiente de decisión"
+    },
+    {
+      "id": "aurora-utilidad-fecha-decision-sin-sentido",
+      "flow": "aurora",
+      "answers": {
+        "Actuación a adelantar": "Utilidad pública (solo mujeres)",
+        "Fecha de radicación de solicitud de utilidad pública": "2026-09-14",
+        "Fecha de decisión de la autoridad": "2026-09-20"
+      },
+      "expectedCode": "PENDIENTE_DECISION",
+      "expectedLabel": "Pendiente de decisión"
+    },
+    {
+      "id": "aurora-cierre-automatico-residual-con-utilidad-positiva",
+      "flow": "aurora",
+      "answers": {
+        "Fecha de análisis jurídico del caso": "2026-09-10",
+        "Procedencia de libertad condicional": "No aplica porque ya se concedió prisión domiciliaria",
+        "Procedencia de prisión domiciliaria de mitad de pena": "No aplica porque ya está en libertad por pena cumplida",
+        "Procedencia de utilidad pública (solo para mujeres)": "Sí cumple requisitos objetivos",
+        "Procedencia de pena cumplida": "No",
+        "Procedencia de acumulación de penas": "No",
+        "Otras solicitudes a tramitar": "Ninguna",
+        "Resumen del análisis del caso": "Utilidad pública procedente",
+        "Cierre del caso por imposibilidad de avanzar (si aplica)": "Caso cerrado: en las preguntas 30 a 34 no se marcó procedencia para la solicitud."
+      },
+      "expectedCode": "ENTREVISTAR_USUARIO",
+      "expectedLabel": "Entrevistar al usuario"
+    },
+    {
+      "id": "celeste-sin-analisis",
+      "flow": "celeste",
+      "answers": {},
+      "expectedCode": "ANALIZAR_CASO",
+      "expectedLabel": "Analizar el caso"
+    },
+    {
+      "id": "celeste-analisis-positivo-sin-entrevista",
+      "flow": "celeste",
+      "answers": {
+        "Defensor(a) Público(a) Asignado para tramitar la solicitud": "Defensor prueba",
+        "Fecha de análisis jurídico del caso": "2026-04-10",
+        "PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS": "Se avanzará",
+        "RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO": "Resumen del caso"
+      },
+      "expectedCode": "ENTREVISTAR_USUARIO",
+      "expectedLabel": "Entrevistar al usuario"
+    },
+    {
+      "id": "celeste-entrevista-completa",
+      "flow": "celeste",
+      "answers": {
+        "Defensor(a) Público(a) Asignado para tramitar la solicitud": "Defensor prueba",
+        "Fecha de análisis jurídico del caso": "2026-04-10",
+        "PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS": "Se avanzará",
+        "RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO": "Resumen del caso",
+        "Fecha de entrevista": "2026-04-15"
+      },
+      "expectedCode": "PRESENTAR_SOLICITUD",
+      "expectedLabel": "Presentar solicitud"
+    },
+    {
+      "id": "celeste-audiencia-solicitada",
+      "flow": "celeste",
+      "answers": {
+        "FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA": "2026-04-16"
+      },
+      "expectedCode": "PENDIENTE_AUDIENCIA",
+      "expectedLabel": "Pendiente audiencia"
+    },
+    {
+      "id": "celeste-audiencia-realizada-sin-decision",
+      "flow": "celeste",
+      "answers": {
+        "FECHA DE REALIZACIÓN DE AUDIENCIA": "2026-04-18"
+      },
+      "expectedCode": "PENDIENTE_DECISION_AUDIENCIA",
+      "expectedLabel": "Pendiente decisión de audiencia"
+    },
+    {
+      "id": "celeste-decision-negativa-sin-recurso",
+      "flow": "celeste",
+      "answers": {
+        "SENTIDO DE LA DECISIÓN": "Niega la solicitud"
+      },
+      "expectedCode": "PRESENTAR_RECURSO",
+      "expectedLabel": "Presentar recurso"
+    },
+    {
+      "id": "celeste-recurso-presentado-sin-resultado",
+      "flow": "celeste",
+      "answers": {
+        "SENTIDO DE LA DECISIÓN": "Niega la solicitud",
+        "¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?": "Sí",
+        "Fecha de presentación del recurso": "2026-04-19"
+      },
+      "expectedCode": "PENDIENTE_DECISION",
+      "expectedLabel": "Pendiente de decisión"
+    },
+    {
+      "id": "celeste-fecha-decision-recurso-sin-resultado",
+      "flow": "celeste",
+      "answers": {
+        "Fecha de la decisión del recurso": "2026-04-21"
+      },
+      "expectedCode": "PENDIENTE_DECISION",
+      "expectedLabel": "Pendiente de decisión"
+    },
+    {
+      "id": "celeste-resultado-recurso-diligenciado",
+      "flow": "celeste",
+      "answers": {
+        "SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO": "Confirma la decisión"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "celeste-no-se-avanzara",
+      "flow": "celeste",
+      "answers": {
+        "PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS": "No se avanzará"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    }
+  ]
+}

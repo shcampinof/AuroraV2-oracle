@@ -17,6 +17,11 @@ import { getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
 import { displayOrDash } from '../utils/pplDisplay.js';
 import { reportError } from '../utils/reportError.js';
 import { buildAsignacionBackendFilters } from '../utils/asignacionDefensores.js';
+import {
+  isNombreDefensorValido,
+  normalizeDefensorNombre,
+  normalizeDefensorNombreInput,
+} from '../utils/defensores.js';
 
 function tieneDefensor(value) {
   const cleaned = String(value ?? '').trim();
@@ -25,15 +30,6 @@ function tieneDefensor(value) {
 
 function normalizeDocumento(value) {
   return String(value ?? '').replace(/\D+/g, '');
-}
-
-function normalizeDefensorNombre(value) {
-  return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function normalizeLugar(value) {
@@ -57,10 +53,6 @@ function resolveCentroId(value, options) {
     }
   });
   return ids.size === 1 ? Array.from(ids)[0] : '';
-}
-
-function isNombreDefensorValido(value) {
-  return /^[\p{L}\s]+$/u.test(value);
 }
 
 function getAccionImpulsarDisplay(row) {
@@ -869,10 +861,11 @@ function AsignacionDefensores({ tipo = 'condenado' }) {
                 placeholder="Ingrese nombre completo en MAYÚSCULA"
                 value={crearDefensorNombre}
                 onChange={(e) => {
-                  setCrearDefensorNombre(normalizeDefensorNombre(e.target.value));
+                  setCrearDefensorNombre(normalizeDefensorNombreInput(e.target.value));
                   if (crearDefensorError) setCrearDefensorError('');
                   if (crearDefensorSuccess) setCrearDefensorSuccess('');
                 }}
+                onBlur={() => setCrearDefensorNombre((value) => normalizeDefensorNombre(value))}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -880,7 +873,9 @@ function AsignacionDefensores({ tipo = 'condenado' }) {
                   }
                 }}
               />
-              <p className="hint-text">El nombre debe ingresarse completo y en MAYÚSCULA.</p>
+              <p className="hint-text">
+                El nombre debe ingresarse completo y en MAYÚSCULA, con un solo espacio entre palabras.
+              </p>
               {crearDefensorError && <p className="hint-text">{crearDefensorError}</p>}
               {crearDefensorSuccess && <p className="hint-text">{crearDefensorSuccess}</p>}
               {guardandoDefensor && <p className="hint-text">Guardando defensor...</p>}
@@ -1137,11 +1132,12 @@ function AsignacionDefensores({ tipo = 'condenado' }) {
                 placeholder="Escriba para buscar defensor"
                 value={nuevoDefensorInput}
                 onChange={(e) => {
-                  const next = normalizeDefensorNombre(e.target.value);
+                  const next = normalizeDefensorNombreInput(e.target.value);
                   setNuevoDefensorInput(next);
                   const hit = defensoresPorNombreNormalizado.get(normalizeDefensorNombre(next));
                   setNuevoDefensorId(hit?.id ? String(hit.id) : '');
                 }}
+                onBlur={() => setNuevoDefensorInput((value) => normalizeDefensorNombre(value))}
               />
               <datalist id="pag-nuevo-defensor-list">
                 {defensoresSugeridos.map((d) => (

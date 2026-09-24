@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aurora-shell-v6';
+const CACHE_NAME = 'aurora-shell-v7';
 const QUEUE_DB_NAME = 'aurora-pwa-v1';
 const QUEUE_STORE_NAME = 'offlineRequests';
 const QUEUE_SYNC_TAG = 'aurora-offline-sync';
@@ -173,6 +173,20 @@ async function queueRequest(request) {
     headers[key] = value;
   });
 
+  const url = new URL(request.url);
+  const method = String(request.method || '').toUpperCase();
+  const entrySubject = subjectFromAuthorization(request.headers.get('authorization'));
+  let coalesceKey = '';
+  if (method === 'PUT' && /^\/api\/ppl\/[^/]+$/.test(url.pathname)) {
+    try {
+      const parsedBody = JSON.parse(body || '{}');
+      const target = String(parsedBody?.actuacionId || parsedBody?.rowIndex || 'actual');
+      coalesceKey = `${entrySubject}:${method}:${url.pathname}:${target}`;
+    } catch {
+      coalesceKey = `${entrySubject}:${method}:${url.pathname}:actual`;
+    }
+  }
+
   const entry = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     url: request.url,
@@ -183,11 +197,41 @@ async function queueRequest(request) {
     attempts: 0,
     lastAttemptAt: 0,
     requiresAuth: Boolean(request.headers.get('authorization')),
-    authSubject: subjectFromAuthorization(request.headers.get('authorization')),
+    authSubject: entrySubject,
+    coalesceKey,
   };
 
   await runQueueStore('readwrite', (store) => {
-    store.put(entry);
+    if (!coalesceKey) {
+      store.put(entry);
+      return;
+    }
+    const cursorRequest = store.openCursor();
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
+      if (!cursor) {
+        store.put(entry);
+        return;
+      }
+      if (cursor.value?.coalesceKey === coalesceKey) {
+        try {
+          const previousBody = JSON.parse(cursor.value?.body || '{}');
+          const nextBody = JSON.parse(entry.body || '{}');
+          entry.body = JSON.stringify({
+            ...previousBody,
+            ...nextBody,
+            data: {
+              ...(previousBody?.data || {}),
+              ...(nextBody?.data || {}),
+            },
+          });
+        } catch {
+          // Si un cuerpo legado no es JSON, prevalece el snapshot más reciente.
+        }
+        cursor.delete();
+      }
+      cursor.continue();
+    };
   });
   await trimQueue();
   await registerQueueSync();

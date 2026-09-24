@@ -1,42 +1,42 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": "2026-07-31",
+  "catalogVersion": "2026-09-23",
   "items": [
     {
       "id": "ANALIZAR_CASO",
       "label": "Analizar el caso",
       "estadoCodigos": ["ANALIZAR_CASO"],
-      "aliases": ["Analizar el caso", "Realizar análisis del caso"]
+      "aliases": ["Analizar el caso"]
     },
     {
-      "id": "REALIZAR_ENTREVISTA",
+      "id": "ENTREVISTAR_USUARIO",
       "label": "Entrevistar al usuario",
       "estadoCodigos": ["ENTREVISTAR_USUARIO"],
-      "aliases": ["Entrevistar al usuario", "Realizar entrevista"]
+      "aliases": ["Entrevistar al usuario"]
     },
     {
       "id": "PRESENTAR_SOLICITUD",
       "label": "Presentar solicitud",
       "estadoCodigos": ["PRESENTAR_SOLICITUD"],
-      "aliases": ["Presentar solicitud", "Radicar solicitud"]
+      "aliases": ["Presentar solicitud"]
     },
     {
-      "id": "HACER_SEGUIMIENTO_AUDIENCIA",
-      "label": "Hacer seguimiento a la audiencia",
+      "id": "PENDIENTE_AUDIENCIA",
+      "label": "Pendiente audiencia",
       "estadoCodigos": ["PENDIENTE_AUDIENCIA"],
-      "aliases": ["Pendiente audiencia", "Hacer seguimiento a la audiencia"]
+      "aliases": ["Pendiente audiencia"]
     },
     {
-      "id": "HACER_SEGUIMIENTO_DECISION_AUDIENCIA",
-      "label": "Hacer seguimiento a la decisión de audiencia",
+      "id": "PENDIENTE_DECISION_AUDIENCIA",
+      "label": "Pendiente decisión de audiencia",
       "estadoCodigos": ["PENDIENTE_DECISION_AUDIENCIA"],
-      "aliases": ["Pendiente decisión de audiencia", "Hacer seguimiento a la decisión de audiencia"]
+      "aliases": ["Pendiente decisión de audiencia"]
     },
     {
-      "id": "HACER_SEGUIMIENTO_DECISION",
-      "label": "Hacer seguimiento a la decisión",
+      "id": "PENDIENTE_DECISION",
+      "label": "Pendiente de decisión",
       "estadoCodigos": ["PENDIENTE_DECISION"],
-      "aliases": ["Pendiente decisión", "Hacer seguimiento a la decisión"]
+      "aliases": ["Pendiente de decisión"]
     },
     {
       "id": "PRESENTAR_RECURSO",
@@ -45,10 +45,10 @@
       "aliases": ["Presentar recurso"]
     },
     {
-      "id": "SIN_ACCION_PENDIENTE",
+      "id": "CASO_CERRADO",
       "label": "Caso cerrado",
       "estadoCodigos": ["CASO_CERRADO"],
-      "aliases": ["Caso cerrado", "Sin acción pendiente"]
+      "aliases": ["Caso cerrado"]
     }
   ]
 }

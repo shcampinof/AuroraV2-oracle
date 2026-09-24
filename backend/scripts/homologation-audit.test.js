@@ -34,7 +34,7 @@ function testAuditPrioritizesWithoutAutomaticallyMerging() {
   assert.strictEqual(report.actions.summary.missingSourceTextOccurrences, 4);
   assert.strictEqual(report.actions.summary.canonicalDerivedOccurrences, 14);
   assert.strictEqual(report.actions.pending[0].reason, 'estado_texto_inconsistente');
-  assert.strictEqual(report.actions.pending[0].expectedAction.codigo, 'REALIZAR_ENTREVISTA');
+  assert.strictEqual(report.actions.pending[0].expectedAction.codigo, 'ENTREVISTAR_USUARIO');
 }
 
 function testSimilarityIsOnlyAdvisory() {

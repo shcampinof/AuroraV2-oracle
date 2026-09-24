@@ -1,6 +1,10 @@
 const assert = require('assert');
 const { buildDefensorOptions, buildReport, validateFilters } = require('../services/reporteAtencionesService');
-const { EVENT_UNIONS, normalizeDefensorName } = require('../repositories/oracle/reporteAtencionesRepository');
+const {
+  EVENT_UNIONS,
+  EVENT_ASSIGNMENT_SCOPE_SQL,
+  normalizeDefensorName,
+} = require('../repositories/oracle/reporteAtencionesRepository');
 
 function rawEvent(tipo, overrides = {}) {
   return {
@@ -33,6 +37,11 @@ function run() {
   assert.strictEqual(normalizeDefensorName('  José   Pérez '), 'JOSE PEREZ');
   assert.strictEqual(EVENT_UNIONS.filter(([type]) => type === 'solicitud').length, 3);
   assert.strictEqual(EVENT_UNIONS.filter(([type]) => type === 'reiteracion').length, 5);
+  assert.match(
+    EVENT_ASSIGNMENT_SCOPE_SQL,
+    /a\.FECHA_FIN IS NULL[\s\S]*OR \([\s\S]*e\.FECHA >= TRUNC\(a\.FECHA_ASIGNACION\)[\s\S]*e\.FECHA < TRUNC\(a\.FECHA_FIN\) \+ 1/,
+    'una asignación vigente debe incluir la historia del caso aunque su fecha técnica sea posterior'
+  );
   const defensorOptions = buildDefensorOptions([
     { CEDULA: null, NOMBRE: 'NANCY LANUZA', REGIONAL: null, CORREO: null },
     { CEDULA: '1234', NOMBRE: 'DEFENSOR CON CATÁLOGO', REGIONAL: 'MAGDALENA', CORREO: 'd@example.test' },

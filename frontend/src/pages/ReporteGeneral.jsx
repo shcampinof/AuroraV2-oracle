@@ -72,6 +72,27 @@ function formatGeneratedAt(value) {
   }).format(date);
 }
 
+function normalizedPercentage(value, fractionDigits = 0) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 0;
+  const factor = 10 ** fractionDigits;
+  return Math.round(number * factor) / factor;
+}
+
+function formatPercentage(value, fractionDigits = 0) {
+  return normalizedPercentage(value, fractionDigits).toLocaleString('es-CO', {
+    maximumFractionDigits: fractionDigits,
+  });
+}
+
+function percentageOfTotal(stage, totalCount) {
+  if (stage?.totalPercentage !== undefined && stage?.totalPercentage !== null) {
+    return normalizedPercentage(stage.totalPercentage, 1);
+  }
+  if (!totalCount) return 0;
+  return normalizedPercentage((Number(stage?.count || 0) / totalCount) * 100, 1);
+}
+
 function ReporteGeneral() {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -109,6 +130,7 @@ function ReporteGeneral() {
 
   const stages = Array.isArray(report.stages) ? report.stages : [];
   const metadata = report.metadata || {};
+  const totalCount = Number(stages[0]?.count || report.resumen?.asignados || 0);
 
   return (
     <section className="general-report-page" aria-labelledby="general-report-title">
@@ -130,7 +152,7 @@ function ReporteGeneral() {
 
       <div className="general-report-board">
         <div className="general-report-columns" aria-hidden="true">
-          <span>Etapa del proceso</span><span>Número de usuarios</span><span>Porcentaje de avance</span><span>Detalle / observaciones</span>
+          <span>Etapa del proceso</span><span>Número de usuarios</span><span>Avance de etapa / sobre total</span><span>Detalle / observaciones</span>
         </div>
 
         <div className="general-report-content">
@@ -138,6 +160,8 @@ function ReporteGeneral() {
             {stages.map((stage, index) => {
               const color = STAGE_COLORS[index % STAGE_COLORS.length];
               const width = Math.max(58, 100 - index * 6);
+              const stagePercentage = normalizedPercentage(stage.percentage);
+              const totalPercentage = percentageOfTotal(stage, totalCount);
               return (
                 <article className="general-report-stage" key={stage.key || stage.label} style={{ '--stage-color': color }}>
                   <div className="general-report-label">
@@ -151,7 +175,12 @@ function ReporteGeneral() {
                     </div>
                   </div>
                   <div className="general-report-percentage">
-                    <span className="general-report-line" /><strong>{Number(stage.percentage || 0)} %</strong><i />
+                    <span className="general-report-line" />
+                    <span className="general-report-percentage-values">
+                      <strong><span>{formatPercentage(stagePercentage)} %</span><small>etapa</small></strong>
+                      <strong><span>{formatPercentage(totalPercentage, 1)} %</span><small>total</small></strong>
+                    </span>
+                    <i />
                   </div>
                   <div className="general-report-details">
                     <p>{stage.detail}</p>
@@ -164,12 +193,20 @@ function ReporteGeneral() {
 
           <aside className="general-report-summary" aria-label="Resumen general">
             <h3>Resumen general</h3>
-            {stages.map((stage, index) => (
-              <div className="general-report-summary-item" key={stage.key || stage.label} style={{ '--stage-color': STAGE_COLORS[index % STAGE_COLORS.length] }}>
-                <span className="general-report-icon"><StageIcon type={stage.key} /></span>
-                <p><strong>{Number(stage.count || 0).toLocaleString('es-CO')}</strong><span>{stage.shortLabel || stage.label} ({Number(stage.percentage || 0)} %)</span></p>
-              </div>
-            ))}
+            {stages.map((stage, index) => {
+              const stagePercentage = normalizedPercentage(stage.percentage);
+              const totalPercentage = percentageOfTotal(stage, totalCount);
+              return (
+                <div className="general-report-summary-item" key={stage.key || stage.label} style={{ '--stage-color': STAGE_COLORS[index % STAGE_COLORS.length] }}>
+                  <span className="general-report-icon"><StageIcon type={stage.key} /></span>
+                  <p>
+                    <strong>{Number(stage.count || 0).toLocaleString('es-CO')}</strong>
+                    <span>{stage.shortLabel || stage.label}</span>
+                    <small>Etapa: {formatPercentage(stagePercentage)} % · Total: {formatPercentage(totalPercentage, 1)} %</small>
+                  </p>
+                </div>
+              );
+            })}
           </aside>
         </div>
       </div>

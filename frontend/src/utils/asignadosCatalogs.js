@@ -4,35 +4,16 @@ export const ESTADOS_TRAMITE_OPTIONS = [
   { value: 'PRESENTAR_SOLICITUD', label: 'Presentar solicitud' },
   { value: 'PENDIENTE_AUDIENCIA', label: 'Pendiente audiencia' },
   { value: 'PENDIENTE_DECISION_AUDIENCIA', label: 'Pendiente decisi\u00f3n de audiencia' },
-  { value: 'PENDIENTE_DECISION', label: 'Pendiente decisi\u00f3n' },
+  { value: 'PENDIENTE_DECISION', label: 'Pendiente de decisi\u00f3n' },
   { value: 'PRESENTAR_RECURSO', label: 'Presentar recurso' },
   { value: 'CASO_CERRADO', label: 'Caso cerrado' },
 ];
 
-// Catálogo visible del filtro. Los códigos de estado siguen siendo internos:
-// aquí se expresa la tarea que debe impulsar el equipo jurídico.
-export const ACCIONES_IMPULSAR_OPTIONS = [
-  { value: 'ANALIZAR_CASO', label: 'Analizar el caso', estadoCodigos: ['ANALIZAR_CASO'] },
-  { value: 'REALIZAR_ENTREVISTA', label: 'Entrevistar al usuario', estadoCodigos: ['ENTREVISTAR_USUARIO'] },
-  { value: 'PRESENTAR_SOLICITUD', label: 'Presentar solicitud', estadoCodigos: ['PRESENTAR_SOLICITUD'] },
-  {
-    value: 'HACER_SEGUIMIENTO_AUDIENCIA',
-    label: 'Hacer seguimiento a la audiencia',
-    estadoCodigos: ['PENDIENTE_AUDIENCIA'],
-  },
-  {
-    value: 'HACER_SEGUIMIENTO_DECISION_AUDIENCIA',
-    label: 'Hacer seguimiento a la decisión de audiencia',
-    estadoCodigos: ['PENDIENTE_DECISION_AUDIENCIA'],
-  },
-  {
-    value: 'HACER_SEGUIMIENTO_DECISION',
-    label: 'Hacer seguimiento a la decisión',
-    estadoCodigos: ['PENDIENTE_DECISION'],
-  },
-  { value: 'PRESENTAR_RECURSO', label: 'Presentar recurso', estadoCodigos: ['PRESENTAR_RECURSO'] },
-  { value: 'SIN_ACCION_PENDIENTE', label: 'Caso cerrado', estadoCodigos: ['CASO_CERRADO'] },
-];
+// Estado y acción son el mismo concepto de negocio y comparten identidad.
+export const ACCIONES_IMPULSAR_OPTIONS = ESTADOS_TRAMITE_OPTIONS.map((item) => ({
+  ...item,
+  estadoCodigos: [item.value],
+}));
 
 function normalizeCatalogText(value) {
   return String(value ?? '')

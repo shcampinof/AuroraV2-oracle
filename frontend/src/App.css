@@ -3057,6 +3057,43 @@ input[list]{
   font-weight: 500;
 }
 
+.form-autosave-status{
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: -0.35rem 0 1rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #b9c7d8;
+  border-radius: 7px;
+  background: #f5f8fc;
+  color: #29445f;
+  font-size: 0.86rem;
+}
+
+.form-autosave-status--saved{
+  border-color: #9fd9ae;
+  background: #eef9f1;
+  color: #115b26;
+}
+
+.form-autosave-status--queued,
+.form-autosave-status--pending{
+  border-color: #d4bd72;
+  background: #fff9e8;
+  color: #6b4f00;
+}
+
+.form-autosave-status--error{
+  border-color: #d9a0a0;
+  background: #fff2f2;
+  color: #8a2020;
+}
+
+.form-autosave-status small{
+  white-space: nowrap;
+}
+
 .readonly-form-fieldset{
   min-width: 0;
   margin: 0;

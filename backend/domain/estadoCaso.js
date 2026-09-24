@@ -6,7 +6,7 @@ const ESTADOS_CASO = Object.freeze([
   { codigo: 'PRESENTAR_SOLICITUD', etiqueta: 'Presentar solicitud' },
   { codigo: 'PENDIENTE_AUDIENCIA', etiqueta: 'Pendiente audiencia' },
   { codigo: 'PENDIENTE_DECISION_AUDIENCIA', etiqueta: 'Pendiente decisión de audiencia' },
-  { codigo: 'PENDIENTE_DECISION', etiqueta: 'Pendiente decisión' },
+  { codigo: 'PENDIENTE_DECISION', etiqueta: 'Pendiente de decisión' },
   { codigo: 'PRESENTAR_RECURSO', etiqueta: 'Presentar recurso' },
   { codigo: 'CASO_CERRADO', etiqueta: 'Caso cerrado' },
 ]);

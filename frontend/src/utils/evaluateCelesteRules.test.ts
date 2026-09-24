@@ -149,7 +149,7 @@ describe('evaluateCelesteRules - flujo sindicados', () => {
     expect(result.derivedStatus).toBe('Caso cerrado');
   });
 
-  it('Regla 8: si Q28 = Sí, queda Pendiente decisión', () => {
+  it('Regla 8: si Q28 = Sí, queda Pendiente de decisión', () => {
     const result = evaluateCelesteRules({
       answers: {
         ...buildBaseSeAvanza(),
@@ -160,17 +160,17 @@ describe('evaluateCelesteRules - flujo sindicados', () => {
         [Q28]: 'si',
       },
     });
-    expect(result.derivedStatus).toBe('Pendiente decisión');
+    expect(result.derivedStatus).toBe('Pendiente de decisión');
   });
 
-  it('Regla 8B: con Q26 = niega y Q28 = Sí queda Pendiente decisión aunque falte bloque 3', () => {
+  it('Regla 8B: con Q26 = niega y Q28 = Sí queda Pendiente de decisión aunque falte bloque 3', () => {
     const result = evaluateCelesteRules({
       answers: {
         [Q26]: Q26_NIEGA,
         [Q28]: 'si',
       },
     });
-    expect(result.derivedStatus).toBe('Pendiente decisión');
+    expect(result.derivedStatus).toBe('Pendiente de decisión');
   });
 
   it('Regla bloque 5: con Q24 diligenciada y sin bloque 3 queda Pendiente audiencia', () => {
@@ -192,7 +192,7 @@ describe('evaluateCelesteRules - flujo sindicados', () => {
     expect(result.derivedStatus).toBe('Pendiente decisión de audiencia');
   });
 
-  it('Regla 9: si Q29 tiene fecha de presentación de recurso, estado = Pendiente decisión', () => {
+  it('Regla 9: si Q29 tiene fecha de presentación de recurso, estado = Pendiente de decisión', () => {
     const result = evaluateCelesteRules({
       answers: {
         ...buildBaseSeAvanza(),
@@ -204,17 +204,17 @@ describe('evaluateCelesteRules - flujo sindicados', () => {
         [Q29]: '2026-04-19',
       },
     });
-    expect(normalize(result.derivedStatus)).toBe('pendiente decision');
+    expect(normalize(result.derivedStatus)).toBe('pendiente de decision');
   });
 
-  it('Regla adicional: si Q30 (fecha de decisión del recurso) tiene respuesta, estado = Caso cerrado', () => {
+  it('Regla adicional: si Q30 tiene fecha pero Q31 no tiene resultado, estado = Pendiente de decisión', () => {
     const result = evaluateCelesteRules({
       answers: {
         ...buildBaseSeAvanza(),
         [Q30]: '2026-04-21',
       },
     });
-    expect(result.derivedStatus).toBe('Caso cerrado');
+    expect(result.derivedStatus).toBe('Pendiente de decisión');
   });
 
   it('Regla adicional: si Q31 (sentido que resuelve recurso) tiene respuesta, estado = Caso cerrado', () => {

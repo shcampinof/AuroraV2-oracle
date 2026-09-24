@@ -42,7 +42,11 @@ describe('PWA configuration', () => {
     expect(serviceWorker).toContain("method === 'POST' && pathname === '/api/defensores'");
     expect(serviceWorker).toContain("status: 202");
     expect(serviceWorker).toContain("'X-Aurora-Queued': 'true'");
-    expect(serviceWorker).toContain('authSubject: subjectFromAuthorization');
+    expect(serviceWorker).toContain('coalesceKey');
+    expect(serviceWorker).toContain("parsedBody?.actuacionId || parsedBody?.rowIndex || 'actual'");
+    expect(serviceWorker).toContain('...(previousBody?.data || {})');
+    expect(serviceWorker).toContain('...(nextBody?.data || {})');
+    expect(serviceWorker).toContain('authSubject: entrySubject');
     expect(serviceWorker).toContain('discardAuthenticatedQueueExcept(authSubject)');
     expect(serviceWorker).toContain('row.authSubject !== authSubject');
   });

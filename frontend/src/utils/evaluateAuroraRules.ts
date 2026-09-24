@@ -262,6 +262,13 @@ function evaluateDisabledFields(answers: FormRecord): string[] {
     (rule.effects.enable || []).forEach((field) => disabled.delete(field));
   }
 
+  // Los cierres terminales prevalecen sobre reglas que normalmente volverían
+  // a habilitar campos dependientes dentro del mismo bloque.
+  for (const rule of auroraFormRules.dependencyRules) {
+    if (!rule.when(answers)) continue;
+    (rule.effects.finalDisable || []).forEach((field) => disabled.add(field));
+  }
+
   return Array.from(disabled);
 }
 
@@ -272,7 +279,7 @@ function normalizeDerivedStatus(status: string): DerivedStatus {
   if (n.includes('entrevistar al usuario')) return 'Entrevistar al usuario';
   if (n.includes('presentar solicitud')) return 'Presentar solicitud';
   if (n.includes('presentar recurso')) return 'Presentar recurso';
-  if (n.includes('pendiente')) return 'Pendiente decisión';
+  if (n.includes('pendiente')) return 'Pendiente de decisión';
   return 'Analizar el caso';
 }
 

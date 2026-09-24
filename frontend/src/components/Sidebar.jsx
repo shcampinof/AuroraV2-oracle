@@ -7,7 +7,6 @@ const items = [
   { id: 'reporte-atenciones', label: 'Descargar reporte de atención' },
   { id: 'reporte-general', label: 'Reporte general de avance' },
   { id: 'asignacion', label: 'PAG - Asignación de casos de condenados', pagOnly: true },
-  { id: 'asignacion-sindicados', label: 'PAG - Asignación de casos de sindicados', pagOnly: true },
   { id: 'herramientas', label: 'Caja de Herramientas' },
   { id: 'manual', label: 'Manual Interactivo', enabled: FEATURE_FLAGS.manualInteractivo },
   { id: 'admin-cargas', label: 'Cargas mensuales', adminOnly: true },

@@ -11,6 +11,19 @@ const DEFENSOR_MATCH_SQL = `(
   )
 )`;
 
+// Las asignaciones vigentes deben incluir la historia del caso dentro del
+// periodo solicitado. En cargas históricas, FECHA_ASIGNACION corresponde al
+// momento de registro en AURORA y puede ser posterior a las actuaciones.
+// Para asignaciones finalizadas sí se conserva el intervalo, evitando atribuir
+// al defensor actuaciones posteriores al traslado del caso.
+const EVENT_ASSIGNMENT_SCOPE_SQL = `(
+  a.FECHA_FIN IS NULL
+  OR (
+    e.FECHA >= TRUNC(a.FECHA_ASIGNACION)
+    AND e.FECHA < TRUNC(a.FECHA_FIN) + 1
+  )
+)`;
+
 const EVENT_UNIONS = [
   ['analisis', 'g.FECHA_ANALISIS'],
   ['entrevista', 'g.FECHA_ENTREVISTA'],
@@ -164,8 +177,7 @@ async function listEvents(params) {
         FROM DNDP.ASIGNACION a
         WHERE a.ID_PERSONA = e.ID_PERSONA
           AND ${DEFENSOR_MATCH_SQL}
-          AND e.FECHA >= TRUNC(a.FECHA_ASIGNACION)
-          AND (a.FECHA_FIN IS NULL OR e.FECHA < TRUNC(a.FECHA_FIN) + 1)
+          AND ${EVENT_ASSIGNMENT_SCOPE_SQL}
       )
     ORDER BY e.TIPO, e.FECHA, e.NOMBRE_USUARIO, e.IDENTIFICACION
   `;
@@ -185,4 +197,5 @@ module.exports = {
   listAssignedCases,
   normalizeDefensorName,
   EVENT_UNIONS,
+  EVENT_ASSIGNMENT_SCOPE_SQL,
 };

@@ -228,40 +228,12 @@ function buildTipoFilter(tipo) {
   return 'TRIM(s.SITUACION) IS NOT NULL';
 }
 
-function buildCanonicalEstadoCodeCase(columnRef) {
-  const normalized = normalizedMojibakeSqlExpr(columnRef);
-  return `
-    CASE
-      WHEN ${normalized} LIKE '%ANALIZAR EL CASO%' THEN 'ANALIZAR_CASO'
-      WHEN ${normalized} LIKE '%ENTREVISTAR AL USUARIO%' THEN 'ENTREVISTAR_USUARIO'
-      WHEN ${normalized} LIKE '%PENDIENTE DECISION DE AUDIENCIA%' THEN 'PENDIENTE_DECISION_AUDIENCIA'
-      WHEN ${normalized} LIKE '%PENDIENTE AUDIENCIA%' THEN 'PENDIENTE_AUDIENCIA'
-      WHEN ${normalized} LIKE '%PRESENTAR SOLICITUD%' THEN 'PRESENTAR_SOLICITUD'
-      WHEN ${normalized} LIKE '%PRESENTAR RECURSO%' THEN 'PRESENTAR_RECURSO'
-      WHEN ${normalized} LIKE '%PENDIENTE DECISION%' THEN 'PENDIENTE_DECISION'
-      WHEN ${normalized} LIKE '%CASO CERRADO%' OR ${normalized} = 'CERRADO' THEN 'CASO_CERRADO'
-      ELSE NULL
-    END
-  `;
-}
-
-const EXPLICIT_ESTADO_CODIGO_EXPR = `
-  COALESCE(
-    ${buildCanonicalEstadoCodeCase('g.ACCION_REALIZAR')},
-    ${buildCanonicalEstadoCodeCase('g.ACTUACION_ADELANTAR')},
-    ''
-  )
-`;
-const ANALIZAR_CON_FALLBACK_EXPR = `COALESCE(NULLIF((${EXPLICIT_ESTADO_CODIGO_EXPR}), ''), 'ANALIZAR_CASO')`;
-
 function sqlFilled(columnRef) {
   return `${columnRef} IS NOT NULL AND TRIM(TO_CHAR(${columnRef})) NOT IN ('-', '--')`;
 }
 
-// La etiqueta visible no depende solamente de ACCION_REALIZAR. La interfaz
-// deriva los estados iniciales a partir de los hitos diligenciados del flujo;
-// la búsqueda debe usar esos mismos hitos para no ocultar filas que sí muestra
-// como "Entrevistar al usuario", "Presentar solicitud", etc.
+// Oracle deriva el estado exclusivamente de los hitos diligenciados del flujo.
+// ACCION_REALIZAR es una copia materializada de esa derivación, no una entrada.
 const HAS_ANALISIS_COMPLETO_EXPR = `(
   ${sqlFilled('g.FECHA_ANALISIS')}
   AND ${sqlFilled('g.RESUMEN_ANALISIS_CASO')}
@@ -278,10 +250,13 @@ const ACTUACION_NORMALIZADA_EXPR = normalizedMojibakeSqlExpr('g.ACTUACION_ADELAN
 const DECISION_NORMALIZADA_EXPR = normalizedMojibakeSqlExpr('g.SENTIDO_DECISION');
 const RECURSO_NORMALIZADO_EXPR = normalizedMojibakeSqlExpr('g.SE_PRESENTA_RECURSO');
 const DECISION_USUARIO_NORMALIZADA_EXPR = normalizedMojibakeSqlExpr('g.DECISION_USUARIO');
-const HAS_DECISION_RECURSO_EXPR = sqlAnyFilled([
-  'g.FECHA_DECISION_RECURSO',
-  'g.SENTIDO_DECISION_RESUELVE_RECURSO',
-]);
+const CIERRE_CASO_NORMALIZADO_EXPR = normalizedMojibakeSqlExpr('g.CIERRE_CASO');
+const HAS_EXPLICIT_CIERRE_CASO_EXPR = `(${CIERRE_CASO_NORMALIZADO_EXPR} IN (
+  'SE CIERRA PORQUE LA PERSONA YA NO ESTA EN EL ERON POR RAZON AJENA A ESTE TRAMITE.',
+  'OTRO MOTIVO.'
+))`;
+const HAS_FECHA_DECISION_RECURSO_EXPR = sqlFilled('g.FECHA_DECISION_RECURSO');
+const HAS_SENTIDO_DECISION_RECURSO_EXPR = sqlFilled('g.SENTIDO_DECISION_RESUELVE_RECURSO');
 const IS_UTILIDAD_PUBLICA_EXPR = `(${ACTUACION_NORMALIZADA_EXPR} LIKE '%UTILIDAD PUBLICA%')`;
 const FECHA_RADICACION_EXPR = `(CASE
   WHEN ${IS_UTILIDAD_PUBLICA_EXPR} THEN g.FECHA_RADICACION_UTILIDAD
@@ -363,19 +338,23 @@ const HAS_POSITIVE_ANALYSIS_OUTCOME_EXPR = `(
 
 const AURORA_DERIVED_ESTADO_CODIGO_EXPR = `
   CASE
-    WHEN (${ALL_PROCEDENCIAS_NEGATIVAS_EXPR} AND ${HAS_EXPLICIT_NINGUNA_OTRAS_SOLICITUDES_EXPR})
-      OR ${sqlFilled('g.CIERRE_CASO')}
-      OR ${HAS_DECISION_RECURSO_EXPR}
+    WHEN (${ALL_PROCEDENCIAS_NEGATIVAS_EXPR}
+      AND ${HAS_EXPLICIT_NINGUNA_OTRAS_SOLICITUDES_EXPR}
+      AND ${sqlFilled('g.FECHA_ANALISIS')})
+      OR ${HAS_EXPLICIT_CIERRE_CASO_EXPR}
+      OR ${HAS_SENTIDO_DECISION_RECURSO_EXPR}
       OR (${sqlFilled('g.DECISION_USUARIO')} AND NOT (
         ${DECISION_USUARIO_NORMALIZADA_EXPR} LIKE 'SI%'
       ))
       OR ${ACTUACION_NORMALIZADA_EXPR} LIKE '%NINGUNA%'
       OR ${ACTUACION_NORMALIZADA_EXPR} LIKE '%NO PROCEDE NADA%'
-      OR ${normalizedMojibakeSqlExpr('g.CUMPLE_REQUISITO_MARGINALIDAD')} = 'NO'
-      OR ${normalizedMojibakeSqlExpr('g.CUMPLE_REQUISITO_JEFATURA_HOGAR')} = 'NO'
+      OR (${IS_UTILIDAD_PUBLICA_EXPR} AND (
+        ${normalizedMojibakeSqlExpr('g.CUMPLE_REQUISITO_MARGINALIDAD')} = 'NO'
+        OR ${normalizedMojibakeSqlExpr('g.CUMPLE_REQUISITO_JEFATURA_HOGAR')} = 'NO'
+      ))
       OR (${IS_DECISION_NEGATIVA_EXPR} AND (
         ${IS_RECURSO_NO_PRESENTADO_EXPR}
-        OR ${HAS_DECISION_RECURSO_EXPR}
+        OR ${HAS_SENTIDO_DECISION_RECURSO_EXPR}
       ))
       OR (NOT ${IS_UTILIDAD_PUBLICA_EXPR}
         AND ${sqlFilled('g.SENTIDO_DECISION')}
@@ -386,12 +365,15 @@ const AURORA_DERIVED_ESTADO_CODIGO_EXPR = `
       THEN 'CASO_CERRADO'
     WHEN ${IS_DECISION_NEGATIVA_EXPR}
       AND ${IS_RECURSO_PRESENTADO_EXPR}
-      AND NOT (${HAS_DECISION_RECURSO_EXPR})
+      AND NOT (${HAS_SENTIDO_DECISION_RECURSO_EXPR})
       THEN 'PENDIENTE_DECISION'
     WHEN ${IS_DECISION_NEGATIVA_EXPR}
       AND NOT (${IS_RECURSO_PRESENTADO_EXPR})
       AND NOT (${IS_RECURSO_NO_PRESENTADO_EXPR})
       THEN 'PRESENTAR_RECURSO'
+    WHEN ${HAS_FECHA_DECISION_RECURSO_EXPR}
+      AND NOT (${HAS_SENTIDO_DECISION_RECURSO_EXPR})
+      THEN 'PENDIENTE_DECISION'
     WHEN ${sqlFilled('g.FECHA_DECISION_AUTORIDAD')}
       AND NOT (${sqlFilled('g.SENTIDO_DECISION')})
       THEN 'PENDIENTE_DECISION'
@@ -410,7 +392,7 @@ const AURORA_DERIVED_ESTADO_CODIGO_EXPR = `
       AND ${HAS_ANALISIS_COMPLETO_EXPR}
       AND NOT (${HAS_ENTREVISTA_Y_ACTUACION_EXPR})
       THEN 'ENTREVISTAR_USUARIO'
-    ELSE ${ANALIZAR_CON_FALLBACK_EXPR}
+    ELSE 'ANALIZAR_CASO'
   END
 `;
 
@@ -424,11 +406,13 @@ const CELESTE_DERIVED_ESTADO_CODIGO_EXPR = `
   CASE
     WHEN ${ACTUACION_NORMALIZADA_EXPR} LIKE 'NO SE AVANZARA%'
       THEN 'CASO_CERRADO'
-    WHEN ${sqlFilled('g.FECHA_DECISION_RECURSO')}
-      OR ${sqlFilled('g.SENTIDO_DECISION_RESUELVE_RECURSO')}
+    WHEN ${HAS_SENTIDO_DECISION_RECURSO_EXPR}
       OR ${DECISION_NORMALIZADA_EXPR} LIKE '%REVOCA MEDIDA%'
       OR ${DECISION_NORMALIZADA_EXPR} LIKE '%SUSTITUYE MEDIDA%'
       THEN 'CASO_CERRADO'
+    WHEN ${HAS_FECHA_DECISION_RECURSO_EXPR}
+      AND NOT (${HAS_SENTIDO_DECISION_RECURSO_EXPR})
+      THEN 'PENDIENTE_DECISION'
     WHEN ${DECISION_NORMALIZADA_EXPR} LIKE '%NIEGA LA SOLICITUD%'
       THEN CASE
         WHEN ${IS_RECURSO_PRESENTADO_EXPR} THEN 'PENDIENTE_DECISION'
@@ -451,7 +435,7 @@ const CELESTE_DERIVED_ESTADO_CODIGO_EXPR = `
       THEN 'PRESENTAR_SOLICITUD'
     WHEN NOT (${CELESTE_HAS_ANALISIS_COMPLETO_EXPR})
       OR ${ACTUACION_NORMALIZADA_EXPR} NOT LIKE 'SE AVANZARA%'
-      THEN ${ANALIZAR_CON_FALLBACK_EXPR}
+      THEN 'ANALIZAR_CASO'
     WHEN NOT (${sqlFilled('g.FECHA_ENTREVISTA')})
       THEN 'ENTREVISTAR_USUARIO'
     ELSE 'PRESENTAR_SOLICITUD'
@@ -992,15 +976,6 @@ function buildCurrentGestionActionCalculationSql() {
   return `
     WITH
     ${activeSituacionCte},
-    latest_gestion AS (
-      SELECT
-        g.*,
-        ROW_NUMBER() OVER (
-          PARTITION BY g.ID_SITUACION
-          ORDER BY ${GESTION_MEANINGFUL_ORDER_EXPR}, g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
-        ) AS RN
-      FROM DNDP.GESTION_JURIDICA g
-    ),
     active_asignacion AS (
       SELECT
         a.*,
@@ -1015,9 +990,8 @@ function buildCurrentGestionActionCalculationSql() {
       g.ID_GESTION,
       ${ACCION_REALIZAR_CALCULADA_EXPR} AS ACCION_CALCULADA
     FROM ranked_situacion s
-    JOIN latest_gestion g
+    JOIN DNDP.GESTION_JURIDICA g
       ON g.ID_SITUACION = s.ID_SITUACION
-     AND g.RN = 1
     LEFT JOIN active_asignacion a
       ON a.ID_PERSONA = s.ID_PERSONA
      AND a.RN = 1
@@ -1032,6 +1006,52 @@ const GESTION_ACTION_MISMATCH_PREDICATE = `
   NVL(TRIM(TO_CHAR(target.ACCION_REALIZAR)), '__AURORA_NULL__') <>
   NVL(TRIM(TO_CHAR(calculated.ACCION_CALCULADA)), '__AURORA_NULL__')
 `;
+
+function buildGestionActionCalculationByIdSql() {
+  return `
+    WITH active_asignacion AS (
+      SELECT
+        a.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY a.ID_PERSONA
+          ORDER BY a.FECHA_ASIGNACION DESC NULLS LAST, a.ID_ASIGNACION DESC
+        ) AS RN
+      FROM DNDP.ASIGNACION a
+      WHERE a.FECHA_FIN IS NULL
+    )
+    SELECT
+      g.ID_GESTION,
+      ${ACCION_REALIZAR_CALCULADA_EXPR} AS ACCION_CALCULADA
+    FROM DNDP.GESTION_JURIDICA g
+    JOIN DNDP.SITUACION_CARCELARIA s
+      ON s.ID_SITUACION = g.ID_SITUACION
+    LEFT JOIN active_asignacion a
+      ON a.ID_PERSONA = s.ID_PERSONA
+     AND a.RN = 1
+    LEFT JOIN DNDP.DEFENSORES d
+      ON d.CEDULA = a.CEDULA_DEFENSOR
+    WHERE g.ID_GESTION = :idGestion
+  `;
+}
+
+async function reconcileGestionActionById(idGestion) {
+  const safeId = Number(idGestion);
+  if (!Number.isInteger(safeId) || safeId <= 0) return { updated: 0 };
+  const calculationSql = buildGestionActionCalculationByIdSql();
+  const sql = `
+    MERGE INTO DNDP.GESTION_JURIDICA target
+    USING (${calculationSql}) calculated
+      ON (target.ID_GESTION = calculated.ID_GESTION)
+    WHEN MATCHED THEN UPDATE
+      SET target.ACCION_REALIZAR = calculated.ACCION_CALCULADA
+      WHERE ${GESTION_ACTION_MISMATCH_PREDICATE}
+  `;
+  const result = await execute(sql, { idGestion: safeId }, {
+    autoCommit: true,
+    operation: 'persona.reconcileGestionActionById',
+  });
+  return { updated: Number(result?.rowsAffected || 0) };
+}
 
 async function previewCurrentGestionActionReconciliation({ summaryLimit = 20 } = {}) {
   const calculationSql = buildCurrentGestionActionCalculationSql();
@@ -1097,6 +1117,54 @@ async function reconcileCurrentGestionActions() {
   return {
     updated: Number(result?.rowsAffected || 0),
   };
+}
+
+const LEGACY_AUTOMATIC_CLOSURE_PREDICATE = `(
+  UPPER(TRIM(TO_CHAR(CIERRE_CASO))) LIKE 'CASO CERRADO%'
+)`;
+
+async function previewLegacyAutomaticClosureCleanup({ summaryLimit = 20 } = {}) {
+  const safeLimit = Math.max(1, Math.min(100, Number(summaryLimit) || 20));
+  const countSql = `
+    SELECT COUNT(*) AS TOTAL
+    FROM DNDP.GESTION_JURIDICA
+    WHERE ${LEGACY_AUTOMATIC_CLOSURE_PREDICATE}
+  `;
+  const summarySql = `
+    SELECT CIERRE_CASO, TOTAL
+    FROM (
+      SELECT TRIM(TO_CHAR(CIERRE_CASO)) AS CIERRE_CASO, COUNT(*) AS TOTAL
+      FROM DNDP.GESTION_JURIDICA
+      WHERE ${LEGACY_AUTOMATIC_CLOSURE_PREDICATE}
+      GROUP BY TRIM(TO_CHAR(CIERRE_CASO))
+      ORDER BY TOTAL DESC, CIERRE_CASO
+    )
+    WHERE ROWNUM <= :summaryLimit
+  `;
+  const [countResult, summaryResult] = await Promise.all([
+    execute(countSql, {}, { operation: 'persona.previewLegacyAutomaticClosureCleanup.count' }),
+    execute(summarySql, { summaryLimit: safeLimit }, { operation: 'persona.previewLegacyAutomaticClosureCleanup.summary' }),
+  ]);
+  return {
+    pending: Number(countResult?.rows?.[0]?.TOTAL || 0),
+    summary: (Array.isArray(summaryResult?.rows) ? summaryResult.rows : []).map((row) => ({
+      value: String(row?.CIERRE_CASO || '').trim(),
+      total: Number(row?.TOTAL || 0),
+    })),
+  };
+}
+
+async function clearLegacyAutomaticClosures() {
+  const sql = `
+    UPDATE DNDP.GESTION_JURIDICA
+       SET CIERRE_CASO = NULL
+     WHERE ${LEGACY_AUTOMATIC_CLOSURE_PREDICATE}
+  `;
+  const result = await execute(sql, {}, {
+    autoCommit: true,
+    operation: 'persona.clearLegacyAutomaticClosures',
+  });
+  return { updated: Number(result?.rowsAffected || 0) };
 }
 
 async function listDistinctCondenadosFilterOptions({
@@ -1545,7 +1613,10 @@ module.exports = {
   listDistinctDefensores,
   listAssignedCasesForReport,
   previewCurrentGestionActionReconciliation,
+  reconcileGestionActionById,
   reconcileCurrentGestionActions,
+  previewLegacyAutomaticClosureCleanup,
+  clearLegacyAutomaticClosures,
   updatePersonaById,
   PERSONA_COLUMNS,
 };
