@@ -5,7 +5,7 @@ const items = [
   { id: 'formulario', label: 'Formulario de atención' },
   { id: 'registros', label: 'Usuarios asignados' },
   { id: 'reporte-atenciones', label: 'Descargar reporte de atención' },
-  { id: 'reporte-general', label: 'Reporte general de avance' },
+  { id: 'reporte-general', label: 'Reporte general de avance', reportAdminOnly: true },
   { id: 'asignacion', label: 'PAG - Asignación de casos de condenados', pagOnly: true },
   { id: 'herramientas', label: 'Caja de Herramientas' },
   { id: 'manual', label: 'Manual Interactivo', enabled: FEATURE_FLAGS.manualInteractivo },
@@ -18,6 +18,7 @@ function Sidebar({
   onChangeView,
   showAdminCargas = false,
   showAdminUsuarios = false,
+  showReporteGeneral = false,
   showPag = false,
 }) {
   const visibleItems = items.filter((item) => {
@@ -25,6 +26,7 @@ function Sidebar({
     if (item.pagOnly && !showPag) return false;
     if (item.adminOnly && !showAdminCargas) return false;
     if (item.userAdminOnly && !showAdminUsuarios) return false;
+    if (item.reportAdminOnly && !showReporteGeneral) return false;
     return true;
   });
 

@@ -6,7 +6,7 @@ const path = require('path');
 const previousNodeEnv = process.env.NODE_ENV;
 process.env.NODE_ENV = 'test';
 
-const { hasRole, requirePag } = require('../middleware/roles');
+const { hasRole, requireAdmin, requirePag } = require('../middleware/roles');
 const { requireAuth } = require('../middleware/auth');
 const { signAppToken } = require('../services/authService');
 const { updateManagedUser, upsertManagedUser } = require('../services/userDirectoryService');
@@ -41,6 +41,33 @@ requirePag(
 );
 assert.equal(responseStatus, 403);
 assert.equal(responseBody?.code, 'PAG_FORBIDDEN');
+
+nextCalled = false;
+requireAdmin({ user: { roles: ['Aurora.Admin'] } }, {}, () => {
+  nextCalled = true;
+});
+assert.equal(nextCalled, true, 'Admin users must be authorized');
+
+responseStatus = null;
+responseBody = null;
+requireAdmin(
+  { user: { roles: ['user'] } },
+  {
+    status(status) {
+      responseStatus = status;
+      return this;
+    },
+    json(body) {
+      responseBody = body;
+      return this;
+    },
+  },
+  () => {
+    throw new Error('A regular user must not pass admin authorization');
+  }
+);
+assert.equal(responseStatus, 403);
+assert.equal(responseBody?.code, 'ADMIN_REQUIRED');
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-pag-access-test-'));
 const previousStorePath = process.env.AUTH_USER_STORE_PATH;

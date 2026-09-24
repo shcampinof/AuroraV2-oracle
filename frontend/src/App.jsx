@@ -204,6 +204,9 @@ function App() {
     if (vistaActual === 'admin-usuarios' && !esAdmin(session.user)) {
       window.location.hash = '/inicio';
     }
+    if (vistaActual === 'reporte-general' && !esAdmin(session.user)) {
+      window.location.hash = '/inicio';
+    }
     if (vistaActual === 'asignacion' && !tieneAccesoPag(session.user)) {
       window.location.hash = '/inicio';
     }
@@ -214,6 +217,7 @@ function App() {
     if (!VISTAS.has(vista)) return;
     if (vista === 'admin-cargas' && !tieneAccesoCargas(session?.user)) return;
     if (vista === 'admin-usuarios' && !esAdmin(session?.user)) return;
+    if (vista === 'reporte-general' && !esAdmin(session?.user)) return;
     if (vista === 'asignacion' && !tieneAccesoPag(session?.user)) return;
     const nextHash = `/${vista}`;
     if (window.location.hash !== `#${nextHash}`) {
@@ -264,6 +268,7 @@ function App() {
 
   const puedeAdministrarCargas = tieneAccesoCargas(session.user);
   const puedeAdministrarUsuarios = esAdmin(session.user);
+  const puedeVerReporteGeneral = esAdmin(session.user);
   const puedeAccederPag = tieneAccesoPag(session.user);
 
   let contenido = null;
@@ -292,7 +297,7 @@ function App() {
     contenido = <ReporteAtencionesDefensores user={session.user} />;
   }
 
-  if (vistaActual === 'reporte-general') {
+  if (vistaActual === 'reporte-general' && puedeVerReporteGeneral) {
     contenido = <ReporteGeneral />;
   }
 
@@ -318,6 +323,7 @@ function App() {
             onChangeView={cambiarVista}
             showAdminCargas={puedeAdministrarCargas}
             showAdminUsuarios={puedeAdministrarUsuarios}
+            showReporteGeneral={puedeVerReporteGeneral}
             showPag={puedeAccederPag}
           />
           <main className="content-area">{conditionsAccepted ? contenido : <Home />}</main>

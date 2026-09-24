@@ -1,6 +1,7 @@
 const express = require('express');
 const reporteAtencionesService = require('../services/reporteAtencionesService');
 const reporteGeneralService = require('../services/reporteGeneralService');
+const { requireAdmin } = require('../middleware/roles');
 
 const router = express.Router();
 
@@ -26,7 +27,7 @@ router.get('/atenciones-defensores', async (req, res, next) => {
   }
 });
 
-router.get('/general', (_req, res) => {
+router.get('/general', requireAdmin, (_req, res) => {
   const snapshot = reporteGeneralService.getGeneralReportSnapshot();
   res.setHeader('Cache-Control', 'private, no-cache, must-revalidate');
   if (!snapshot) {

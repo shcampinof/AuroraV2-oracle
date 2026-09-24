@@ -14,7 +14,16 @@ function requirePag(req, res, next) {
   });
 }
 
+function requireAdmin(req, res, next) {
+  if (hasRole(req.user, 'admin')) return next();
+  return res.status(403).json({
+    message: 'No tiene permisos para acceder a este recurso.',
+    code: 'ADMIN_REQUIRED',
+  });
+}
+
 module.exports = {
   hasRole,
+  requireAdmin,
   requirePag,
 };

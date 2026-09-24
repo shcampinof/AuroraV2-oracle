@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const repository = require('../repositories/oracle/reporteGeneralRepository');
 const service = require('../services/reporteGeneralService');
+const reportRouter = require('../routes/reportes');
 
 async function run() {
   const originalStorageDir = process.env.AURORA_REPORTES_DIR;
@@ -67,6 +68,14 @@ async function run() {
     assert.match(repository.GENERAL_REPORT_SQL, /COUNT\(DISTINCT CASE WHEN TIENE_ANALISIS = 1/);
     assert.match(repository.GENERAL_REPORT_SQL, /DECISIONES_JUDICIALES/);
     assert.match(repository.GENERAL_REPORT_SQL, /DESFAVORABLE%/);
+
+    const generalRoute = reportRouter.stack.find((layer) => layer.route?.path === '/general');
+    assert.ok(generalRoute, 'la ruta del reporte general debe existir');
+    assert.strictEqual(
+      generalRoute.route.stack[0]?.handle?.name,
+      'requireAdmin',
+      'la API del reporte general debe validar el rol administrador antes de responder'
+    );
 
     console.log('OK reporte-general.test');
   } finally {
