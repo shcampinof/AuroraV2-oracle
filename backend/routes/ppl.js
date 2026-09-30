@@ -1254,7 +1254,7 @@ router.post('/:documento/actuaciones', async (req, res) => {
     });
   } catch (err) {
     console.error('[ppl:actuaciones:create] Error Oracle:', err?.message || err);
-    if (err?.code === 'PPL_SITUACION_INACTIVA') {
+    if (err?.code === 'PPL_SITUACION_INACTIVA' || err?.code === 'PPL_GESTION_MISMATCH') {
       return res.status(409).json({ code: err.code, message: err.message });
     }
     if (err?.code === 'DEFENSOR_NOT_IN_CATALOG') {

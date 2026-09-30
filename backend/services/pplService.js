@@ -706,6 +706,21 @@ function computeTipo(record) {
   if (updated.includes('condenad')) return 'condenado';
   if (updated.includes('sindicad')) return 'sindicado';
   if (base.includes('condenad')) return 'condenado';
+  if (base.includes('sindicad')) return 'sindicado';
+  // Algunos registros históricos no tienen situación jurídica, pero sí campos
+  // exclusivos del flujo de condenados. Evitar enviarlos a CELESTE por defecto.
+  const camposCondenado = [
+    'Procedencia de utilidad pública (solo para mujeres)',
+    'Procedencia de libertad condicional',
+    'Procedencia de prisión domiciliaria de mitad de pena',
+    'Procedencia de pena cumplida',
+    'Procedencia de acumulación de penas',
+  ];
+  const placeholderValues = new Set(['', '-', '--', 'null', 'undefined', 'sin informacion']);
+  if (camposCondenado.some((key) => {
+    const value = normalizeText(record?.[key]);
+    return !placeholderValues.has(value);
+  })) return 'condenado';
   return 'sindicado';
 }
 
@@ -898,6 +913,13 @@ function assertSituacionEditable(context) {
   throw err;
 }
 
+function gestionMismatchError() {
+  const err = new Error('La actuación seleccionada no pertenece a la situación actual de la persona. Recargue el caso.');
+  err.code = 'PPL_GESTION_MISMATCH';
+  err.status = 409;
+  return err;
+}
+
 async function createActuacionByDocumento(documento, payload) {
   const doc = normalizeDocumento(documento);
   if (!doc) return null;
@@ -911,6 +933,14 @@ async function createActuacionByDocumento(documento, payload) {
   const updates = splitUpdatesByTable(payload);
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
   const normalizedPayload = normalizePayload(payload);
+  let defensorCatalogado = null;
+  if (payloadHasDefensorField(normalizedPayload)) {
+    const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
+    const currentDefensor = String(context.G_DEFENSOR || '').trim();
+    if (nextDefensor && normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
+      defensorCatalogado = await resolveDefensorCatalogado(nextDefensor);
+    }
+  }
   if (Object.keys(updates.PERSONA).length) {
     await personaRepo.updatePersonaById(context.P_ID_PERSONA, updates.PERSONA);
   }
@@ -925,18 +955,13 @@ async function createActuacionByDocumento(documento, payload) {
     sequenceName: getOptionalGestionSequence(),
   });
 
-  if (payloadHasDefensorField(normalizedPayload)) {
-    const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
-    const currentDefensor = String(context.G_DEFENSOR || '').trim();
-    if (nextDefensor && normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
-      const defensorCatalogado = await resolveDefensorCatalogado(nextDefensor);
-      await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
-        defensorNombre: defensorCatalogado.nombre,
-        defensorCedula: defensorCatalogado.cedula,
-        pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
-        pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
-      });
-    }
+  if (defensorCatalogado) {
+    await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
+      defensorNombre: defensorCatalogado.nombre,
+      defensorCedula: defensorCatalogado.cedula,
+      pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
+      pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
+    });
   }
 
   await personaRepo.reconcileGestionActionById(gestionId);
@@ -972,6 +997,36 @@ async function updateByDocumento(documento, payload) {
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
   const incoming = payload && typeof payload === 'object' ? payload : {};
   const normalizedPayload = normalizePayload(payload);
+
+  let targetGestionId = null;
+  let explicitTarget = false;
+  if (Number.isInteger(incoming?.rowIndex) && incoming.rowIndex > 0) {
+    targetGestionId = Number(incoming.rowIndex);
+    explicitTarget = true;
+  }
+  if (!targetGestionId) {
+    targetGestionId = parseGestionIdFromActuacionId(incoming?.actuacionId);
+    explicitTarget = Boolean(targetGestionId);
+  }
+
+  if (explicitTarget) {
+    const target = await gestionRepo.getById(targetGestionId, context.S_ID_SITUACION);
+    if (!target) throw gestionMismatchError();
+  }
+  if (!targetGestionId) {
+    const latest = await gestionRepo.getLatestBySituacion(context.S_ID_SITUACION);
+    targetGestionId = Number(latest?.ID_GESTION || 0) || null;
+  }
+
+  let defensorCatalogado = null;
+  if (payloadHasDefensorField(normalizedPayload) && normalizedPayload.__desasignarDefensor !== true) {
+    const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
+    const currentDefensor = String(context.G_DEFENSOR || '').trim();
+    if (nextDefensor && normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
+      defensorCatalogado = await resolveDefensorCatalogado(nextDefensor);
+    }
+  }
+
   if (Object.keys(updates.PERSONA).length) {
     await personaRepo.updatePersonaById(context.P_ID_PERSONA, updates.PERSONA);
   }
@@ -982,22 +1037,11 @@ async function updateByDocumento(documento, payload) {
     await calificacionConductaRepo.upsertBySituacion(context.S_ID_SITUACION, calificacionUpdates);
   }
 
-  let targetGestionId = null;
-  if (Number.isInteger(incoming?.rowIndex) && incoming.rowIndex > 0) {
-    targetGestionId = Number(incoming.rowIndex);
-  }
-  if (!targetGestionId) {
-    targetGestionId = parseGestionIdFromActuacionId(incoming?.actuacionId);
-  }
-  if (!targetGestionId) {
-    const latest = await gestionRepo.getLatestBySituacion(context.S_ID_SITUACION);
-    targetGestionId = Number(latest?.ID_GESTION || 0) || null;
-  }
-
   if (Object.keys(updates.GESTION).length) {
     if (targetGestionId) {
-      const affected = await gestionRepo.updateGestionById(targetGestionId, updates.GESTION);
+      const affected = await gestionRepo.updateGestionById(targetGestionId, updates.GESTION, context.S_ID_SITUACION);
       if (!affected) {
+        if (explicitTarget) throw gestionMismatchError();
         targetGestionId = await gestionRepo.insertGestion(context.S_ID_SITUACION, updates.GESTION, {
           sequenceName: getOptionalGestionSequence(),
         });
@@ -1012,19 +1056,14 @@ async function updateByDocumento(documento, payload) {
   if (normalizedPayload.__desasignarDefensor === true) {
     const affected = await asignacionRepo.endActiveAssignmentByPersona(context.P_ID_PERSONA);
     if (affected > 0) dataVersion += 1;
-  } else if (payloadHasDefensorField(normalizedPayload)) {
-    const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
-    const currentDefensor = String(context.G_DEFENSOR || '').trim();
-    if (nextDefensor && normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
-      const defensorCatalogado = await resolveDefensorCatalogado(nextDefensor);
-      await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
-        defensorNombre: defensorCatalogado.nombre,
-        defensorCedula: defensorCatalogado.cedula,
-        pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
-        pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
-      });
-      dataVersion += 1;
-    }
+  } else if (defensorCatalogado) {
+    await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
+      defensorNombre: defensorCatalogado.nombre,
+      defensorCedula: defensorCatalogado.cedula,
+      pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
+      pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
+    });
+    dataVersion += 1;
   }
 
   const shouldReconcileState = Boolean(

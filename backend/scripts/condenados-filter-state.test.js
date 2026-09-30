@@ -291,9 +291,13 @@ async function testSaveReconcilesOneGestionWithOracleState() {
   );
   assert.match(captured.sql, /OTRO MOTIVO\./);
   assert.match(captured.sql, /SE CIERRA PORQUE LA PERSONA YA NO ESTA EN EL ERON/);
+  assert.match(captured.sql, /LIKE '%UTILIDAD PUBLICA%'/);
+  assert.match(captured.sql, /IN \('NIEGA UTILIDAD PUBLICA', 'OTORGA UTILIDAD PUBLICA'\)/);
+  assert.match(captured.sql, /CUMPLE_REQUISITO_MARGINALIDAD/);
+  assert.match(captured.sql, /CUMPLE_REQUISITO_JEFATURA_HOGAR/);
   assert.match(
     captured.sql,
-    /UTILIDAD PUBLICA%'\)[\s\S]+CUMPLE_REQUISITO_MARGINALIDAD[\s\S]+?= 'NO'\s+OR[\s\S]+?CUMPLE_REQUISITO_JEFATURA_HOGAR[\s\S]+?= 'NO'/
+    /AND CASE\s+WHEN[\s\S]+SE_PRESENTA_RECURSO[\s\S]+THEN 0\s+ELSE 1\s+END = 1/
   );
   assert.match(
     captured.sql,

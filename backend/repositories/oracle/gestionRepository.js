@@ -193,12 +193,16 @@ async function insertGestion(idSituacion, fields = {}, options = {}) {
   }
 }
 
-async function updateGestionById(idGestion, fields = {}) {
+async function updateGestionById(idGestion, fields = {}, idSituacion = null) {
   const updates = Object.entries(toGestionFields(fields));
   if (!updates.length) return 0;
 
+  const hasSituacion = Number.isFinite(Number(idSituacion));
   const setClauses = [];
-  const binds = { idGestion: Number(idGestion) };
+  const binds = {
+    idGestion: Number(idGestion),
+    ...(hasSituacion ? { idSituacion: Number(idSituacion) } : {}),
+  };
 
   updates.forEach(([column, value], idx) => {
     const bindKey = `v${idx}`;
@@ -210,6 +214,7 @@ async function updateGestionById(idGestion, fields = {}) {
     UPDATE DNDP.GESTION_JURIDICA
        SET ${setClauses.join(', ')}
      WHERE ID_GESTION = :idGestion
+       ${hasSituacion ? 'AND ID_SITUACION = :idSituacion' : ''}
   `;
 
   const result = await execute(sql, binds, {

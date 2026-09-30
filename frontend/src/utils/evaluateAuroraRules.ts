@@ -1,4 +1,5 @@
 import auroraFormRules, {
+  hasHistoricalBlock5ProgressAurora,
   type AuroraBlockId,
   type DerivedStatus,
   type FormRecord,
@@ -243,6 +244,14 @@ function evaluateVisibleBlocks(answers: FormRecord, locked: boolean, activeBlock
   // Regla: AURORA.B5.VISIBILIDAD.1
   if (!locked && visible.includes('bloque4') && areMandatoryFieldsFilled(answers, 'bloque4')) {
     visible.push(activeBlock5);
+  }
+
+  // Las cargas históricas pueden contener hitos reales de Bloque 5 aunque
+  // falte un dato intermedio de Bloque 3 o 4. Si el análisis base está
+  // completo, mostrar esos hitos para que no desaparezcan al consultar.
+  if (!locked && hasHistoricalBlock5ProgressAurora(answers)) {
+    if (!visible.includes('bloque4')) visible.push('bloque4');
+    if (!visible.includes(activeBlock5)) visible.push(activeBlock5);
   }
 
   return visible;

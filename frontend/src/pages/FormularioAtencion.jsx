@@ -780,6 +780,11 @@ function normalizeFieldName(value) {
     .toLowerCase();
 }
 
+function hasModifiedField(modifiedFields, names) {
+  if (!(modifiedFields instanceof Set)) return false;
+  return names.some((name) => modifiedFields.has(normalizeFieldName(name)));
+}
+
 const ESTADO_RELEVANT_FIELD_NAMES = new Set([
   ...Object.values(AURORA_FIELD_IDS),
   ...Object.values(AURORA_FIELD_CATALOG),
@@ -1879,6 +1884,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   const registroRef = useRef(null);
   const actuacionActivaIdRef = useRef('');
   const autosaveChangedRef = useRef(false);
+  const camposModificadosEnFormularioRef = useRef(new Set());
   const autosaveCascadeTimerRef = useRef(null);
   const autosaveTimerRef = useRef(null);
   const autosaveRetryTimerRef = useRef(null);
@@ -2277,10 +2283,13 @@ export default function FormularioAtencion({ numeroInicial }) {
       return updated;
     } catch (error) {
       if (isCurrentContext()) {
+        const detail = String(error?.message || '').trim();
         setAutosaveStatus({
           phase: 'error',
           savedAt: null,
-          message: 'No fue posible sincronizar; el borrador está protegido y se reintentará.',
+          message: detail && detail !== 'Error actualizando registro'
+            ? `No fue posible sincronizar: ${detail} El borrador está protegido y se reintentará.`
+            : 'No fue posible sincronizar; el borrador está protegido y se reintentará.',
         });
       }
       reportError(error, 'formulario-entrevista:autoguardado');
@@ -2401,6 +2410,7 @@ export default function FormularioAtencion({ numeroInicial }) {
         data?.registro && typeof data.registro === 'object'
           ? { ...data.registro, __tipoApi: tipo }
           : null;
+      camposModificadosEnFormularioRef.current.clear();
       void flushAutosave();
       rememberAutosaveBaseline(registroData, '');
       const restored = restoreAutosaveDraft(registroData, '');
@@ -2431,6 +2441,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   buscarRegistroRef.current = buscarRegistro;
 
   function handleConsultarOtro() {
+    camposModificadosEnFormularioRef.current.clear();
     void flushAutosave();
     setTipoRegistro('');
     setRegistro(null);
@@ -2445,6 +2456,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   function handleChange(name, value) {
     if (personaFueraPrision) return;
+    camposModificadosEnFormularioRef.current.add(normalizeFieldName(name));
     if (isCampoAutoguardableDesdeBloque3(name)) autosaveChangedRef.current = true;
     setRegistro((prev) => {
       const base = { ...unwrapRegistro(prev) };
@@ -2600,6 +2612,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     const selectedDoc = getDocumentoActual(selectedRegistro);
     if (selectedDoc) setNumeroBusqueda(selectedDoc);
 
+    camposModificadosEnFormularioRef.current.clear();
     void flushAutosave();
     rememberAutosaveBaseline(selectedRegistro, String(actuacion?.id ?? ''));
     const restored = restoreAutosaveDraft(selectedRegistro, String(actuacion?.id ?? ''));
@@ -2686,6 +2699,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
       if (!createdRegistro) throw new Error('Respuesta invalida al crear actuacion');
 
+      camposModificadosEnFormularioRef.current.clear();
       rememberAutosaveBaseline(createdRegistro, String(createdActuacion?.id ?? ''));
       setRegistro(wrapRegistroForLookup({ ...createdRegistro, __tipoApi: tipoRegistro }));
       setActuacionActivaId(String(createdActuacion?.id ?? ''));
@@ -2735,8 +2749,14 @@ export default function FormularioAtencion({ numeroInicial }) {
     [actuacionAdelantar]
   );
   const actuacionIncluyeUtilidadPublica = useMemo(
-    () => ACTUACIONES_UTILIDAD_PUBLICA_NORMALIZADAS.has(norm(maybeDecodeUtf8Mojibake(actuacionAdelantar))),
-    [actuacionAdelantar]
+    () => {
+      if (isMeaningfullyFilled(actuacionAdelantar)) {
+        return ACTUACIONES_UTILIDAD_PUBLICA_NORMALIZADAS.has(norm(maybeDecodeUtf8Mojibake(actuacionAdelantar)));
+      }
+      const decision = norm(readRegistroTextByAliases(registro, ['Sentido de la decisión', 'Sentido de la decision']));
+      return decision === norm('Niega utilidad pública') || decision === norm('Otorga utilidad pública');
+    },
+    [actuacionAdelantar, registro]
   );
   const otrasSolicitudesSeleccionadas = useMemo(
     () =>
@@ -3417,6 +3437,9 @@ export default function FormularioAtencion({ numeroInicial }) {
   useEffect(() => {
     // REGLA: P35 solo se habilita si P34 = "Sí". Si no, queda deshabilitada y vacía.
     if (habilitarPregunta35) return;
+    if (!hasModifiedField(camposModificadosEnFormularioRef.current, [
+      'Procedencia de acumulación de penas',
+    ])) return;
     setRegistro((prev) => {
       if (!prev) return prev;
       const currentLegacy = String(prev[KEY_Q35_LEGACY] ?? '');
@@ -3443,6 +3466,10 @@ export default function FormularioAtencion({ numeroInicial }) {
     // Regla: AURORA.B5B.DEPENDENCIA.5
     // En trámite normal, si Q41 != "Sí", limpiar Q43 (recepción de pruebas aportadas).
     if (!registro || !auroraActivo || actuacionIncluyeUtilidadPublica) return;
+    if (!hasModifiedField(camposModificadosEnFormularioRef.current, [
+      'Requiere pruebas',
+      'Actuación a adelantar',
+    ])) return;
     if (habilitarRecepcionPruebasTramite) return;
 
     const key = 'Fecha de recepción de pruebas aportadas por el usuario (si aplica)';
@@ -3458,8 +3485,15 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   useEffect(() => {
     // Regla: AURORA.B5A.LIMPIEZA.1
-    // Si no aplica negativa de utilidad publica, limpiar campos de motivo/recurso en 5A.
+    // Limpiar después de que el usuario cambie la decisión; los datos importados
+    // pueden ser inconsistentes y deben seguir visibles al consultar el caso.
     if (!registro || !auroraActivo || !actuacionIncluyeUtilidadPublica) return;
+    if (!hasModifiedField(camposModificadosEnFormularioRef.current, [
+      'Actuación a adelantar',
+      'Sentido de la decisión',
+      'Se presenta recurso',
+      'Sentido de la decisión que resuelve recurso',
+    ])) return;
     if (habilitarNegativaUtilidadPublica) return;
 
     const keys = [
@@ -3501,8 +3535,15 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   useEffect(() => {
     // Regla: AURORA.B5B.DEPENDENCIA.4
-    // Si en trámite normal Q49 != "No concede la solicitud", limpiar motivo y campos de recurso.
+    // Aplicar la limpieza tras un cambio del usuario, no al abrir datos históricos.
     if (!registro || !auroraActivo || actuacionIncluyeUtilidadPublica) return;
+    if (!hasModifiedField(camposModificadosEnFormularioRef.current, [
+      'Actuación a adelantar',
+      'Sentido de la decisión',
+      'Se presenta recurso',
+      'Sentido de la decisión que resuelve recurso',
+      'Sentido de la decisión que resuelve la solicitud',
+    ])) return;
     if (habilitarNegativaTramiteNormal) return;
 
     const keys = [
@@ -3530,8 +3571,14 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   useEffect(() => {
     // Regla: AURORA.B5B.DEPENDENCIA.1
-    // Si no hay recurso en 5B, limpiar fecha y sentido que resuelve la solicitud.
+    // Si se modifica el recurso en 5B, limpiar sus dependencias cuando no aplica.
+    // Conservar los datos importados al abrir el caso.
     if (!registro || !auroraActivo || actuacionIncluyeUtilidadPublica) return;
+    if (!hasModifiedField(camposModificadosEnFormularioRef.current, [
+      'Actuación a adelantar',
+      'Sentido de la decisión',
+      'Se presenta recurso',
+    ])) return;
     if (!habilitarNegativaTramiteNormal) return;
     if (isEquivalenteSi(sePresentaRecursoBloque5)) return;
 
@@ -3569,6 +3616,9 @@ export default function FormularioAtencion({ numeroInicial }) {
     // Regla: CELESTE.B5.DEPENDENCIA.3
     // Si C_Q26 != "Niega la solicitud", limpiar motivo de decision negativa.
     if (!registro || flow !== 'sindicado') return;
+    if (!hasModifiedField(camposModificadosEnFormularioRef.current, [
+      'SENTIDO DE LA DECISIÓN',
+    ])) return;
     if (habilitarCelesteMotivoNegativa) return;
 
     const key = 'MOTIVO DE LA DECISIÓN NEGATIVA';
@@ -3584,6 +3634,10 @@ export default function FormularioAtencion({ numeroInicial }) {
     // Regla: CELESTE.B5.LIMPIEZA.1
     // Si no se presenta recurso, limpiar fecha y sentido de recurso.
     if (!registro || flow !== 'sindicado') return;
+    if (!hasModifiedField(camposModificadosEnFormularioRef.current, [
+      'SENTIDO DE LA DECISIÓN',
+      '¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?',
+    ])) return;
     if (habilitarCelesteRecurso) return;
     setRegistro((prev) => {
       if (!prev) return prev;

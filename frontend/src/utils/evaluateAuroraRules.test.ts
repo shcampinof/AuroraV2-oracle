@@ -1054,6 +1054,84 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     expect(result.derivedStatus).toBe('Pendiente de decisión');
   });
 
+  it('conserva pendiente un recurso histórico aunque el análisis inicial sea negativo y falte la actuación', () => {
+    const answers = {
+      'Fecha de análisis jurídico del caso': '2025-03-07',
+      'Resumen del análisis del caso': 'Análisis histórico completo',
+      'Procedencia de libertad condicional': 'No aplica porque ya hay solicitud en trámite',
+      'Procedencia de prisión domiciliaria de mitad de pena': 'No aplica por tipo de delito',
+      'Procedencia de utilidad pública (solo para mujeres)': 'No cumple por tipo de delito',
+      'Procedencia de pena cumplida': 'No',
+      'Procedencia de acumulación de penas': 'No',
+      'Otras solicitudes a tramitar': 'Ninguna',
+      'Sentido de la decisión': 'Niega utilidad pública',
+      'Se presenta recurso': 'Sí',
+      'Fecha de presentación del recurso': '2025-06-05',
+    };
+
+    const pending = evaluateAuroraRules({ answers });
+    expect(pending.derivedStatus).toBe('Pendiente de decisión');
+    expect(pending.visibleBlocks).toContain('bloque4');
+    expect(pending.visibleBlocks).toContain('bloque5UtilidadPublica');
+    expect(evaluateAuroraRules({ answers: { ...answers, 'Se presenta recurso': '' } }).derivedStatus).toBe('Caso cerrado');
+    expect(evaluateAuroraRules({ answers: {
+      ...answers,
+      'Sentido de la decisión que resuelve recurso': 'Confirma negativa',
+    } }).derivedStatus).toBe('Caso cerrado');
+  });
+
+  it('muestra y cierra un trámite histórico de utilidad pública otorgado aunque falte la entrevista', () => {
+    const answers = {
+      'Fecha de análisis jurídico del caso': '2025-02-19',
+      'Resumen del análisis del caso': 'Análisis histórico completo',
+      'Procedencia de libertad condicional': 'No aplica',
+      'Procedencia de prisión domiciliaria de mitad de pena': 'No aplica',
+      'Procedencia de utilidad pública (solo para mujeres)': 'Sí cumple requisitos objetivos',
+      'Procedencia de pena cumplida': 'No',
+      'Procedencia de acumulación de penas': 'No',
+      'Otras solicitudes a tramitar': 'Ninguna',
+      'Decisión del usuario': 'Si, desea que el defensor avance con la solicitud',
+      'Actuación a adelantar': 'Utilidad pública (solo mujeres)',
+      'Fecha de entrevista psicosocial': '2025-08-25',
+      'Cumple el requisito de marginalidad': 'Sí',
+      'Cumple el requisito de jefatura de hogar': 'Sí',
+      'Fecha de radicación de solicitud de utilidad pública': '2025-02-19',
+      'Fecha de decisión de la autoridad': '2025-09-29',
+      'Sentido de la decisión': 'Otorga utilidad pública',
+      'Se presenta recurso': 'Sí',
+      'Fecha de presentación del recurso': '2025-10-03',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.visibleBlocks).toContain('bloque4');
+    expect(result.visibleBlocks).toContain('bloque5UtilidadPublica');
+    expect(result.derivedStatus).toBe('Caso cerrado');
+    expect(answers['Fecha de presentación del recurso']).toBe('2025-10-03');
+  });
+
+  it('ignora una decisión residual de trámite normal si falta la actuación que identifica el flujo', () => {
+    const answers = {
+      'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'Defensor prueba',
+      'Fecha de análisis jurídico del caso': '2026-07-27',
+      'Resumen del análisis del caso': 'Análisis completo',
+      'Procedencia de libertad condicional': 'Sí procede solicitud de libertad condicional',
+      'Procedencia de prisión domiciliaria de mitad de pena': 'No aplica por tipo de delito',
+      'Procedencia de utilidad pública (solo para mujeres)': '',
+      'Procedencia de pena cumplida': 'No',
+      'Procedencia de acumulación de penas': 'No',
+      'Otras solicitudes a tramitar': 'Ninguna',
+      'Fecha de entrevista': '2026-07-27',
+      'Decisión del usuario': 'Sí, desea que el defensor avance con la solicitud',
+      'Actuación a adelantar': '',
+      'Sentido de la decisión': 'Concede la solicitud',
+    };
+
+    const result = evaluateAuroraRules({ answers });
+    expect(result.derivedStatus).toBe('Entrevistar al usuario');
+    expect(result.visibleBlocks).toContain('bloque4');
+    expect(result.visibleBlocks).not.toContain('bloque5TramiteNormal');
+  });
+
   it('AURORA.ESTADO.RECURSO.UTILIDAD.1B - si utilidad pública niega y Q54 está vacía, la acción es presentar recurso', () => {
     const answers = {
       ...buildBloque3Base(),

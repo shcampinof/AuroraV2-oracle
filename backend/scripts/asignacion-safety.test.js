@@ -36,6 +36,32 @@ async function testRepositoryUsesDatabaseClock() {
   }
 }
 
+async function testGestionUpdateIsScopedToSituation() {
+  const oraclePoolPath = require.resolve('../db/oraclePool');
+  const repositoryPath = require.resolve('../repositories/oracle/gestionRepository');
+  const oraclePool = require(oraclePoolPath);
+  const originalExecute = oraclePool.execute;
+  let captured = null;
+
+  oraclePool.execute = async (sql, binds, options) => {
+    captured = { sql, binds, options };
+    return { rowsAffected: 1 };
+  };
+  delete require.cache[repositoryPath];
+
+  try {
+    const repository = require(repositoryPath);
+    await repository.updateGestionById(77, { RESUMEN_ANALISIS_CASO: 'Resumen' }, 20);
+    assert.match(captured.sql, /WHERE ID_GESTION = :idGestion\s+AND ID_SITUACION = :idSituacion/);
+    assert.strictEqual(captured.binds.idGestion, 77);
+    assert.strictEqual(captured.binds.idSituacion, 20);
+    assert.strictEqual(captured.options.autoCommit, true);
+  } finally {
+    oraclePool.execute = originalExecute;
+    delete require.cache[repositoryPath];
+  }
+}
+
 async function testGenericDefenderChangeCreatesFreshAssignment() {
   const personaRepo = require('../repositories/oracle/personaRepository');
   const gestionRepo = require('../repositories/oracle/gestionRepository');
@@ -47,6 +73,7 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
     findActiveContextByDocumento: personaRepo.findActiveContextByDocumento,
     listRowsWithActiveSituacionAndGestiones: personaRepo.listRowsWithActiveSituacionAndGestiones,
     reconcileGestionActionById: personaRepo.reconcileGestionActionById,
+    updatePersonaById: personaRepo.updatePersonaById,
     getLatestBySituacion: gestionRepo.getLatestBySituacion,
     replaceActiveAssignmentByPersona: asignacionRepo.replaceActiveAssignmentByPersona,
     endActiveAssignmentByPersona: asignacionRepo.endActiveAssignmentByPersona,
@@ -54,6 +81,7 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
   };
   const assignmentWrites = [];
   const assignmentEnds = [];
+  const personaWrites = [];
 
   personaRepo.findActiveContextByDocumento = async () => ({
     P_ID_PERSONA: 10,
@@ -72,6 +100,10 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
     },
   ];
   personaRepo.reconcileGestionActionById = async () => ({ updated: 1 });
+  personaRepo.updatePersonaById = async (...args) => {
+    personaWrites.push(args);
+    return 1;
+  };
   gestionRepo.getLatestBySituacion = async () => ({ ID_GESTION: 30 });
   asignacionRepo.replaceActiveAssignmentByPersona = async (idPersona, assignment) => {
     assignmentWrites.push({ idPersona, assignment });
@@ -116,12 +148,14 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
     await assert.rejects(
       () => service.updateByDocumento('123', {
         data: {
+          Nombre: 'NO DEBE ESCRIBIRSE',
           'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'NOMBRE INVENTADO',
         },
       }),
       (error) => error?.code === 'DEFENSOR_NOT_IN_CATALOG' && error?.status === 400
     );
     assert.strictEqual(assignmentWrites.length, 1, 'Un nombre fuera del catálogo no debe crear asignaciones.');
+    assert.strictEqual(personaWrites.length, 0, 'Un defensor inválido debe rechazarse antes de modificar PERSONA.');
 
     await service.updateByDocumento('123', {
       data: {
@@ -135,6 +169,7 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
     personaRepo.findActiveContextByDocumento = originals.findActiveContextByDocumento;
     personaRepo.listRowsWithActiveSituacionAndGestiones = originals.listRowsWithActiveSituacionAndGestiones;
     personaRepo.reconcileGestionActionById = originals.reconcileGestionActionById;
+    personaRepo.updatePersonaById = originals.updatePersonaById;
     gestionRepo.getLatestBySituacion = originals.getLatestBySituacion;
     asignacionRepo.replaceActiveAssignmentByPersona = originals.replaceActiveAssignmentByPersona;
     asignacionRepo.endActiveAssignmentByPersona = originals.endActiveAssignmentByPersona;
@@ -274,6 +309,7 @@ async function testBothBlock5VariantsPersistEveryFieldInOneSave() {
     findActiveContextByDocumento: personaRepo.findActiveContextByDocumento,
     listRowsWithActiveSituacionAndGestiones: personaRepo.listRowsWithActiveSituacionAndGestiones,
     reconcileGestionActionById: personaRepo.reconcileGestionActionById,
+    getById: gestionRepo.getById,
     updateGestionById: gestionRepo.updateGestionById,
   };
   const writes = [];
@@ -292,8 +328,11 @@ async function testBothBlock5VariantsPersistEveryFieldInOneSave() {
     G_ID_GESTION: 77,
   }];
   personaRepo.reconcileGestionActionById = async () => ({ updated: 1 });
-  gestionRepo.updateGestionById = async (idGestion, fields) => {
-    writes.push({ idGestion, fields });
+  gestionRepo.getById = async (idGestion, idSituacion) => (
+    Number(idGestion) === 77 && Number(idSituacion) === 20 ? { ID_GESTION: 77, ID_SITUACION: 20 } : null
+  );
+  gestionRepo.updateGestionById = async (idGestion, fields, idSituacion) => {
+    writes.push({ idGestion, fields, idSituacion });
     return 1;
   };
   delete require.cache[servicePath];
@@ -320,6 +359,7 @@ async function testBothBlock5VariantsPersistEveryFieldInOneSave() {
 
     const utilidad = writes[0].fields;
     assert.strictEqual(writes[0].idGestion, 77);
+    assert.strictEqual(writes[0].idSituacion, 20);
     assert(utilidad.FECHA_ENTREVISTA_PSICOSOCIAL instanceof Date);
     assert.strictEqual(utilidad.CUMPLE_REQUISITO_MARGINALIDAD, 'Sí');
     assert.strictEqual(utilidad.CUMPLE_REQUISITO_JEFATURA_HOGAR, 'Sí');
@@ -363,6 +403,59 @@ async function testBothBlock5VariantsPersistEveryFieldInOneSave() {
     personaRepo.findActiveContextByDocumento = originals.findActiveContextByDocumento;
     personaRepo.listRowsWithActiveSituacionAndGestiones = originals.listRowsWithActiveSituacionAndGestiones;
     personaRepo.reconcileGestionActionById = originals.reconcileGestionActionById;
+    gestionRepo.getById = originals.getById;
+    gestionRepo.updateGestionById = originals.updateGestionById;
+    delete require.cache[servicePath];
+  }
+}
+
+async function testExplicitGestionMustBelongToCurrentSituationBeforeWriting() {
+  const personaRepo = require('../repositories/oracle/personaRepository');
+  const situacionRepo = require('../repositories/oracle/situacionRepository');
+  const gestionRepo = require('../repositories/oracle/gestionRepository');
+  const servicePath = require.resolve('../services/pplService');
+  const originals = {
+    findActiveContextByDocumento: personaRepo.findActiveContextByDocumento,
+    updatePersonaById: personaRepo.updatePersonaById,
+    updateSituacionById: situacionRepo.updateSituacionById,
+    getById: gestionRepo.getById,
+    updateGestionById: gestionRepo.updateGestionById,
+  };
+  const writes = [];
+
+  personaRepo.findActiveContextByDocumento = async () => ({
+    P_ID_PERSONA: 10,
+    S_ID_SITUACION: 20,
+    S_ACTIVO: 1,
+  });
+  personaRepo.updatePersonaById = async (...args) => writes.push(['persona', ...args]);
+  situacionRepo.updateSituacionById = async (...args) => writes.push(['situacion', ...args]);
+  gestionRepo.getById = async (idGestion, idSituacion) => {
+    assert.strictEqual(idGestion, 999);
+    assert.strictEqual(idSituacion, 20);
+    return null;
+  };
+  gestionRepo.updateGestionById = async (...args) => writes.push(['gestion', ...args]);
+  delete require.cache[servicePath];
+
+  try {
+    const service = require(servicePath);
+    await assert.rejects(
+      () => service.updateByDocumento('123', {
+        rowIndex: 999,
+        data: {
+          Nombre: 'NO DEBE ESCRIBIRSE',
+          'Fecha de análisis jurídico del caso': '2026-09-30',
+        },
+      }),
+      (error) => error?.code === 'PPL_GESTION_MISMATCH' && error?.status === 409
+    );
+    assert.deepStrictEqual(writes, [], 'Una actuación ajena debe rechazarse antes de cualquier escritura.');
+  } finally {
+    personaRepo.findActiveContextByDocumento = originals.findActiveContextByDocumento;
+    personaRepo.updatePersonaById = originals.updatePersonaById;
+    situacionRepo.updateSituacionById = originals.updateSituacionById;
+    gestionRepo.getById = originals.getById;
     gestionRepo.updateGestionById = originals.updateGestionById;
     delete require.cache[servicePath];
   }
@@ -410,6 +503,31 @@ function testUpdatedLegalSituationHasPriority() {
     }),
     'sindicado'
   );
+  for (const field of [
+    'Procedencia de utilidad pública (solo para mujeres)',
+    'Procedencia de libertad condicional',
+    'Procedencia de prisión domiciliaria de mitad de pena',
+    'Procedencia de pena cumplida',
+    'Procedencia de acumulación de penas',
+  ]) {
+    assert.strictEqual(service.computeTipo({ [field]: 'No aplica porque ya hay solicitud en trámite' }), 'condenado');
+  }
+  assert.strictEqual(
+    service.computeTipo({
+      'Situación Jurídica': 'Sindicado',
+      'Procedencia de utilidad pública (solo para mujeres)': 'Sí cumple requisitos objetivos',
+    }),
+    'sindicado'
+  );
+  assert.strictEqual(service.computeTipo({}), 'sindicado');
+  assert.strictEqual(service.computeTipo({ 'Procedencia de utilidad pública (solo para mujeres)': '-' }), 'sindicado');
+  assert.strictEqual(service.computeTipo({ 'Procedencia de libertad condicional': '—' }), 'sindicado');
+  for (const placeholder of ['', '--', ' null ', 'undefined', 'Sin información']) {
+    assert.strictEqual(
+      service.computeTipo({ 'Procedencia de utilidad pública (solo para mujeres)': placeholder }),
+      'sindicado'
+    );
+  }
 }
 
 function testNewDefenderNameIsUppercaseAndAccentFree() {
@@ -422,11 +540,13 @@ function testNewDefenderNameIsUppercaseAndAccentFree() {
 
 (async () => {
   await testRepositoryUsesDatabaseClock();
+  await testGestionUpdateIsScopedToSituation();
   await testGenericDefenderChangeCreatesFreshAssignment();
   await testInactivePrisonRecordRejectsUpdates();
   await testBulkUnassignmentClosesOnlyEligibleActiveAssignments();
   await testNewActuacionAlwaysPersistsCanonicalAction();
   await testBothBlock5VariantsPersistEveryFieldInOneSave();
+  await testExplicitGestionMustBelongToCurrentSituationBeforeWriting();
   await testApiAlwaysExposesOracleDerivedStateAsAction();
   testUpdatedLegalSituationHasPriority();
   testNewDefenderNameIsUppercaseAndAccentFree();

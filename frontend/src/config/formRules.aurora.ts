@@ -360,7 +360,8 @@ export function isCierreBloque3Aurora(record: FormRecord): boolean {
   return (
     areAllNegativeInProcedencias30a34(record) &&
     hasExplicitNingunaInP36(record) &&
-    isFilled(getAny(record, FECHA_ANALISIS_ALIASES))
+    isFilled(getAny(record, FECHA_ANALISIS_ALIASES)) &&
+    !hasPendingHistoricalResource(record)
   );
 }
 
@@ -409,15 +410,18 @@ function hasStartedBlock3(record: FormRecord): boolean {
 
 function canEvaluateBlock5State(record: FormRecord): boolean {
   // Los registros históricos que solo traen Bloque 5 conservan su estado.
-  // Si el Bloque 3 actual ya fue iniciado, Bloque 5 solo influye al ser alcanzable.
-  return isBlock5Reachable(record) || !hasStartedBlock3(record);
+  // Si además hay un análisis completo, los hitos persistidos de Bloque 5
+  // prevalecen aunque falte un dato intermedio de los bloques 3 o 4.
+  return isBlock5Reachable(record) || !hasStartedBlock3(record) || hasHistoricalBlock5ProgressAurora(record);
 }
 
 function isUtilidadPublicaFlow(record: FormRecord): boolean {
-  return includesAnyInsensitive(getAny(record, ACTUACION_ADELANTAR_ALIASES), [
+  const actuacion = getAny(record, ACTUACION_ADELANTAR_ALIASES);
+  if (isFilled(actuacion)) return includesAnyInsensitive(actuacion, [
     'Utilidad pública',
     'Utilidad publica',
   ]);
+  return equalsAnyInsensitive(get(record, FIELD.q52), ['Niega utilidad pública', 'Otorga utilidad pública']);
 }
 
 function hasAnalisisBase(record: FormRecord): boolean {
@@ -479,6 +483,27 @@ function hasBloque5Data(record: FormRecord): boolean {
     FIELD.b5NormalSentidoResuelveSolicitud,
   ];
   return keys.some((key) => isFilled(get(record, key)));
+}
+
+export function hasHistoricalBlock5ProgressAurora(record: FormRecord): boolean {
+  const actuacion = getAny(record, ACTUACION_ADELANTAR_ALIASES);
+  const decisionIdentificaUtilidad = equalsAnyInsensitive(get(record, FIELD.q52), [
+    'Niega utilidad pública',
+    'Otorga utilidad pública',
+  ]);
+  return (
+    hasAnalisisCompleto(record) &&
+    hasBloque5Data(record) &&
+    (isFilled(actuacion) || decisionIdentificaUtilidad)
+  );
+}
+
+function hasPendingHistoricalResource(record: FormRecord): boolean {
+  return (
+    isDecisionNegativa(record) &&
+    isRecursoPresentado(get(record, FIELD.q54)) &&
+    !hasSentidoDecisionRecurso(record)
+  );
 }
 
 function decisionUsuarioPermiteContinuar(value: unknown): boolean {
