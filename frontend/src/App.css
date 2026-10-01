@@ -653,6 +653,15 @@ a:hover{
   gap: clamp(1rem, 3vw, 2rem);
 }
 
+.login-version{
+  margin-left: 0.55rem;
+  color: #a9afb8;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.015rem;
+  white-space: nowrap;
+}
+
 .login-footer button{
   border: 0;
   background: transparent;

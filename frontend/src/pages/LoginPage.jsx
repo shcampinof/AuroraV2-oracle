@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import appMetadata from '../../package.json';
 import { LOGO_AURORA_URL, LOGO_DEFENSORIA_URL } from '../config/externalAssets.js';
 import { getAuthConfig, loginLocal, loginWithAzureAd } from '../services/auth.js';
 
@@ -77,8 +78,6 @@ function LoginPage({ onAuthenticated }) {
   const [legalDialog, setLegalDialog] = useState(null);
 
   const isBusy = status === 'loading-config' || status === 'logging-in';
-  const passwordLoginEnabled = Boolean(authConfig?.localAdminEnabled || authConfig?.ldap?.enabled);
-  const azureAdEnabled = Boolean(authConfig?.azureAd?.enabled);
 
   useEffect(() => {
     let alive = true;
@@ -104,17 +103,23 @@ function LoginPage({ onAuthenticated }) {
     setError('');
     setStatus('logging-in');
     try {
-      if (passwordLoginEnabled) {
-        if (!username.trim() || !password) {
-          throw new Error('Ingrese su usuario y contraseña institucionales.');
+      if (username.trim() && password) {
+        try {
+          const localSession = await loginLocal({ username, password });
+          onAuthenticated(localSession);
+          return;
+        } catch (localErr) {
+          if (authConfig?.ldap?.enabled) {
+            throw localErr;
+          }
+          if (localErr?.message !== 'Usuario o contraseña inválidos.') {
+            throw localErr;
+          }
         }
-        const localSession = await loginLocal({ username, password });
-        onAuthenticated(localSession);
-        return;
       }
 
-      if (!azureAdEnabled) {
-        throw new Error('El servicio de autenticación institucional no está configurado.');
+      if (!authConfig?.azureAd?.enabled) {
+        throw new Error('Usuario o contraseña inválidos.');
       }
 
       const session = await loginWithAzureAd(authConfig, { username });
@@ -160,25 +165,19 @@ function LoginPage({ onAuthenticated }) {
               />
             </label>
 
-            {passwordLoginEnabled ? (
-              <label>
-                <span>CONTRASEÑA</span>
-                <input
-                  autoComplete="current-password"
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Ingrese su contraseña"
-                  disabled={isBusy}
-                />
-              </label>
-            ) : null}
+            <label>
+              <span>CONTRASEÑA</span>
+              <input
+                autoComplete="current-password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Ingrese su contraseña"
+                disabled={isBusy}
+              />
+            </label>
 
-            <p>
-              {passwordLoginEnabled
-                ? 'Ingrese con sus credenciales institucionales.'
-                : 'Continúe con su cuenta institucional de Microsoft.'}
-            </p>
+            <p>Ingrese con sus credenciales institucionales.</p>
 
             {error ? <p className="login-error" role="alert">{error}</p> : null}
 
@@ -188,11 +187,7 @@ function LoginPage({ onAuthenticated }) {
               disabled={isBusy}
               title="Iniciar sesión"
             >
-              {status === 'logging-in'
-                ? 'Ingresando...'
-                : passwordLoginEnabled
-                  ? 'Iniciar Sesión  ↪'
-                  : 'Continuar con Microsoft  ↪'}
+              {status === 'logging-in' ? 'Ingresando...' : 'Iniciar Sesión  ↪'}
             </button>
           </form>
 
@@ -205,7 +200,10 @@ function LoginPage({ onAuthenticated }) {
       </main>
 
       <footer className="login-footer">
-        <span>© 2026 DEFENSORÍA DEL PUEBLO DE COLOMBIA - TODOS LOS DERECHOS RESERVADOS</span>
+        <span>
+          © 2026 DEFENSORÍA DEL PUEBLO DE COLOMBIA - TODOS LOS DERECHOS RESERVADOS
+          <small className="login-version" title="Versión de AURORA">v{appMetadata.version}</small>
+        </span>
         <nav aria-label="Información legal">
           <button type="button" onClick={() => setLegalDialog('privacidad')}>PRIVACIDAD</button>
           <button type="button" onClick={() => setLegalDialog('terminos')}>TÉRMINOS DE USO</button>

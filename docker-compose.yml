@@ -69,12 +69,15 @@ services:
       CARGUEBD_CLEAR_REGISTRY_ON_START: ${CARGUEBD_CLEAR_REGISTRY_ON_START:-false}
       CARGUEBD_ACTUACIONES_CLEANUP_DEFENSOR: ${CARGUEBD_ACTUACIONES_CLEANUP_DEFENSOR:-PRUEBA PILOTO}
     volumes:
-      - ./backend/certs:/app/backend/certs:ro
+      - aurora_certs:/app/backend/certs:ro
       - aurora_auth_users:/app/backend/storage/auth
       - aurora_cargas_bd:/app/backend/storage/cargas_bd
       - aurora_reportes:/app/backend/storage/reportes
 
 volumes:
+  aurora_certs:
+    name: ${AURORA_CERTS_VOLUME:-aurora-prod_aurora_certs}
+    external: true
   aurora_auth_users:
   aurora_cargas_bd:
   aurora_reportes:

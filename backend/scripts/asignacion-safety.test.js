@@ -27,6 +27,9 @@ async function testRepositoryUsesDatabaseClock() {
     assert.match(captured.sql, /SET FECHA_FIN = SYSDATE/);
     assert.match(captured.sql, /ID_ASIGNACION/);
     assert.match(captured.sql, /DNDP\.SEQ_ASIGNACION\.NEXTVAL/);
+    assert.match(captured.sql, /MAX\(ID_ASIGNACION\)/);
+    assert.match(captured.sql, /EXIT WHEN v_id_asignacion > v_max_asignacion/);
+    assert.match(captured.sql, /VALUES\s*\(\s*v_id_asignacion/);
     assert.match(captured.sql, /:nombrePag,\s*SYSDATE\s*\)/);
     assert(!Object.prototype.hasOwnProperty.call(captured.binds, 'fechaAsignacion'));
     assert.strictEqual(captured.options.autoCommit, true);
