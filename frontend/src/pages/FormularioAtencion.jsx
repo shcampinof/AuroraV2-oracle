@@ -28,10 +28,8 @@ import {
 } from '../utils/defensores.js';
 import { getStoredSession } from '../services/authStorage.js';
 import {
-  FORM_AUTOSAVE_DEBOUNCE_MS,
-  FORM_AUTOSAVE_RETRY_MS,
   buildFormAutosaveContext,
-  createCoalescingAutosaveQueue,
+  createScheduledAutosaveQueue,
   readFormAutosaveDraft,
   removeFormAutosaveDraft,
   writeFormAutosaveDraft,
@@ -1886,15 +1884,17 @@ export default function FormularioAtencion({ numeroInicial }) {
   const autosaveChangedRef = useRef(false);
   const camposModificadosEnFormularioRef = useRef(new Set());
   const autosaveCascadeTimerRef = useRef(null);
-  const autosaveTimerRef = useRef(null);
-  const autosaveRetryTimerRef = useRef(null);
   const autosavePerformRef = useRef(async () => {});
   const buscarRegistroRef = useRef(async () => {});
   const autosaveContextKeyRef = useRef('');
   const autosaveBaselineRef = useRef(new Map());
   const autosaveQueueRef = useRef(null);
+  const createAutosaveQueue = useCallback(() => {
+    const queue = createScheduledAutosaveQueue((job) => autosavePerformRef.current(job, queue));
+    return queue;
+  }, []);
   if (!autosaveQueueRef.current) {
-    autosaveQueueRef.current = createCoalescingAutosaveQueue((job) => autosavePerformRef.current(job));
+    autosaveQueueRef.current = createAutosaveQueue();
   }
 
   const triggerFormularioAutoScroll = useCallback(() => {
@@ -2149,14 +2149,10 @@ export default function FormularioAtencion({ numeroInicial }) {
     [getAutosaveContextFor]
   );
 
-  const flushAutosave = useCallback(async () => {
-    if (autosaveTimerRef.current) {
-      window.clearTimeout(autosaveTimerRef.current);
-      autosaveTimerRef.current = null;
-    }
+  const flushAutosave = useCallback(async (options = {}) => {
     if (!autosaveQueueRef.current?.hasPending() && !autosaveQueueRef.current?.isRunning()) return null;
     try {
-      return await autosaveQueueRef.current.flush();
+      return await autosaveQueueRef.current.flush(options);
     } catch {
       // El detalle ya queda reflejado por el ejecutor y el borrador permanece local.
       return null;
@@ -2200,16 +2196,12 @@ export default function FormularioAtencion({ numeroInicial }) {
         message: restored ? 'Borrador recuperado; pendiente de sincronización.' : 'Cambios pendientes de guardar.',
       });
 
-      if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
-      autosaveTimerRef.current = window.setTimeout(
-        () => { void flushAutosave(); },
-        immediate ? 0 : FORM_AUTOSAVE_DEBOUNCE_MS
-      );
+      if (immediate) void flushAutosave();
     },
     [flushAutosave, getAutosaveContextFor, personaFueraPrision]
   );
 
-  autosavePerformRef.current = async (job) => {
+  autosavePerformRef.current = async (job, queue) => {
     const isCurrentContext = () => autosaveContextKeyRef.current === job.context.key;
     if (isCurrentContext()) {
       setAutosaveStatus({ phase: 'saving', savedAt: null, message: 'Guardando cambios…' });
@@ -2221,10 +2213,12 @@ export default function FormularioAtencion({ numeroInicial }) {
       if (!payload.actuacionId && Number.isInteger(gestionId) && gestionId > 0) payload.rowIndex = gestionId;
       const updated = await updatePpl(job.context.documento, payload);
       autosaveBaselineRef.current.set(job.context.key, job.fullData);
-      const hasNewerChanges = autosaveQueueRef.current?.hasPending(
+      const hasNewerChanges = queue.hasPending(
         (pendingJob) => pendingJob?.context?.key === job.context.key
       );
-      if (!hasNewerChanges) removeFormAutosaveDraft(window.localStorage, job.context);
+      const currentDraft = readFormAutosaveDraft(window.localStorage, job.context);
+      const draftMatchesJob = !currentDraft || JSON.stringify(currentDraft.data) === JSON.stringify(job.fullData);
+      if (!hasNewerChanges && draftMatchesJob) removeFormAutosaveDraft(window.localStorage, job.context);
 
       if (isCurrentContext()) {
         const queued = isQueuedResponse(updated);
@@ -2250,6 +2244,12 @@ export default function FormularioAtencion({ numeroInicial }) {
         }
 
         if (!queued && updated?.registro && typeof updated.registro === 'object') {
+          // La respuesta del servidor no es otra edición del usuario. Evita
+          // que la marca de limpieza de campos vuelva a encolar lo ya enviado.
+          if (!hasNewerChanges) {
+            autosaveChangedRef.current = false;
+            if (autosaveCascadeTimerRef.current) window.clearTimeout(autosaveCascadeTimerRef.current);
+          }
           const serverRecord = updated.registro;
           setRegistro((prev) => {
             if (!prev) return prev;
@@ -2293,11 +2293,6 @@ export default function FormularioAtencion({ numeroInicial }) {
         });
       }
       reportError(error, 'formulario-entrevista:autoguardado');
-      if (autosaveRetryTimerRef.current) window.clearTimeout(autosaveRetryTimerRef.current);
-      autosaveRetryTimerRef.current = window.setTimeout(
-        () => { void flushAutosave(); },
-        FORM_AUTOSAVE_RETRY_MS
-      );
       throw error;
     }
   };
@@ -2318,22 +2313,26 @@ export default function FormularioAtencion({ numeroInicial }) {
   }, [actuacionActivaId, enqueueAutosaveSnapshot, getAutosaveContextFor, registro]);
 
   useEffect(() => {
+    // StrictMode vuelve a montar los efectos en desarrollo. Cada montaje
+    // necesita su propia cola para que el autoguardado siga operativo.
+    if (!autosaveQueueRef.current) {
+      autosaveQueueRef.current = createAutosaveQueue();
+    }
     const flushIfHidden = () => {
-      if (document.visibilityState === 'hidden') void flushAutosave();
+      if (document.visibilityState === 'hidden') void flushAutosave({ respectBackoff: true });
     };
-    const safetyInterval = window.setInterval(() => {
-      if (autosaveQueueRef.current?.hasPending()) void flushAutosave();
-    }, 25000);
     document.addEventListener('visibilitychange', flushIfHidden);
     return () => {
       document.removeEventListener('visibilitychange', flushIfHidden);
-      window.clearInterval(safetyInterval);
-      if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
-      if (autosaveRetryTimerRef.current) window.clearTimeout(autosaveRetryTimerRef.current);
       if (autosaveCascadeTimerRef.current) window.clearTimeout(autosaveCascadeTimerRef.current);
-      autosaveQueueRef.current?.dispose();
+      const queue = autosaveQueueRef.current;
+      autosaveQueueRef.current = null;
+      autosaveContextKeyRef.current = '';
+      // Al navegar se intenta enviar lo pendiente. Si falla, el borrador local
+      // permanece disponible para recuperar los cambios al volver al caso.
+      void queue?.dispose({ flush: true }).catch(() => {});
     };
-  }, [flushAutosave]);
+  }, [createAutosaveQueue, flushAutosave]);
 
   useEffect(() => {
     const handleOfflineQueueUpdate = async (event) => {
@@ -4421,10 +4420,6 @@ export default function FormularioAtencion({ numeroInicial }) {
             <fieldset
               className="readonly-form-fieldset"
               disabled={personaFueraPrision || guardando}
-              onBlurCapture={(event) => {
-                if (!isCampoAutoguardableDesdeBloque3(event?.target?.name)) return;
-                window.setTimeout(() => { void flushAutosave(); }, 0);
-              }}
             >
             <h3 className="block-title">{displayText('BLOQUE 1. Información de la persona privada de la libertad')}</h3>
 

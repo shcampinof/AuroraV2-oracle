@@ -1,5 +1,6 @@
-export const FORM_AUTOSAVE_DEBOUNCE_MS = 1800;
-export const FORM_AUTOSAVE_RETRY_MS = 10000;
+export const FORM_AUTOSAVE_INTERVAL_MS = 30 * 1000;
+export const FORM_AUTOSAVE_RETRY_MS = 30 * 1000;
+export const FORM_AUTOSAVE_MAX_RETRY_MS = 5 * 60 * 1000;
 export const FORM_AUTOSAVE_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function safePart(value) {
@@ -74,9 +75,14 @@ export function createCoalescingAutosaveQueue(save) {
   let pending = null;
   let running = null;
   let disposed = false;
+  let drainAll = false;
 
-  const drain = async () => {
-    if (running) return running;
+  const drain = async ({ drain: all = true } = {}) => {
+    if (running) {
+      if (all) drainAll = true;
+      return running;
+    }
+    drainAll = all;
     running = (async () => {
       let lastResult;
       while (!disposed && pending) {
@@ -89,6 +95,7 @@ export function createCoalescingAutosaveQueue(save) {
           if (!pending) pending = job;
           throw error;
         }
+        if (!drainAll) break;
       }
       return lastResult;
     })();
@@ -124,6 +131,92 @@ export function createCoalescingAutosaveQueue(save) {
     dispose() {
       disposed = true;
       pending = null;
+    },
+  };
+}
+
+// El borrador local se actualiza al editar; las escrituras al servidor se
+// agrupan en ventanas de 30 s. Los envíos explícitos vacían toda la cola.
+export function createScheduledAutosaveQueue(save, {
+  intervalMs = FORM_AUTOSAVE_INTERVAL_MS,
+  retryMs = FORM_AUTOSAVE_RETRY_MS,
+  maxRetryMs = FORM_AUTOSAVE_MAX_RETRY_MS,
+} = {}) {
+  const queue = createCoalescingAutosaveQueue(save);
+  let timer = null;
+  let activeFlush = null;
+  let failures = 0;
+  let stopped = false;
+
+  function cancelTimer() {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+  }
+
+  function schedule() {
+    if (stopped || timer !== null || activeFlush || !queue.hasPending()) return;
+    const delay = failures
+      ? Math.min(maxRetryMs, retryMs * (2 ** Math.min(failures - 1, 10)))
+      : intervalMs;
+    timer = setTimeout(() => {
+      timer = null;
+      void run(false).catch(() => {});
+    }, delay);
+  }
+
+  function run(drain) {
+    cancelTimer();
+    if (activeFlush) {
+      // Un guardado manual durante un envío automático debe incluir también
+      // los cambios que llegaron después de iniciar ese envío.
+      if (drain) void queue.flush().catch(() => {});
+      return activeFlush;
+    }
+    if (!queue.hasPending()) return Promise.resolve(null);
+    activeFlush = queue.flush({ drain })
+      .then((result) => {
+        failures = 0;
+        return result;
+      })
+      .catch((error) => {
+        failures += 1;
+        throw error;
+      })
+      .finally(() => {
+        activeFlush = null;
+        schedule();
+      });
+    return activeFlush;
+  }
+
+  return {
+    enqueue(job) {
+      if (stopped) return;
+      queue.enqueue(job);
+      schedule();
+    },
+    flush({ respectBackoff = false } = {}) {
+      if (respectBackoff && failures > 0) return Promise.resolve(null);
+      return run(true);
+    },
+    hasPending: queue.hasPending,
+    isRunning: queue.isRunning,
+    clear() {
+      queue.clear();
+      failures = 0;
+      cancelTimer();
+    },
+    dropPending(predicate) {
+      const dropped = queue.dropPending(predicate);
+      if (!queue.hasPending()) cancelTimer();
+      return dropped;
+    },
+    dispose({ flush = false } = {}) {
+      stopped = true;
+      cancelTimer();
+      if (flush) return run(true).finally(() => queue.dispose());
+      queue.dispose();
+      return Promise.resolve();
     },
   };
 }
