@@ -326,6 +326,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   const [cargando, setCargando] = useState(false);
   const [errorCarga, setErrorCarga] = useState('');
   const [busquedaRealizada, setBusquedaRealizada] = useState(false);
+  const rowsRequestIdRef = useRef(0);
+  const rowsRequestRef = useRef(null);
 
   const [columns, setColumns] = useState([]);
   const [rows, setRows] = useState([]);
@@ -485,7 +487,17 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     }));
   }
 
-  const cargarRowsFromBackend = useCallback(async (nextFiltros = {}, nextPage = 1, forceRefresh = false) => {
+  const cargarRowsFromBackend = useCallback(async function cargarRows(
+    nextFiltros = {}, nextPage = 1, forceRefresh = false, background = false
+  ) {
+    // Agrupa los avisos que llegan durante una consulta. Una búsqueda manual
+    // siempre tiene prioridad y descarta respuestas de consultas anteriores.
+    if (background && rowsRequestRef.current) {
+      rowsRequestRef.current.refreshPending = true;
+      return;
+    }
+    const activeRequest = { id: ++rowsRequestIdRef.current, refreshPending: false };
+    rowsRequestRef.current = activeRequest;
     const request = {
       tipo: 'all',
       page: nextPage,
@@ -494,23 +506,40 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       forceRefresh,
     };
     const hasCachedRows = !forceRefresh && Boolean(getCachedCondenados(request));
-    setCargando(!hasCachedRows);
+    setCargando(!background && !hasCachedRows);
     setErrorCarga('');
     try {
       const normalized = normalizeRowsPayload(await getCondenados(request));
+      if (activeRequest.id !== rowsRequestIdRef.current) return;
       setColumns(normalized?.columns || []);
       setRows(normalized?.rows || []);
       setMetaConsulta(normalized?.meta || null);
       setPagina(nextPage);
     } catch (e) {
+      if (activeRequest.id !== rowsRequestIdRef.current) return;
       console.error(e);
-      setErrorCarga(String(e?.message || 'No fue posible cargar los usuarios asignados.'));
-      setColumns([]);
-      setRows([]);
-      setMetaConsulta(null);
+      if (background) {
+        setErrorCarga('No fue posible actualizar los usuarios asignados. Se conserva la información de la última consulta.');
+      } else {
+        setErrorCarga(String(e?.message || 'No fue posible cargar los usuarios asignados.'));
+        setColumns([]);
+        setRows([]);
+        setMetaConsulta(null);
+      }
     } finally {
-      setCargando(false);
+      if (activeRequest.id === rowsRequestIdRef.current) {
+        rowsRequestRef.current = null;
+        setCargando(false);
+        if (activeRequest.refreshPending) {
+          void cargarRows(nextFiltros, nextPage, true, true);
+        }
+      }
     }
+  }, []);
+
+  useEffect(() => () => {
+    rowsRequestIdRef.current += 1;
+    rowsRequestRef.current = null;
   }, []);
 
   const cargarOpcionesFiltro = useCallback(async () => {
@@ -541,7 +570,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     const refreshAfterCarga = () => {
       cargarOpcionesFiltro();
       if (busquedaRealizada) {
-        cargarRowsFromBackend(filtrosAplicados, pagina, true);
+        void cargarRowsFromBackend(filtrosAplicados, pagina, true, true);
       }
     };
     window.addEventListener(PPL_DATA_UPDATED_EVENT, refreshAfterCarga);
@@ -712,6 +741,9 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     if (!Object.entries(next).some(([key, value]) =>
       key === 'incluirFueraPrision' ? value === true : String(value || '').trim() !== ''
     )) {
+      rowsRequestIdRef.current += 1;
+      rowsRequestRef.current = null;
+      setCargando(false);
       setFiltrosAplicados(next);
       setBusquedaRealizada(false);
       setErrorCarga('Ingrese al menos un filtro antes de buscar.');
@@ -734,6 +766,9 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   }
 
   function reiniciar() {
+    rowsRequestIdRef.current += 1;
+    rowsRequestRef.current = null;
+    setCargando(false);
     const empty = {
       defensor: '',
       defensorId: '',
