@@ -3061,10 +3061,10 @@ input[list]{
   gap: 0.35rem;
   margin-top: 1rem;
   padding: 0.65rem 0.8rem;
-  border: 1px solid #d4bd72;
+  border: 1px solid #c8d9e8;
   border-radius: 8px;
-  background: #fff9e8;
-  color: #6b4f00;
+  background: #f2f7fc;
+  color: #355572;
   font-weight: 700;
 }
 
