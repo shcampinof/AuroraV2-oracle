@@ -55,6 +55,8 @@ function buildEventBaseSelect(filtersSql) {
     SELECT /*+ MATERIALIZE */
       TO_CHAR(g.DEFENSOR_GESTION) AS DEFENSOR_GESTION,
       g.FECHA_REGISTRO AS FECHA_REGISTRO_GESTION,
+      g.ID_ASIGNACION_GESTION,
+      ag.CEDULA_DEFENSOR AS CEDULA_AUTOR_GESTION,
       g.ID_GESTION,
       s.ID_SITUACION,
       p.ID_PERSONA,
@@ -70,6 +72,8 @@ function buildEventBaseSelect(filtersSql) {
     JOIN DNDP.SITUACION_CARCELARIA s ON s.ID_SITUACION = g.ID_SITUACION
     JOIN DNDP.PERSONA p ON p.ID_PERSONA = s.ID_PERSONA
     JOIN personas_del_defensor alcance ON alcance.ID_PERSONA = s.ID_PERSONA
+    LEFT JOIN DNDP.ASIGNACION ag ON ag.ID_ASIGNACION = g.ID_ASIGNACION_GESTION
+      AND ag.ID_PERSONA = s.ID_PERSONA
     WHERE 1=1 ${filtersSql}
   `;
 }
@@ -143,10 +147,9 @@ async function listAvailableEstablecimientos() {
   return (result?.rows || []).map((row) => row.ESTABLECIMIENTO);
 }
 
-// DEFENSOR_GESTION cambia al reasignar una gestión abierta. Solo representa
-// al autor original cuando coincide con la asignación al registrar la gestión
-// (o no hay información para contrastarlo). Si fue sustituido, cada hito usa
-// su propia fecha y una sola asignación histórica.
+// Las nuevas gestiones conservan su autor y su asignación original, incluso
+// después de finalizarla. Las filas legadas sin vínculo mantienen la
+// reconstrucción histórica porque versiones anteriores sobrescribían al autor.
 function buildEventsSql({ tipo = 'all', lugar = '' } = {}) {
   const locationClause = lugar
     ? `AND ${normalizedMojibakeSqlExpr('s.ESTABLECIMIENTO')} = :lugar`
@@ -168,6 +171,7 @@ function buildEventsSql({ tipo = 'all', lugar = '' } = {}) {
     eventos AS (
       SELECT SUBSTR(ORIGEN, 1, INSTR(ORIGEN, '_') - 1) AS TIPO,
         ORIGEN, DEFENSOR_GESTION, FECHA_REGISTRO_GESTION,
+        ID_ASIGNACION_GESTION, CEDULA_AUTOR_GESTION,
         ID_GESTION, ID_SITUACION, ID_PERSONA, NOMBRE_USUARIO,
         IDENTIFICACION, LUGAR_PRIVACION, FECHA
       FROM gestiones_base
@@ -206,6 +210,7 @@ function buildEventsSql({ tipo = 'all', lugar = '' } = {}) {
           ORDER BY a.FECHA_ASIGNACION DESC NULLS LAST, a.ID_ASIGNACION DESC
         ) AS RN_AUTOR,
         CASE
+          WHEN e.ID_ASIGNACION_GESTION IS NOT NULL THEN 1
           WHEN NVL(${normalizedMojibakeSqlExpr('e.DEFENSOR_GESTION')}, '-') IN ('-', '--') THEN 0
           WHEN e.FECHA >= TRUNC(e.FECHA_REGISTRO_GESTION)
             AND a.ID_ASIGNACION <> e.ID_ASIGNACION_REGISTRO THEN 0
@@ -232,14 +237,24 @@ function buildEventsSql({ tipo = 'all', lugar = '' } = {}) {
     FROM eventos_atribuidos e
     WHERE e.RN_AUTOR = 1
       AND (
-        (e.AUTOR_ORIGINAL = 1
+        (e.ID_ASIGNACION_GESTION IS NOT NULL AND (
+          TO_CHAR(e.CEDULA_AUTOR_GESTION) = :defensorCedula
+          OR (e.CEDULA_AUTOR_GESTION IS NULL
+            AND ${normalizedMojibakeSqlExpr('e.DEFENSOR_GESTION')} = :defensorNombre
+            AND NOT EXISTS (
+              SELECT 1 FROM DNDP.DEFENSORES homonimo
+              WHERE ${normalizedMojibakeSqlExpr('homonimo.NOMBRE')} = :defensorNombre
+                AND TO_CHAR(homonimo.CEDULA) <> :defensorCedula
+            ))
+        ))
+        OR (e.ID_ASIGNACION_GESTION IS NULL AND e.AUTOR_ORIGINAL = 1
           AND ${normalizedMojibakeSqlExpr('e.DEFENSOR_GESTION')} = :defensorNombre
           AND NOT EXISTS (
             SELECT 1 FROM DNDP.DEFENSORES homonimo
             WHERE ${normalizedMojibakeSqlExpr('homonimo.NOMBRE')} = :defensorNombre
               AND TO_CHAR(homonimo.CEDULA) <> :defensorCedula
           ))
-        OR (e.AUTOR_ORIGINAL = 0 AND ${DEFENSOR_MATCH_SQL.replaceAll('a.', 'e.')})
+        OR (e.ID_ASIGNACION_GESTION IS NULL AND e.AUTOR_ORIGINAL = 0 AND ${DEFENSOR_MATCH_SQL.replaceAll('a.', 'e.')})
       )
     ORDER BY e.TIPO, e.FECHA, e.NOMBRE_USUARIO, e.IDENTIFICACION
   `;

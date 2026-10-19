@@ -509,6 +509,7 @@ const EXPORT_FIELDS_CELESTE_BLOQUE_3 = [
   { label: '20. Fecha de análisis jurídico del caso', key: 'Fecha de análisis jurídico del caso', isDate: true },
   { label: '21. Análisis jurídico y actuación a desplegar', key: 'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS' },
   { label: '22. Resumen del análisis jurídico del presente caso', key: 'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO' },
+  EXPORT_FIELD_CIERRE_CASO,
 ];
 
 const EXPORT_FIELDS_CELESTE_BLOQUE_4 = [{ label: '23. Fecha de la entrevista para informar al usuario', key: 'Fecha de entrevista', isDate: true }];
@@ -898,7 +899,7 @@ function hydrateDefensorAliases(registro) {
     'Defensor(a) Público(a) Asignado para tramitar la solicitud': defensor,
     'Defensor(a) Publico(a) Asignado para tramitar la solicitud': defensor,
     Defensor: defensor,
-    defensorAsignado: defensor,
+    defensorAsignado: String(source.defensorActivo ?? source.defensorAsignado ?? defensor),
   };
 }
 
@@ -1396,6 +1397,11 @@ function buildNuevaActuacionDraft(source) {
     }
     next[key] = '';
   });
+
+  const activo = Object.prototype.hasOwnProperty.call(target, 'defensorActivo')
+    ? String(target.defensorActivo || '') : getDefensorAsignadoValue(target);
+  DEFENSOR_DIRECT_KEYS.forEach(key => { next[key] = activo; });
+  next.__defensorAsignadoOriginal = activo;
 
   // Toda actuación nace con una acción persistible, incluso antes de que se
   // diligencien los hitos que permiten avanzar a la siguiente etapa.
@@ -4019,10 +4025,10 @@ export default function FormularioAtencion({ numeroInicial }) {
       return;
     }
     const defensorIngresado = getDefensorAsignadoValue(registro);
-    const defensorCatalogado = resolveDefensorAsignadoParaGuardar({
+    const defensorCatalogado = String(registro?.defensorGestion || '').trim() || resolveDefensorAsignadoParaGuardar({
       value: defensorIngresado,
       originalValue: registro?.__defensorAsignadoOriginal,
-      assignedId: registro?.__oracleCedulaDefensor,
+      assignedId: registro?.__oracleCedulaDefensorGestion || registro?.__oracleCedulaDefensor,
       catalogo: defensoresCatalogo,
       options: opcionesDefensores,
     });
@@ -4796,7 +4802,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                   <Campo
                     label="28. Defensor(a) público(a) asignado para tramitar la solicitud"
                     name="Defensor(a) Público(a) Asignado para tramitar la solicitud"
-                    disabled={personaFueraPrision}
+                    disabled={personaFueraPrision || Boolean(registro?.defensorGestion)}
                     type="catalog-datalist"
                     value={getDefensorAsignadoValue(registro)}
                     onChange={handleChange}
@@ -5412,7 +5418,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                       <Campo
                         label="19. Defensor(a) p\u00fablico(a) asignado para tramitar la solicitud"
                         name="Defensor(a) Público(a) Asignado para tramitar la solicitud"
-                        disabled={personaFueraPrision}
+                        disabled={personaFueraPrision || Boolean(registro?.defensorGestion)}
                         type="catalog-datalist"
                         value={getDefensorAsignadoValue(registro)}
                         onChange={handleChange}
@@ -5451,6 +5457,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                       required={false}
                       showObligatoria
                     />
+                    <CampoCierreCaso registro={registro} onChange={handleChange} />
                   </div>
                 </>
               )}

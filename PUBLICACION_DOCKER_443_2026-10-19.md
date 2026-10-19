@@ -62,3 +62,31 @@ docker compose up -d --no-build --wait --wait-timeout 120 aurora
 
 Los certificados y los volúmenes persistentes de usuarios, cargas y reportes
 se conservaron durante la publicación.
+
+## Publicación posterior: defensor por gestión
+
+Se publicó la revisión descrita en
+[Revisión del defensor por gestión](REVISION_DEFENSOR_GESTIONES_2026-10-19.md).
+Imagen vigente:
+`sha256:8c19f262ee9da990110ab8468797c75886c48ba40866dc735109adc808496975`.
+
+La imagen final conserva exactamente el código, dependencias Node y frontend
+de la imagen validada en navegador: 1.616 archivos con digest conjunto
+`095ef431bcb1a466bab647791353d1bdd3c20b0baec5188143ee245008141e78`.
+
+Después de reemplazar el servicio en 443 se comprobaron `healthy`, cero
+reinicios, HTTP 200 en salud y conexión Oracle, y nueve archivos del frontend
+servidos por HTTPS con el mismo SHA256 que sus archivos del contenedor.
+
+La imagen previa a esta revisión queda como
+`aurora-app:before-defensor-gestion-20261019-0840`. Para revertir esta última
+publicación:
+
+```sh
+docker image tag aurora-app:before-defensor-gestion-20261019-0840 aurora-app:local
+docker compose up -d --no-build --wait --wait-timeout 120 aurora
+```
+
+La columna opcional de la migración es compatible con esa imagen anterior;
+no se necesita eliminarla para revertir el código. La conexión sigue siendo
+DNDPDEV.

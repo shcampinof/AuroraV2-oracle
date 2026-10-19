@@ -1,3 +1,4 @@
+import { hasExplicitClosure } from './formRules.aurora';
 export type CelesteBlockId =
   | 'bloque1'
   | 'bloque2Celeste'
@@ -241,7 +242,7 @@ export function areMandatoryFieldsFilledCeleste(answers: CelesteRecord, blockId:
 
 export function resolveVisibleBlocksCeleste(answers: CelesteRecord): CelesteBlockId[] {
   const visible: CelesteBlockId[] = [...initialVisibleBlocks];
-  if (isNoSeAvanzaraQ21(answers)) return visible;
+  if (hasExplicitClosure(answers) || isNoSeAvanzaraQ21(answers)) return visible;
 
   // Regla: SINDICADO.B4.VISIBILIDAD.1
   if (!areMandatoryFieldsFilledCeleste(answers, 'bloque3Celeste')) return visible;
@@ -253,6 +254,7 @@ export function resolveVisibleBlocksCeleste(answers: CelesteRecord): CelesteBloc
 }
 
 export function deriveStatusCeleste(answers: CelesteRecord): CelesteDerivedStatus {
+  if (hasExplicitClosure(answers)) return 'Caso cerrado';
   if (isNoSeAvanzaraQ21(answers)) return 'Caso cerrado';
   const bloque5Status = deriveBloque5StatusCeleste(answers);
   if (bloque5Status) return bloque5Status;

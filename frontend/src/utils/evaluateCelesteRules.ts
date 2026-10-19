@@ -1,3 +1,4 @@
+import { hasExplicitClosure } from '../config/formRules.aurora';
 import {
   type CelesteBlockId,
   type CelesteRecord,
@@ -185,6 +186,7 @@ function resolveVisibleBlocks(answers: CelesteRecord, locked: boolean): CelesteB
 }
 
 function deriveStatus(answers: CelesteRecord): CelesteDerivedStatus {
+  if (hasExplicitClosure(answers)) return 'Caso cerrado';
   const q21 = getAnswerByKey(answers, FIELD.q21);
   const q23 = getAnswerByKey(answers, FIELD.q23);
 
@@ -205,13 +207,14 @@ function deriveStatus(answers: CelesteRecord): CelesteDerivedStatus {
 export function evaluateCelesteRules({ answers }: EvaluateCelesteRulesInput): EvaluateCelesteRulesResult {
   const safeAnswers = (answers || {}) as CelesteRecord;
   const closedByQ21 = isNoSeAvanzaraQ21(getAnswerByKey(safeAnswers, FIELD.q21));
-  const visibleBlocks = resolveVisibleBlocks(safeAnswers, closedByQ21);
+  const explicitClosure = hasExplicitClosure(safeAnswers);
+  const visibleBlocks = resolveVisibleBlocks(safeAnswers, closedByQ21 || explicitClosure);
   const derivedStatus = deriveStatus(safeAnswers);
 
   return {
     visibleBlocks,
-    locked: closedByQ21,
-    lockReason: closedByQ21 ? 'Caso cerrado por análisis jurídico de la pregunta 21.' : undefined,
+    locked: closedByQ21 || explicitClosure,
+    lockReason: explicitClosure ? 'Caso cerrado por imposibilidad de avanzar.' : closedByQ21 ? 'Caso cerrado por análisis jurídico de la pregunta 21.' : undefined,
     jumpToAurora: false,
     jumpPayload: undefined,
     derivedStatus,

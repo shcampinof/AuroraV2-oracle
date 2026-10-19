@@ -697,6 +697,33 @@
       },
       "expectedCode": "PRESENTAR_RECURSO",
       "expectedLabel": "Presentar recurso"
+    },
+    {
+      "id": "celeste-cierre-explicito-1",
+      "flow": "celeste",
+      "answers": {
+        "Cierre del caso por imposibilidad de avanzar (si aplica)": "Otro motivo."
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "celeste-cierre-explicito-2",
+      "flow": "celeste",
+      "answers": {
+        "Cierre del caso por imposibilidad de avanzar (si aplica)": "Cierre automático por cambio de ERON o regional."
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "celeste-cierre-explicito-3",
+      "flow": "celeste",
+      "answers": {
+        "Cierre del caso por imposibilidad de avanzar (si aplica)": "Cierre automático por actualización relevante de SISIPEC."
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
     }
   ]
 }

@@ -343,7 +343,7 @@ function hasExplicitNingunaInP36(record: FormRecord): boolean {
   return selections.length === 1 && selections[0] === 'ninguna';
 }
 
-function hasExplicitClosure(record: FormRecord): boolean {
+export function hasExplicitClosure(record: FormRecord): boolean {
   const allowed = [
     'Se cierra porque la persona ya no está en el ERON por razón ajena a este trámite.',
     'Cierre automático por cambio de ERON o regional.',

@@ -33,8 +33,8 @@ async function testRepositoryUsesDatabaseClock() {
     assert.match(captured.sql, /VALUES\s*\(\s*v_id_asignacion/);
     assert.match(captured.sql, /:nombrePag,\s*SYSDATE\s*\)/);
     assert.match(captured.sql, /DEFENSOR_GESTION/);
-    assert.match(captured.sql, /IF v_gestion_cerrada = 1 THEN\s+insertar_gestion_defensor/);
-    assert.match(captured.sql, /ELSIF TRIM\(v_defensor_gestion\) IS NULL[\s\S]*UPDATE DNDP\.GESTION_JURIDICA/);
+    assert.match(captured.sql, /ID_ASIGNACION_GESTION/);
+    assert.match(captured.sql, /SET DEFENSOR_GESTION = NVL\(DEFENSOR_GESTION, :nombreDefensor\)/);
     assert.strictEqual(captured.binds.idSituacion, 40);
     assert(!Object.prototype.hasOwnProperty.call(captured.binds, 'fechaAsignacion'));
     assert.strictEqual(captured.options.autoCommit, true);
@@ -71,132 +71,43 @@ async function testGestionUpdateIsScopedToSituation() {
 }
 
 async function testGenericDefenderChangeCreatesFreshAssignment() {
-  const personaRepo = require('../repositories/oracle/personaRepository');
-  const gestionRepo = require('../repositories/oracle/gestionRepository');
-  const asignacionRepo = require('../repositories/oracle/asignacionRepository');
-  const defensoresRepo = require('../repositories/oracle/defensoresRepository');
-  const servicePath = require.resolve('../services/pplService');
-
-  const originals = {
-    findActiveContextByDocumento: personaRepo.findActiveContextByDocumento,
-    listRowsWithActiveSituacionAndGestiones: personaRepo.listRowsWithActiveSituacionAndGestiones,
-    reconcileGestionActionById: personaRepo.reconcileGestionActionById,
-    updatePersonaById: personaRepo.updatePersonaById,
-    getLatestBySituacion: gestionRepo.getLatestBySituacion,
-    insertGestion: gestionRepo.insertGestion,
-    replaceActiveAssignmentByPersona: asignacionRepo.replaceActiveAssignmentByPersona,
-    endActiveAssignmentByPersona: asignacionRepo.endActiveAssignmentByPersona,
-    findUniqueByNombre: defensoresRepo.findUniqueByNombre,
-  };
-  const assignmentWrites = [];
-  const assignmentEnds = [];
-  const personaWrites = [];
-  const gestionWrites = [];
-
-  personaRepo.findActiveContextByDocumento = async () => ({
-    P_ID_PERSONA: 10,
-    S_ID_SITUACION: 20,
-    S_ACTIVO: 1,
-    G_DEFENSOR: 'DEFENSOR ACTUAL',
-  });
-  personaRepo.listRowsWithActiveSituacionAndGestiones = async () => [
-    {
-      P_ID_PERSONA: 10,
-      P_NUMERO: '123',
-      S_ID_SITUACION: 20,
-      S_SITUACION: 'Condenado',
-      G_ID_GESTION: 30,
-      G_DEFENSOR: 'DEFENSOR ACTUAL',
-    },
-  ];
-  personaRepo.reconcileGestionActionById = async () => ({ updated: 1 });
-  personaRepo.updatePersonaById = async (...args) => {
-    personaWrites.push(args);
-    return 1;
-  };
-  gestionRepo.getLatestBySituacion = async () => ({ ID_GESTION: 30, DEFENSOR_GESTION: 'DEFENSOR ACTUAL' });
-  gestionRepo.insertGestion = async (idSituacion, fields) => {
-    gestionWrites.push({ idSituacion, fields });
-    return 31;
-  };
-  asignacionRepo.replaceActiveAssignmentByPersona = async (idPersona, assignment) => {
-    assignmentWrites.push({ idPersona, assignment });
-    return 1;
-  };
-  asignacionRepo.endActiveAssignmentByPersona = async (idPersona) => {
-    assignmentEnds.push(idPersona);
-    return 1;
-  };
-  defensoresRepo.findUniqueByNombre = async (nombre) => (
-    String(nombre || '').trim() === 'DEFENSOR DISTINTO'
-      ? { cedula: '20', nombre: 'DEFENSOR DISTINTO' }
-      : null
-  );
-  delete require.cache[servicePath];
-
+  const persona = require('../repositories/oracle/personaRepository');
+  const gestion = require('../repositories/oracle/gestionRepository');
+  const asignacion = require('../repositories/oracle/asignacionRepository');
+  const defensores = require('../repositories/oracle/defensoresRepository');
+  const original = [];
+  const mock = (obj, key, fn) => { const prev = obj[key]; original.push(() => { obj[key] = prev; }); obj[key] = fn; };
+  const writes = [];
+  let owner = 'DEFENSOR HISTORICO';
+  mock(persona, 'findActiveContextByDocumento', async () => ({ P_ID_PERSONA: 10, S_ID_SITUACION: 20, S_ACTIVO: 1, G_DEFENSOR: 'DEFENSOR ACTUAL', G_ID_ASIGNACION: 40 }));
+  mock(persona, 'listRowsWithActiveSituacionAndGestiones', async () => [{ P_NUMERO: '123', S_ACTIVO: 1, G_ID_GESTION: 30, G_DEFENSOR: 'DEFENSOR ACTUAL', G_DEFENSOR_GESTION: owner }]);
+  mock(persona, 'reconcileGestionActionById', async () => {});
+  mock(gestion, 'getById', async () => ({ ID_GESTION: 30, DEFENSOR_GESTION: owner }));
+  mock(gestion, 'getLatestBySituacion', async () => ({ ID_GESTION: 30, DEFENSOR_GESTION: owner }));
+  mock(gestion, 'updateGestionById', async (...args) => { writes.push(['gestion', ...args]); return 1; });
+  mock(asignacion, 'replaceActiveAssignmentByPersona', async (...args) => { writes.push(['asignacion', ...args]); return 1; });
+  mock(asignacion, 'endActiveAssignmentByPersona', async (...args) => { writes.push(['desasignar', ...args]); return 1; });
+  mock(defensores, 'findUniqueByNombre', async () => null);
   try {
-    const service = require(servicePath);
-    const updated = await service.updateByDocumento('123', {
-      data: {
-        'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'DEFENSOR DISTINTO',
-        'Fecha de asignación del PAG': '2000-01-01',
-      },
-    });
-
-    assert(updated, 'La actualización general debe seguir respondiendo con el registro actual.');
-    assert.strictEqual(assignmentWrites.length, 1, 'Un defensor distinto debe crear una nueva asignación.');
-    assert.strictEqual(assignmentWrites[0].idPersona, 10);
-    assert.strictEqual(assignmentWrites[0].assignment.defensorNombre, 'DEFENSOR DISTINTO');
-    assert.strictEqual(assignmentWrites[0].assignment.defensorCedula, '20');
-    assert.strictEqual(assignmentWrites[0].assignment.idSituacion, 20);
-    assert(!Object.prototype.hasOwnProperty.call(assignmentWrites[0].assignment, 'fechaAsignacion'));
-    assert.strictEqual(updated.defensorAsignado, 'DEFENSOR ACTUAL');
-
-    await service.updateByDocumento('123', {
-      data: {
-        'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'DEFENSOR ACTUAL',
-        'Fecha de asignación del PAG': '2000-01-01',
-      },
-    });
-    assert.strictEqual(assignmentWrites.length, 1, 'El mismo defensor no debe renovar la fecha de asignación.');
-
-    await assert.rejects(
-      () => service.updateByDocumento('123', {
-        data: {
-          Nombre: 'NO DEBE ESCRIBIRSE',
-          'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'NOMBRE INVENTADO',
-        },
-      }),
-      (error) => error?.code === 'DEFENSOR_NOT_IN_CATALOG' && error?.status === 400
-    );
-    assert.strictEqual(assignmentWrites.length, 1, 'Un nombre fuera del catálogo no debe crear asignaciones.');
-    assert.strictEqual(personaWrites.length, 0, 'Un defensor inválido debe rechazarse antes de modificar PERSONA.');
-
-    await service.updateByDocumento('123', {
-      data: {
-        'Defensor(a) Público(a) Asignado para tramitar la solicitud': '',
-        __desasignarDefensor: true,
-      },
-    });
-    assert.deepStrictEqual(assignmentEnds, [10], 'La señal explícita debe cerrar la asignación activa.');
-    assert.strictEqual(assignmentWrites.length, 1, 'Desasignar no debe crear una asignación nueva.');
-    assert.deepStrictEqual(
-      gestionWrites,
-      [{ idSituacion: 20, fields: { DEFENSOR_GESTION: null } }],
-      'Desasignar debe abrir una nueva gestión disponible sin defensor.'
-    );
-  } finally {
-    personaRepo.findActiveContextByDocumento = originals.findActiveContextByDocumento;
-    personaRepo.listRowsWithActiveSituacionAndGestiones = originals.listRowsWithActiveSituacionAndGestiones;
-    personaRepo.reconcileGestionActionById = originals.reconcileGestionActionById;
-    personaRepo.updatePersonaById = originals.updatePersonaById;
-    gestionRepo.getLatestBySituacion = originals.getLatestBySituacion;
-    gestionRepo.insertGestion = originals.insertGestion;
-    asignacionRepo.replaceActiveAssignmentByPersona = originals.replaceActiveAssignmentByPersona;
-    asignacionRepo.endActiveAssignmentByPersona = originals.endActiveAssignmentByPersona;
-    defensoresRepo.findUniqueByNombre = originals.findUniqueByNombre;
-    delete require.cache[servicePath];
-  }
+    const service = require('../services/pplService');
+    const result = await service.updateByDocumento('123', { rowIndex: 30, data: {
+      'Defensor(a) Público(a) Asignado para tramitar la solicitud': owner,
+      defensorAsignado: 'DEFENSOR ACTUAL', 'Resumen del análisis del caso': 'Completar histórico',
+    } });
+    assert.strictEqual(result.defensorGestion, owner);
+    assert.strictEqual(result.defensorAsignado, 'DEFENSOR ACTUAL');
+    assert.deepStrictEqual(writes.map(w => w[0]), ['gestion'], 'Guardar al autor histórico no reasigna el caso.');
+    writes.length = 0;
+    await assert.rejects(() => service.updateByDocumento('123', { rowIndex: 30, data: { Defensor: 'DEFENSOR ACTUAL' } }), e => e.code === 'PPL_DEFENSOR_GESTION_IMMUTABLE');
+    assert.strictEqual(writes.length, 0, 'Cambiar el autor se rechaza antes de escribir.');
+    owner = '';
+    await service.updateByDocumento('123', { rowIndex: 30, data: { Defensor: 'DEFENSOR ACTUAL', 'Resumen del análisis del caso': 'Primera gestión' } });
+    assert.strictEqual(writes[0][2].DEFENSOR_GESTION, 'DEFENSOR ACTUAL');
+    assert.strictEqual(writes[0][2].ID_ASIGNACION_GESTION, 40);
+    writes.length = 0;
+    await assert.rejects(() => service.updateByDocumento('123', { rowIndex: 30, data: { Defensor: 'NOMBRE INVENTADO' } }), e => e.code === 'DEFENSOR_NOT_IN_CATALOG');
+    assert.strictEqual(writes.length, 0);
+  } finally { original.reverse().forEach(restore => restore()); }
 }
 
 async function testInactivePrisonRecordRejectsUpdates() {

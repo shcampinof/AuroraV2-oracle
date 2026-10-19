@@ -822,10 +822,10 @@ function hydrateRegistroDefensor(registro, fallbackDefensor = '') {
   const base = registro && typeof registro === 'object' ? registro : {};
   const hasGestion = Number(base?.__oracleIdGestion || 0) > 0;
   const defensor = resolveDefensorFromRegistro(base) || (hasGestion ? '' : String(fallbackDefensor || '').trim());
-  if (!defensor) return { ...base, defensorAsignado: '' };
+  if (!defensor) return { ...base, defensorAsignado: String(base.defensorActivo || '') };
   return {
     ...base,
-    defensorAsignado: defensor,
+    defensorAsignado: String(base.defensorActivo ?? base.defensorAsignado ?? defensor),
     'Defensor(a) Publico(a) Asignado para tramitar la solicitud': defensor,
     'Defensor(a) Público(a) Asignado para tramitar la solicitud': defensor,
     Defensor: defensor,
@@ -1258,7 +1258,7 @@ router.post('/:documento/actuaciones', async (req, res) => {
     });
   } catch (err) {
     console.error('[ppl:actuaciones:create] Error Oracle:', err?.message || err);
-    if (err?.code === 'PPL_SITUACION_INACTIVA' || err?.code === 'PPL_GESTION_MISMATCH') {
+    if (err?.code === 'PPL_SITUACION_INACTIVA' || err?.code === 'PPL_GESTION_MISMATCH' || err?.code === 'PPL_DEFENSOR_GESTION_IMMUTABLE') {
       return res.status(409).json({ code: err.code, message: err.message });
     }
     if (err?.code === 'DEFENSOR_NOT_IN_CATALOG') {
@@ -1303,7 +1303,7 @@ router.put('/:documento', async (req, res) => {
     return res.status(404).json({ message: 'No encontrado' });
   } catch (err) {
     console.error('[ppl:update] Error Oracle:', err?.message || err);
-    if (err?.code === 'PPL_SITUACION_INACTIVA' || err?.code === 'PPL_GESTION_MISMATCH') {
+    if (err?.code === 'PPL_SITUACION_INACTIVA' || err?.code === 'PPL_GESTION_MISMATCH' || err?.code === 'PPL_DEFENSOR_GESTION_IMMUTABLE') {
       return res.status(409).json({ code: err.code, message: err.message });
     }
     if (err?.code === 'DEFENSOR_NOT_IN_CATALOG') {

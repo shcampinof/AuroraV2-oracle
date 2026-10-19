@@ -87,18 +87,42 @@ async function run() {
         pagNombre: 'PAG PRUEBA SIN COMMIT',
         idSituacion,
       }), 1);
-      await checkAssignments(index + 1, 1, defensorNombre, 1);
+      await checkAssignments(index + 1, 1, defensorNombre, index + 1);
+      const gestiones = (await execute('SELECT DEFENSOR_GESTION, ID_ASIGNACION_GESTION FROM DNDP.GESTION_JURIDICA WHERE ID_SITUACION = :idSituacion ORDER BY FECHA_REGISTRO, ID_GESTION', { idSituacion })).rows;
+      assert.deepEqual(gestiones.map(g => g.DEFENSOR_GESTION), defensores.slice(0, index + 1), 'La reasignación no cambia ningún autor anterior');
+      assert(gestiones.every(g => g.ID_ASIGNACION_GESTION > 0));
+      if (index === 0) {
+        await execute('UPDATE DNDP.GESTION_JURIDICA SET ID_ASIGNACION_GESTION = NULL WHERE ID_SITUACION = :idSituacion', { idSituacion });
+        await repository.replaceActiveAssignmentByPersona(idPersona, { defensorNombre, idSituacion });
+        const legacy = (await execute('SELECT ID_ASIGNACION_GESTION FROM DNDP.GESTION_JURIDICA WHERE ID_SITUACION = :idSituacion', { idSituacion })).rows;
+        assert.equal(legacy[0].ID_ASIGNACION_GESTION, null, 'Un reintento no convierte una autoría legada en un vínculo inferido');
+        await execute('UPDATE DNDP.GESTION_JURIDICA SET ID_ASIGNACION_GESTION = :asignacion WHERE ID_SITUACION = :idSituacion', { asignacion: gestiones[0].ID_ASIGNACION_GESTION, idSituacion });
+      }
+      if (index < 2) await execute('UPDATE DNDP.GESTION_JURIDICA SET FECHA_ANALISIS = SYSDATE, RESUMEN_ANALISIS_CASO = :resumen WHERE ID_ASIGNACION_GESTION = :asignacion', { resumen: defensorNombre, asignacion: gestiones[index].ID_ASIGNACION_GESTION });
       checks.push(index === 0 ? 'asignación inicial' : `reasignación ${index}`);
     }
 
+    // Los hitos del mismo día pertenecen a la gestión que los registró, aunque
+    // el caso haya vuelto al primer defensor y luego pasado a un tercero.
+    const report = require('../repositories/oracle/reporteAtencionesRepository');
+    for (const defensor of ['PRUEBA A', 'PRUEBA B', 'PRUEBA C']) {
+      const events = await report.listEvents({ defensorNombre: defensor, defensorCedula: '', fechaInicio: '2026-01-01', fechaFin: '2099-12-31' });
+      const mine = events.filter(e => e.ID_PERSONA === idPersona && e.TIPO === 'analisis');
+      assert.equal(mine.length, defensor === 'PRUEBA C' ? 0 : 1, 'No se transfieren hitos anteriores al defensor actual');
+    }
+    checks.push('autoría del reporte con A → B → A → C y hitos en el mismo día');
+    assert.equal(await repository.replaceActiveAssignmentByPersona(idPersona, { defensorNombre: 'PRUEBA C', idSituacion }), 1);
+    await checkAssignments(4, 1, 'PRUEBA C', 4);
+    checks.push('repetir el mismo defensor no duplica asignación ni gestión');
+
     assert.equal(await repository.endActiveAssignmentByPersona(idPersona), 1);
-    await checkAssignments(4, 0, null, 1);
+    await checkAssignments(4, 0, null, 4);
     checks.push('eliminar asignación');
     assert.equal(await repository.replaceActiveAssignmentByPersona(idPersona, {
       defensorNombre: 'PRUEBA B',
       idSituacion,
     }), 1);
-    await checkAssignments(5, 1, 'PRUEBA B', 1);
+    await checkAssignments(5, 1, 'PRUEBA B', 5);
     checks.push('asignar después de eliminar');
 
     await execute(`
@@ -109,8 +133,8 @@ async function run() {
       defensorNombre: 'PRUEBA A',
       idSituacion,
     }), 1);
-    await checkAssignments(6, 1, 'PRUEBA A', 2);
-    checks.push('gestión nueva únicamente después del cierre');
+    await checkAssignments(6, 1, 'PRUEBA A', 6);
+    checks.push('gestión nueva después de reasignación y cierre');
 
     await connection.rollback();
     for (const table of ['GESTION_JURIDICA', 'ASIGNACION', 'SITUACION_CARCELARIA', 'PERSONA']) {

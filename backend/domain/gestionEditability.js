@@ -47,7 +47,7 @@ function otrasSolicitudes(value) {
 // También acepta las filas del repositorio de persona, que usan el prefijo G_.
 function hasReachedBlock5(row = {}, tipo = 'condenado') {
   const get = (column) => row[`G_${column}`] ?? row[column];
-  if (!(Number(get('ID_GESTION')) > 0)) return false;
+  if (!(Number(get('ID_GESTION')) > 0) || !filled(get('DEFENSOR_GESTION'))) return false;
 
   const analysisComplete = ['FECHA_ANALISIS', 'RESUMEN_ANALISIS_CASO']
     .every((column) => filled(get(column)));

@@ -43,6 +43,14 @@ async function testActuacionesKeepTheirOwnDefensor() {
       'DEFENSOR HISTORICO'
     );
     assert.equal(actuaciones[1].registro.defensorGestion, 'DEFENSOR ACTIVO');
+    assert.equal(actuaciones[0].registro.defensorAsignado, 'DEFENSOR ACTIVO');
+    personaRepo.listRowsWithActiveSituacionAndGestiones = async () => [
+      { P_NUMERO: '123', S_ACTIVO: 1, G_ID_GESTION: 30, G_DEFENSOR: '', G_DEFENSOR_GESTION: 'DEFENSOR HISTORICO' },
+      { P_NUMERO: '123', S_ACTIVO: 1, G_ID_GESTION: 32, G_DEFENSOR: '', G_DEFENSOR_GESTION: null },
+    ];
+    const unassigned = await service.getByDocumento('123');
+    assert.equal(unassigned.defensorGestion, '');
+    assert.equal(unassigned.Defensor, '', 'Una gestión sin defensor no hereda al autor anterior');
   } finally {
     personaRepo.listRowsWithActiveSituacionAndGestiones = originalList;
     delete require.cache[servicePath];

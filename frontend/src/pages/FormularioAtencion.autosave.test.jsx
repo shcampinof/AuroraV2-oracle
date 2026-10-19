@@ -3,7 +3,7 @@ import { StrictMode, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import FormularioAtencion from './FormularioAtencion.jsx';
-import { getPplByDocumento, updatePpl } from '../services/api.js';
+import { getDefensoresCatalogo, getPplByDocumento, updatePpl } from '../services/api.js';
 import { buildFormAutosaveContext, readFormAutosaveDraft, writeFormAutosaveDraft } from '../utils/formAutosave.js';
 
 const fixture = vi.hoisted(() => ({ record: null }));
@@ -101,6 +101,36 @@ describe.each(['condenado', 'sindicado'])('autoguardado del formulario %s', (tip
     const context = buildFormAutosaveContext({ subject: 'tester', documento: '123', gestionId: 17, actuacionId: 'actuacion-17' });
     return readFormAutosaveDraft(localStorage, context);
   }
+
+  it('guardar una gestión histórica conserva su defensor aunque la asignación vigente sea de otro', async () => {
+    Object.assign(base, {
+      defensorGestion: 'DEFENSORA HISTORICA', defensorActivo: 'DEFENSOR ACTUAL',
+      defensorAsignado: 'DEFENSOR ACTUAL', __oracleCedulaDefensor: '2',
+      'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'DEFENSORA HISTORICA',
+    });
+    getDefensoresCatalogo.mockResolvedValueOnce([
+      { cedula: '1', nombre: 'DEFENSORA HISTORICA' }, { cedula: '2', nombre: 'DEFENSOR ACTUAL' },
+    ]);
+    await mount();
+    const field = container.querySelector('[name="Defensor(a) Público(a) Asignado para tramitar la solicitud"]');
+    expect(field.value).toBe('DEFENSORA HISTORICA');
+    expect(field.disabled).toBe(true);
+    await edit(summaryKey, 'Completar gestión anterior');
+    await click('GUARDAR ENTREVISTA');
+    expect(updatePpl).toHaveBeenCalled();
+    const data = updatePpl.mock.calls.at(-1)[1].data;
+    expect(data['Defensor(a) Público(a) Asignado para tramitar la solicitud']).toBe('DEFENSORA HISTORICA');
+    expect(data.defensorGestion).toBe('DEFENSORA HISTORICA');
+  });
+
+  it('la pregunta de cierre está al final del análisis y no altera la numeración', async () => {
+    await mount();
+    const closure = container.querySelector('[name="Cierre del caso por imposibilidad de avanzar (si aplica)"]');
+    expect(closure).not.toBeNull();
+    const summary = container.querySelector(`textarea[name="${summaryKey}"]`);
+    expect(summary.compareDocumentPosition(closure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container.textContent).toContain('Antes de seleccionar una opción de cierre');
+  });
 
   it('consultar sin editar no dispara guardados y funciona dentro de StrictMode', async () => {
     await mount();

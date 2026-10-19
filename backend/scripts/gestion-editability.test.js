@@ -29,6 +29,7 @@ const reached = {
 
 function testSavedMilestones() {
   assert.equal(hasReachedBlock5({ ID_GESTION: 30, ACCION_REALIZAR: 'Presentar solicitud', INSISTENCIAS: 0 }), false);
+  assert.equal(hasReachedBlock5({ ...reached, DEFENSOR_GESTION: '' }), false, 'Los hitos sin defensor identificado no habilitan la excepción.');
   assert.equal(hasReachedBlock5(analysis), false, 'Bloque 3 no habilita la excepción.');
   assert.equal(hasReachedBlock5(reached), true, 'Llegar al bloque 5 no exige haber diligenciado su primer campo.');
   assert.equal(hasReachedBlock5({ ...reached, PODER_AVANZAR_SOLICITUD: '-' }), false);

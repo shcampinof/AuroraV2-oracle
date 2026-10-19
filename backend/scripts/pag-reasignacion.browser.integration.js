@@ -42,6 +42,9 @@ async function run() {
   };
   const token = signAppToken(user);
   const checks = [];
+  if (process.env.PAG_BROWSER_VERBOSE === 'true') {
+    checks.push = (...items) => { items.forEach(item => console.log(item)); return Array.prototype.push.apply(checks, items); };
+  }
   let browser;
   let context;
   let fixtureCommitted = false;
@@ -50,9 +53,9 @@ async function run() {
   let cacheInvalidationError;
   let assignments = 0;
 
-  async function api(route, body, statuses = [200]) {
+  async function api(route, body, statuses = [200], method = 'POST') {
     const response = await context.request.fetch(`${baseUrl}/api${route}`, {
-      method: body ? 'POST' : 'GET',
+      method: body ? method : 'GET',
       headers: { Authorization: `Bearer ${token}` },
       ...(body ? { data: body } : {}),
     });
@@ -147,6 +150,25 @@ async function run() {
       assert(rows.every((row) => row.DIA.getTime() === rows[0].DIA.getTime()));
       const detail = await api(`/ppl/${documento}`);
       assert.equal(detail.registro.defensorAsignado, defensor.nombre);
+      const history = (await api(`/ppl/${documento}/actuaciones`)).actuaciones;
+      const expected = [defensores[0], defensores[1], defensores[0], defensores[1]].slice(0, assignments);
+      assert.deepEqual(history.map(item => item.registro.defensorGestion), expected.map(item => item.nombre));
+      assert(history.every(item => item.registro.__oracleIdAsignacionGestion > 0));
+      if (assignments <= 2) {
+        const data = {
+          'Fecha de análisis jurídico del caso': '2026-10-01',
+          'Resumen del análisis del caso': `Análisis del defensor ${assignments}`,
+          ...(assignments === 1 ? {
+            'Procedencia de libertad condicional': 'Sí cumple requisitos objetivos',
+            'Procedencia de prisión domiciliaria de mitad de pena': 'No',
+            'Procedencia de pena cumplida': 'No', 'Procedencia de acumulación de penas': 'No',
+            'Otras solicitudes a tramitar': 'Ninguna', 'Fecha de entrevista': '2026-10-02',
+            'Decisión del usuario': 'Sí desea avanzar', 'Actuación a adelantar': 'Libertad condicional',
+            'Requiere pruebas': 'No', 'Poder en caso de avanzar con la solicitud': 'No requiere poder',
+          } : {}),
+        };
+        await api(`/ppl/${documento}`, { rowIndex: history.at(-1).rowIndex, data }, [200], 'PUT');
+      }
       checks.push(`${assignments === 1 ? 'asignación inicial' : `reasignación ${assignments - 1}`}: HTTP 200, updated=1, detalle e historial Oracle correctos`);
     }
 
@@ -177,6 +199,63 @@ async function run() {
     await page.getByPlaceholder('Filtrar defensor actual', { exact: true }).fill(defensores[1].nombre);
     assert.equal((await buscar()).rows.length, 1);
     checks.push('el filtro por defensor anterior excluye el caso; el nuevo defensor lo encuentra');
+
+    const history = (await api(`/ppl/${documento}/actuaciones`)).actuaciones;
+    const original = history[0];
+    await page.getByRole('button', { name: 'Formulario de atención', exact: true }).click();
+    await page.getByPlaceholder('Ingrese Documento', { exact: true }).fill(documento);
+    await page.getByRole('button', { name: 'CONSULTAR PPL', exact: true }).click();
+    const firstHistoryRow = page.locator('.historial-actuaciones tbody tr').filter({ hasText: 'Análisis del defensor 1' });
+    await firstHistoryRow.getByRole('button').click();
+    const ownerInput = page.locator('input[name="Defensor(a) Público(a) Asignado para tramitar la solicitud"]');
+    assert.equal(await ownerInput.inputValue(), defensores[0].nombre);
+    assert.equal(await ownerInput.isDisabled(), true);
+    await page.locator('textarea[name="Resumen del análisis del caso"]').fill('Histórico completado desde el navegador');
+    const savedResponse = page.waitForResponse(response => new URL(response.url()).pathname === `/api/ppl/${documento}` && response.request().method() === 'PUT');
+    await page.getByRole('button', { name: 'GUARDAR ENTREVISTA', exact: true }).click();
+    assert.equal((await savedResponse).status(), 200);
+    const savedHistory = (await api(`/ppl/${documento}/actuaciones`)).actuaciones;
+    assert.equal(savedHistory[0].registro['Resumen del análisis del caso'], 'Histórico completado desde el navegador');
+    checks.push('formulario real: muestra el defensor histórico, protege su identidad y guarda sin reasignar');
+    // Enviar todo el formulario de una gestión anterior nunca cambia al actual.
+    await api(`/ppl/${documento}`, { rowIndex: original.rowIndex, data: {
+      ...original.registro,
+      'Resumen del análisis del caso': 'Histórico completado después de reasignar',
+      'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO': 'Histórico completado después de reasignar',
+    } }, [200], 'PUT');
+    assert.equal((await api(`/ppl/${documento}`)).registro.defensorActivo, defensores[1].nombre);
+    await api(`/ppl/${documento}`, { rowIndex: original.rowIndex, data: { Defensor: defensores[1].nombre } }, [409], 'PUT');
+    checks.push('guardar la gestión histórica conserva al autor y la asignación actual; cambiar el autor devuelve 409');
+
+    for (const defensor of defensores) {
+      const params = new URLSearchParams({ defensorId: defensor.cedula, regional, fechaInicio: '2025-01-01', fechaFin: '2026-10-19', tipo: 'condenado' });
+      const report = await api(`/reportes/atenciones-defensores?${params}`);
+      assert.equal(report.detalles.casosAnalizados.filter(item => item.idPersona === idPersona).length, 1);
+      assert.equal(report.resumen.personasAsignadas, defensor === defensores[1] ? 1 : 0);
+    }
+    checks.push('reporte HTTP atribuye un análisis a cada autor y la carga actual solo al último defensor');
+
+    // La libertad se simula únicamente sobre la situación sintética.
+    await execute('UPDATE DNDP.SITUACION_CARCELARIA SET ACTIVO = 0 WHERE ID_SITUACION = :idSituacion AND ID_PERSONA = :idPersona', { idSituacion, idPersona });
+    await connection.commit();
+    const releasedHistory = (await api(`/ppl/${documento}/actuaciones`)).actuaciones;
+    assert.equal(releasedHistory[0].registro.__bloque5Alcanzado, true);
+    assert.equal(releasedHistory[1].registro.__bloque5Alcanzado, false);
+    const closed = await api(`/ppl/${documento}`, { rowIndex: original.rowIndex, data: {
+      'Fecha de presentación de la solicitud a la autoridad': '2026-10-03',
+      'Defensor(a) Público(a) Asignado para tramitar la solicitud': defensores[0].nombre,
+    } }, [200], 'PUT');
+    assert.equal(closed.registro.estadoCodigo, 'CASO_CERRADO');
+    await api(`/ppl/${documento}`, { rowIndex: history[1].rowIndex, data: {
+      'Fecha de presentación de la solicitud a la autoridad': '2026-10-03', __bloque5Alcanzado: true,
+    } }, [409], 'PUT');
+    await page.getByRole('button', { name: 'CONSULTAR PPL', exact: true }).click();
+    await page.getByRole('button', { name: 'Completar gestión', exact: true }).click();
+    assert.equal(await page.getByRole('button', { name: 'GUARDAR ENTREVISTA', exact: true }).isEnabled(), true);
+    await page.locator('.historial-actuaciones tbody tr').filter({ hasText: 'Análisis del defensor 2' }).getByRole('button', { name: 'Ver detalle', exact: true }).click();
+    assert.equal(await page.getByRole('button', { name: 'SOLO LECTURA', exact: true }).isDisabled(), true);
+    checks.push('libertad: permite completar la gestión que llegó al bloque 5 y rechaza las otras incluso con permiso falsificado');
+
   } catch (error) {
     primaryError = error;
   } finally {
@@ -193,6 +272,8 @@ async function run() {
           // Un fallo HTTP nunca debe impedir retirar los registros sintéticos.
           cacheInvalidationError = error;
         }
+        await execute('DELETE FROM DNDP.CALIFICACION_CONDUCTA WHERE ID_SITUACION = :idSituacion', { idSituacion });
+        await execute('DELETE FROM DNDP.GESTION_JURIDICA WHERE ID_SITUACION = :idSituacion', { idSituacion });
         await execute('DELETE FROM DNDP.ASIGNACION WHERE ID_PERSONA = :idPersona', { idPersona });
         await execute('DELETE FROM DNDP.SITUACION_CARCELARIA WHERE ID_SITUACION = :idSituacion AND ID_PERSONA = :idPersona', { idSituacion, idPersona });
         await execute('DELETE FROM DNDP.PERSONA WHERE ID_PERSONA = :idPersona', { idPersona });
@@ -206,9 +287,11 @@ async function run() {
           (SELECT COUNT(*) FROM DNDP.PERSONA WHERE ID_PERSONA=:idPersona) AS PERSONAS,
           (SELECT COUNT(*) FROM DNDP.SITUACION_CARCELARIA WHERE ID_PERSONA=:idPersona) AS SITUACIONES,
           (SELECT COUNT(*) FROM DNDP.ASIGNACION WHERE ID_PERSONA=:idPersona) AS ASIGNACIONES,
+          (SELECT COUNT(*) FROM DNDP.GESTION_JURIDICA WHERE ID_SITUACION=:idSituacion) AS GESTIONES,
+          (SELECT COUNT(*) FROM DNDP.CALIFICACION_CONDUCTA WHERE ID_SITUACION=:idSituacion) AS CALIFICACIONES,
           (SELECT COUNT(*) FROM DNDP.PAG WHERE CEDULA_PAG=:pagCedula) AS PAGS,
           (SELECT COUNT(*) FROM DNDP.DEFENSORES WHERE CEDULA IN (:defensorA,:defensorB)) AS DEFENSORES
-          FROM dual`, { idPersona, pagCedula, defensorA: defensores[0].cedula, defensorB: defensores[1].cedula })).rows[0];
+          FROM dual`, { idPersona, idSituacion, pagCedula, defensorA: defensores[0].cedula, defensorB: defensores[1].cedula })).rows[0];
         assert(Object.values(residue).every((count) => count === 0), 'Quedaron datos sintéticos sin eliminar');
         checks.push('limpieza verificada: cero personas, situaciones, asignaciones, PAG o defensores de prueba');
       } else {

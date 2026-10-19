@@ -27,7 +27,7 @@ async function captureStateExpression() {
 }
 
 const FIELD_COLUMNS = {
-  'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'd.NOMBRE',
+  'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'g.DEFENSOR_GESTION',
   'Fecha de análisis jurídico del caso': 'g.FECHA_ANALISIS',
   'Resumen del análisis del caso': 'g.RESUMEN_ANALISIS_CASO',
   'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO': 'g.RESUMEN_ANALISIS_CASO',
@@ -58,6 +58,7 @@ const FIELD_COLUMNS = {
   'Fecha de presentación del recurso': 'g.FECHA_PRESENTACION_RECURSO',
   'Fecha de la decisión del recurso': 'g.FECHA_DECISION_RECURSO',
   'Sentido de la decisión que resuelve la solicitud': 'g.SENTIDO_DECISION_RESUELVE_RECURSO',
+  'Cierre del caso por imposibilidad de avanzar (si aplica)': 'g.CIERRE_CASO',
   'SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO': 'g.SENTIDO_DECISION_RESUELVE_RECURSO',
   'Cierre del caso por imposibilidad de avanzar (si aplica)': 'g.CIERRE_CASO',
   'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA': 'g.FECHA_SOLICITUD_AUDIENCIA_CONTROL',

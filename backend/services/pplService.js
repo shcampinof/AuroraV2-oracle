@@ -386,11 +386,11 @@ function coalesce(...values) {
 }
 
 const DEFENSOR_FIELD_ALIASES = [
-  'defensorAsignado',
   'Defensor(a) Público(a) Asignado para tramitar la solicitud',
   'Defensor(a) Publico(a) Asignado para tramitar la solicitud',
   'Defensor(a) P?blico(a) Asignado para tramitar la solicitud',
   'Defensor',
+  'defensorAsignado',
 ];
 
 function isDefensorFieldKey(key) {
@@ -631,6 +631,8 @@ function toLegacyRecord(raw = {}) {
     defensorAsignado: defensorActivo,
     defensorActivo,
     defensorGestion,
+    __oracleIdAsignacionGestion: Number(raw.G_ID_ASIGNACION_GESTION) || null,
+    __oracleCedulaDefensorGestion: String(raw.G_CEDULA_DEFENSOR_GESTION || ''),
 
     // Estado y acción son el mismo concepto. La respuesta siempre usa el valor
     // canónico calculado por Oracle, incluso si una fila histórica conserva una
@@ -754,10 +756,10 @@ function payloadHasDefensorField(payload) {
 }
 
 function hydrateDefensorAliases(record, fallback = '') {
-  const defensor = coalesce(extractDefensor(record), fallback);
+  const hasGestion = Number(record?.__oracleIdGestion) > 0;
+  const defensor = hasGestion ? String(record?.defensorGestion || '').trim() : coalesce(extractDefensor(record), fallback);
   return {
-    ...(record || {}),
-    defensorAsignado: defensor,
+    ...record,
     'Defensor(a) Público(a) Asignado para tramitar la solicitud': defensor,
     'Defensor(a) Publico(a) Asignado para tramitar la solicitud': defensor,
     Defensor: defensor,
@@ -844,14 +846,6 @@ function toRecordList(rows = []) {
   return rows.map((row) => toLegacyRecord(row));
 }
 
-function resolveFallbackDefensor(records = []) {
-  let fallback = '';
-  records.forEach((record) => {
-    const defensor = extractDefensor(record);
-    if (defensor) fallback = defensor;
-  });
-  return fallback;
-}
 
 async function getAll() {
   const rows = await personaRepo.listRowsWithActiveSituacionAndGestiones({
@@ -876,9 +870,7 @@ async function getByDocumento(documento) {
   if (!rows.length) return null;
   const records = toRecordList(rows);
   const last = records[records.length - 1];
-  const fallbackDefensor = resolveFallbackDefensor(records);
-
-  return hydrateDefensorAliases(last, fallbackDefensor);
+  return hydrateDefensorAliases(last);
 }
 
 async function getActuacionesByDocumento(documento) {
@@ -967,6 +959,7 @@ async function createActuacionByDocumento(documento, payload) {
   const defensorActuacion = String(defensorCatalogado?.nombre || context.G_DEFENSOR || '').trim();
   if (defensorActuacion) {
     updates.GESTION.DEFENSOR_GESTION = defensorActuacion;
+    if (!defensorCatalogado && Number(context.G_ID_ASIGNACION) > 0) updates.GESTION.ID_ASIGNACION_GESTION = Number(context.G_ID_ASIGNACION);
   }
   if (Object.keys(updates.PERSONA).length) {
     await personaRepo.updatePersonaById(context.P_ID_PERSONA, updates.PERSONA);
@@ -989,6 +982,7 @@ async function createActuacionByDocumento(documento, payload) {
       pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
       pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
       idSituacion: context.S_ID_SITUACION,
+      idGestionCreada: gestionId,
     });
   }
 
@@ -1068,12 +1062,29 @@ async function updateByDocumento(documento, payload) {
     }
   }
 
+  if (explicitTarget && normalizedPayload.__desasignarDefensor === true) {
+    const err = new Error('Desasigne el caso desde PAG; el formulario solo modifica la gestión seleccionada.');
+    err.code = 'PPL_DEFENSOR_GESTION_IMMUTABLE'; err.status = 409; throw err;
+  }
   let defensorCatalogado = null;
-  if (!situacionInactiva && payloadHasDefensorField(normalizedPayload) && normalizedPayload.__desasignarDefensor !== true) {
-    const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
+  const defensorGuardado = String(targetGestion?.DEFENSOR_GESTION || '').trim();
+  const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
+  if (!situacionInactiva && defensorGuardado && normalizedPayload.__desasignarDefensor !== true && payloadHasDefensorField(normalizedPayload)
+      && normalizeText(nextDefensor) !== normalizeText(defensorGuardado)) {
+    const err = new Error('El defensor de una gestión existente se conserva en el histórico. Reasigne el caso desde PAG para iniciar la gestión del nuevo defensor.');
+    err.code = 'PPL_DEFENSOR_GESTION_IMMUTABLE';
+    err.status = 409;
+    throw err;
+  }
+  if (!situacionInactiva && !defensorGuardado && normalizedPayload.__desasignarDefensor !== true) {
     const currentDefensor = String(context.G_DEFENSOR || '').trim();
     if (nextDefensor && normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
       defensorCatalogado = await resolveDefensorCatalogado(nextDefensor);
+    }
+    const author = defensorCatalogado?.nombre || currentDefensor;
+    if (author && (nextDefensor || Object.keys(updates.GESTION).length)) {
+      updates.GESTION.DEFENSOR_GESTION = author;
+      if (!defensorCatalogado && Number(context.G_ID_ASIGNACION) > 0) updates.GESTION.ID_ASIGNACION_GESTION = Number(context.G_ID_ASIGNACION);
     }
   }
 
@@ -1116,6 +1127,7 @@ async function updateByDocumento(documento, payload) {
       pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
       pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
       idSituacion: context.S_ID_SITUACION,
+      idGestionCreada: targetGestionId,
     });
     dataVersion += 1;
   }

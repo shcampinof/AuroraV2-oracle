@@ -1,5 +1,11 @@
 # Reporte de gestión: histórico, personas asignadas y cierres
 
+Actualización posterior: la revisión conjunta corrigió también las
+reasignaciones para que conserven al autor y abran una gestión nueva. Las
+gestiones nuevas guardan su asignación original; las filas anteriores mantienen
+el respaldo histórico descrito aquí. El resultado vigente y las pruebas están
+en [Revisión del defensor por gestión](REVISION_DEFENSOR_GESTIONES_2026-10-19.md).
+
 Revisión del 19 de octubre de 2026. Periodo de comprobación: **1 de enero de
 2025 a 19 de octubre de 2026**.
 

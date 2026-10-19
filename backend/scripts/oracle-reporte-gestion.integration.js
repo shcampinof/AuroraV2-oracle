@@ -52,6 +52,11 @@ async function run() {
     { ID_GESTION: 180, ID_SITUACION: 3, DEFENSOR_GESTION: 'DEFENSOR B', FECHA_REGISTRO: '2026-06-16 00:00:00', FECHA_ANALISIS: '2025-01-03 00:00:00' },
     // Volver a A no transfiere las actuaciones realizadas mientras estuvo B.
     { ID_GESTION: 190, ID_SITUACION: 13, DEFENSOR_GESTION: 'DEFENSOR A', FECHA_REGISTRO: '2026-01-01 00:00:00', FECHA_ANALISIS: '2026-06-20 00:00:00', FECHA_ENTREVISTA: '2026-07-02 00:00:00' },
+    // El vínculo inmutable prevalece aunque se complete después del traslado.
+    { ID_GESTION: 200, ID_SITUACION: 13, ID_ASIGNACION_GESTION: 130, DEFENSOR_GESTION: 'DEFENSOR A', FECHA_REGISTRO: '2026-01-01 00:00:00', FECHA_ANALISIS: '2026-06-20 00:00:00' },
+    // La cédula del vínculo conserva la identidad ante cambios de nombre.
+    { ID_GESTION: 210, ID_SITUACION: 13, ID_ASIGNACION_GESTION: 131, DEFENSOR_GESTION: 'NOMBRE ANTERIOR', FECHA_REGISTRO: '2026-06-16 00:00:00', FECHA_ANALISIS: '2025-01-03 00:00:00' },
+    { ID_GESTION: 220, ID_SITUACION: 12, ID_ASIGNACION_GESTION: 120, DEFENSOR_GESTION: 'HOMONIMO', FECHA_ANALISIS: '2026-01-03 00:00:00' },
   ];
   const personas = Array.from({ length: 13 }, (_, i) => ({ ID_PERSONA: i + 1, NOMBRE: `PERSONA ${i + 1}`, NUMERO: String(i + 1) }));
   const situaciones = personas.map((p) => ({ ID_SITUACION: p.ID_PERSONA, ID_PERSONA: p.ID_PERSONA, ACTIVO: p.ID_PERSONA === 11 ? 0 : 1, SITUACION: 'Condenado', ESTABLECIMIENTO: 'CENTRO PRUEBA' }));
@@ -69,6 +74,7 @@ async function run() {
   assignment(13, 130, 'A', '2026-01-01 00:00:00', '2026-06-15 10:00:00');
   assignment(13, 131, 'B', '2026-06-15 10:00:00', '2026-07-01 10:00:00');
   assignment(13, 132, 'A', '2026-07-01 10:00:00');
+  asignaciones.push({ ID_PERSONA: 12, ID_ASIGNACION: 120, NOMBRE_DEFENSOR: 'HOMONIMO', CEDULA_DEFENSOR: '10', FECHA_ASIGNACION: '2026-01-02 00:00:00', FECHA_FIN: null });
   const defensores = [{ CEDULA: '1', NOMBRE: 'DEFENSOR A' }, { CEDULA: '2', NOMBRE: 'DEFENSOR B' }, { CEDULA: '3', NOMBRE: 'DEFENSOR C' }, { CEDULA: '10', NOMBRE: 'HOMONIMO' }, { CEDULA: '11', NOMBRE: 'HOMONIMO' }];
   const sql = buildEventsSql({ tipo: 'condenado', lugar: 'CENTRO PRUEBA' });
   const columns = (alias) => [...new Set([...sql.matchAll(new RegExp(`\\b${alias}\\.([A-Z][A-Z_0-9]+)`, 'g'))].map((match) => match[1]))];
@@ -91,11 +97,12 @@ async function run() {
     results[cedula] = (await db.execute(syntheticSql, { ...params, defensorCedula: cedula, defensorNombre: nombre })).rows;
   }
   const keys = (rows) => rows.map((r) => `${r.ID_GESTION}:${r.TIPO}`).sort();
-  assert.deepEqual(keys(results['1']), ['10:analisis', '100:cierre', '110:analisis', '160:analisis', '170:analisis', '190:entrevista', '20:analisis', '30:analisis', '50:analisis', '70:analisis', '80:reiteracion', '80:reiteracion', '80:solicitud', '80:solicitud', '90:analisis'].sort());
-  assert.deepEqual(keys(results['2']), ['130:analisis', '170:entrevista', '180:analisis', '190:analisis', '30:entrevista'].sort());
+  assert.deepEqual(keys(results['1']), ['200:analisis', '10:analisis', '100:cierre', '110:analisis', '160:analisis', '170:analisis', '190:entrevista', '20:analisis', '30:analisis', '50:analisis', '70:analisis', '80:reiteracion', '80:reiteracion', '80:solicitud', '80:solicitud', '90:analisis'].sort());
+  assert.deepEqual(keys(results['2']), ['210:analisis', '130:analisis', '170:entrevista', '180:analisis', '190:analisis', '30:entrevista'].sort());
   assert.deepEqual(keys(results['3']), ['40:analisis']);
-  assert.deepEqual(results['10'], []);
+  assert.deepEqual(keys(results['10']), ['220:analisis']);
   assert.deepEqual(results['11'], []);
+  assert.equal(results['1'].find((r) => r.ID_GESTION === 200).FUENTE_AUTOR, 'DEFENSOR_GESTION');
   assert.equal(results['1'].find((r) => r.ID_GESTION === 10).FUENTE_AUTOR, 'DEFENSOR_GESTION');
   assert.equal(results['1'].find((r) => r.ID_GESTION === 20).FUENTE_AUTOR, 'ASIGNACION_HISTORICA');
   assert.equal(results['1'].find((r) => r.ID_GESTION === 170).FUENTE_AUTOR, 'ASIGNACION_HISTORICA');

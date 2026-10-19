@@ -61,6 +61,7 @@ async function previewByActiveDefensor(defensor, { limit = 500 } = {}) {
         SELECT COUNT(*)
         FROM DNDP.GESTION_JURIDICA g
         WHERE g.ID_SITUACION IN (${targetSql})
+          AND ${normalizedSqlExpr('g.DEFENSOR_GESTION')} = ${normalizedSqlExpr(':defensor')}
       ) AS TOTAL_ACTUACIONES,
       (SELECT COUNT(*) FROM (${targetAssignmentsSql()})) AS TOTAL_ASIGNACIONES
     FROM dual
@@ -77,6 +78,7 @@ async function previewByActiveDefensor(defensor, { limit = 500 } = {}) {
     JOIN DNDP.SITUACION_CARCELARIA s ON s.ID_SITUACION = g.ID_SITUACION
     JOIN DNDP.PERSONA p ON p.ID_PERSONA = s.ID_PERSONA
     WHERE g.ID_SITUACION IN (${targetSql})
+          AND ${normalizedSqlExpr('g.DEFENSOR_GESTION')} = ${normalizedSqlExpr(':defensor')}
     ORDER BY g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
     FETCH FIRST ${Math.max(1, Math.min(1000, Number(limit) || 500))} ROWS ONLY
   `;
@@ -106,7 +108,8 @@ async function deleteByActiveDefensor(defensor, expectedCount, expectedAssignmen
       SELECT COUNT(*)
         INTO v_actuaciones
         FROM DNDP.GESTION_JURIDICA g
-       WHERE g.ID_SITUACION IN (${targetSql});
+       WHERE g.ID_SITUACION IN (${targetSql})
+          AND ${normalizedSqlExpr('g.DEFENSOR_GESTION')} = ${normalizedSqlExpr(':defensor')};
 
       SELECT COUNT(*)
         INTO v_asignaciones
@@ -117,7 +120,8 @@ async function deleteByActiveDefensor(defensor, expectedCount, expectedAssignmen
       END IF;
 
       DELETE FROM DNDP.GESTION_JURIDICA g
-       WHERE g.ID_SITUACION IN (${targetSql});
+       WHERE g.ID_SITUACION IN (${targetSql})
+          AND ${normalizedSqlExpr('g.DEFENSOR_GESTION')} = ${normalizedSqlExpr(':defensor')};
 
       IF SQL%ROWCOUNT != :expectedCount THEN
         RAISE_APPLICATION_ERROR(-20002, 'Cambio concurrente al eliminar actuaciones');
