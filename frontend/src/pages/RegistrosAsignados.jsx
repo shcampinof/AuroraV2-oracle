@@ -903,7 +903,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       const accion = row?.accionPendiente;
       const etiqueta = String(row?.estadoEtiqueta || accion?.etiqueta || row?.accionImpulsar || '').trim();
       const accionEtiqueta = String(accion?.etiqueta || row?.accionImpulsar || '').trim();
-      const original = String(accion?.valorOriginal || '').trim();
       if (!etiqueta) return '\u2014';
       const situacionActiva = isSituacionActiva(pickActiveCaseData(row));
       const estadoCanonico = etiqueta;
@@ -915,11 +914,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
           <span className={`estadoBadge${estadoClass ? ` ${estadoClass}` : ''}`}>{etiqueta}</span>
           {accionEtiqueta && normalize(accionEtiqueta) !== normalize(etiqueta) && (
             <small style={{ display: 'block', marginTop: '0.25rem' }}>Acción: {accionEtiqueta}</small>
-          )}
-          {accion?.homologada === false && original && normalize(original) !== normalize(accionEtiqueta) && (
-            <small style={{ display: 'block', color: '#8a5a00', marginTop: '0.25rem' }}>
-              Valor original no homologado: {original}
-            </small>
           )}
         </div>
       );
