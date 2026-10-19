@@ -90,3 +90,34 @@ docker compose up -d --no-build --wait --wait-timeout 120 aurora
 La columna opcional de la migración es compatible con esa imagen anterior;
 no se necesita eliminarla para revertir el código. La conexión sigue siendo
 DNDPDEV.
+
+## Publicación posterior: motivo del cierre por traslado
+
+El historial muestra los cierres automáticos de situaciones anteriores en un
+recuadro azul, incluso si ya existe una nueva situación activa. Incluye el
+motivo registrado, el defensor de la gestión y el ERON anterior. La fecha de
+cierre procede de `FECHA_FIN` de la asignación original vinculada a la gestión;
+se omite cuando esa vinculación no existe. También se conserva el motivo del
+cierre automático por actualización relevante de SISIPEC.
+
+Validación: lint, compilación, 58 pruebas seleccionadas del frontend y las
+18 suites del backend aprobadas. La consulta se ejecutó contra Oracle con
+CTE sintéticos para comprobar la situación anterior, autoría, fecha y filtros.
+Una prueba de API y navegador sobre la imagen candidata confirmó la visualización
+con una situación anterior cerrada y otra activa. Sus datos sintéticos se
+eliminaron al terminar. Tras publicar se comprobaron salud, Oracle y el endpoint
+del historial por HTTPS 443; los cuatro archivos de backend y el JavaScript
+servido coinciden por SHA256 con los archivos validados. Servicio `healthy`,
+cero reinicios.
+
+Imagen vigente, etiquetada `aurora-app:local` y `aurora-app:docker-443`:
+`sha256:15e6882b0e2beb133b3366b3f5e93569595a8f7c26ece0918774b796ca68ec33`.
+Se construyó incrementalmente sobre la versión publicada, sustituyendo los
+archivos de backend modificados y el frontend compilado, sin cambios de
+dependencias. Reversión del código de esta publicación:
+
+```sh
+docker image tag aurora-app:before-cierre-eron-20261019 aurora-app:local
+docker image tag aurora-app:local aurora-app:docker-443
+docker compose up -d --no-build --wait --wait-timeout 120 aurora
+```

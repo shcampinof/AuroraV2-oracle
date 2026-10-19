@@ -1219,11 +1219,15 @@ router.get('/:documento/actuaciones', async (req, res) => {
     if (!base) return res.status(404).json({ message: 'No encontrado' });
 
     const defensorBase = resolveDefensorFromRegistro(base) || (await resolveDefensorByDocumento(doc));
-    const actuaciones = (await consolidado.getActuacionesByDocumento(doc)).map((actuacion) => ({
+    const [actuacionesRaw, cierresAutomaticos] = await Promise.all([
+      consolidado.getActuacionesByDocumento(doc),
+      consolidado.getCierresAutomaticosByDocumento(doc),
+    ]);
+    const actuaciones = actuacionesRaw.map((actuacion) => ({
       ...actuacion,
       registro: hydrateRegistroDefensor(actuacion?.registro, defensorBase),
     }));
-    return res.json({ documento: doc, actuaciones });
+    return res.json({ documento: doc, actuaciones, cierresAutomaticos });
   } catch (err) {
     console.error('[ppl:actuaciones:get] Error Oracle:', err?.message || err);
     return res.status(500).json({ message: 'Error consultando historial de actuaciones.' });

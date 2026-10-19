@@ -47,6 +47,7 @@ module.exports = {
   getColumns: () => pplService.getColumns(),
   getByDocumento: (documento) => pplService.getByDocumento(documento),
   getActuacionesByDocumento: (documento) => pplService.getActuacionesByDocumento(documento),
+  getCierresAutomaticosByDocumento: (documento) => pplService.getCierresAutomaticosByDocumento(documento),
   createActuacionByDocumento: (documento, payload) => pplService.createActuacionByDocumento(documento, payload),
   updateByDocumento: (documento, payload) => pplService.updateByDocumento(documento, payload),
   assignDefensor: (documentos, defensor, options) => pplService.assignDefensor(documentos, defensor, options),

@@ -3,6 +3,9 @@ const assert = require('assert/strict');
 const consolidado = require('../db/oracleConsolidado.repo');
 const pplService = require('../services/pplService');
 
+assert.equal(typeof consolidado.getCierresAutomaticosByDocumento, 'function',
+  'El historial debe exponer los cierres de las situaciones anteriores.');
+
 assert.equal(
   typeof consolidado.getDataVersionInfo,
   'function',

@@ -340,6 +340,7 @@ export default function HistorialActuacionesPPL({
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
   const [historialError, setHistorialError] = useState('');
   const [actuacionesRaw, setActuacionesRaw] = useState([]);
+  const [cierresAutomaticos, setCierresAutomaticos] = useState([]);
 
   const documentoNormalizado = useMemo(() => String(numeroDocumento ?? '').trim(), [numeroDocumento]);
 
@@ -349,11 +350,13 @@ export default function HistorialActuacionesPPL({
     async function cargarHistorial() {
       if (!documentoNormalizado) {
         setActuacionesRaw([]);
+        setCierresAutomaticos([]);
         setHistorialError('');
         return;
       }
 
       setCargandoHistorial(true);
+      setCierresAutomaticos([]);
       setHistorialError('');
       try {
         const response = await getPplActuacionesByDocumento(documentoNormalizado);
@@ -361,6 +364,7 @@ export default function HistorialActuacionesPPL({
 
         const rows = Array.isArray(response?.actuaciones) ? response.actuaciones : [];
         setActuacionesRaw(rows);
+        setCierresAutomaticos(Array.isArray(response?.cierresAutomaticos) ? response.cierresAutomaticos : []);
       } catch (e) {
         reportError(e, 'historial-actuaciones:cargar');
         if (!alive) return;
@@ -541,6 +545,20 @@ export default function HistorialActuacionesPPL({
       <div className="historial-actuaciones-header">
         <h3 className="block-title historial-actuaciones-title">{displayText('Historial de actuaciones')}</h3>
       </div>
+
+      {!cargandoHistorial && !historialError && cierresAutomaticos.map((cierre) => (
+        <article className="historial-cierre-automatico" key={cierre.idGestion}>
+          <strong>{displayText(cierre.motivo)}</strong>
+          <div className="historial-cierre-datos">
+            <span>Defensor responsable: {displayText(cierre.defensor || 'Sin defensor registrado')}</span>
+            {cierre.establecimiento && <span>ERON anterior: {displayText(cierre.establecimiento)}</span>}
+            {cierre.departamento && <span>Departamento: {displayText(cierre.departamento)}</span>}
+            {cierre.fechaCierre && (
+              <span>Fecha de cierre: {String(cierre.fechaCierre).split('-').reverse().join('/')}</span>
+            )}
+          </div>
+        </article>
+      ))}
 
       {cargandoHistorial && <p className="hint-text">{displayText('Cargando historial de actuaciones...')}</p>}
       {!cargandoHistorial && historialError && <p className="hint-text">{displayText(historialError)}</p>}

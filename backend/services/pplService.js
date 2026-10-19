@@ -906,6 +906,21 @@ async function getActuacionesByDocumento(documento) {
   });
 }
 
+async function getCierresAutomaticosByDocumento(documento) {
+  const doc = normalizeDocumento(documento);
+  if (!doc) return [];
+  const rows = await personaRepo.listAutomaticClosuresByDocumento(doc, { scopeDepartamentos: SCOPE_DEPARTAMENTOS });
+  return rows.map(row => ({
+    idGestion: Number(row.ID_GESTION),
+    idSituacion: Number(row.ID_SITUACION),
+    motivo: String(row.MOTIVO || '').trim(),
+    defensor: String(row.DEFENSOR || '').trim(),
+    establecimiento: String(row.ESTABLECIMIENTO || '').trim(),
+    departamento: String(row.DEPARTAMENTO || '').trim(),
+    fechaCierre: row.FECHA_CIERRE ? String(row.FECHA_CIERRE) : null,
+  }));
+}
+
 function hasMeaningfulUpdates(grouped) {
   return Object.keys(grouped.PERSONA).length > 0 || Object.keys(grouped.SITUACION).length > 0 || Object.keys(grouped.GESTION).length > 0;
 }
@@ -1268,6 +1283,7 @@ async function reconcileCurrentGestionActions() {
 }
 
 module.exports = {
+  getCierresAutomaticosByDocumento,
   getAll,
   getColumns,
   getByDocumento,

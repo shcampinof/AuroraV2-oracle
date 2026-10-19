@@ -1474,6 +1474,34 @@ async function findActiveContextByDocumento(documento, { scopeDepartamentos = DE
   return rows.length ? rows[0] : null;
 }
 
+async function listAutomaticClosuresByDocumento(documento, { scopeDepartamentos = DEFAULT_SCOPE_DEPARTAMENTOS } = {}) {
+  const doc = String(documento || '').trim();
+  if (!doc) return [];
+  const { clause, binds } = buildScopeWhereClause('s.DEPARTAMENTO', 'cierreDep', scopeDepartamentos);
+  // Incluye las situaciones anteriores. La asignación original aporta la
+  // fecha de fin; nunca se toma el defensor ni la fecha de la asignación actual.
+  const result = await execute(`
+    SELECT g.ID_GESTION, s.ID_SITUACION,
+      TO_CHAR(g.CIERRE_CASO) AS MOTIVO,
+      TO_CHAR(g.DEFENSOR_GESTION) AS DEFENSOR,
+      TO_CHAR(s.ESTABLECIMIENTO) AS ESTABLECIMIENTO,
+      TO_CHAR(s.DEPARTAMENTO) AS DEPARTAMENTO,
+      TO_CHAR(a.FECHA_FIN, 'YYYY-MM-DD') AS FECHA_CIERRE
+    FROM DNDP.PERSONA p
+    JOIN DNDP.SITUACION_CARCELARIA s ON s.ID_PERSONA = p.ID_PERSONA
+    JOIN DNDP.GESTION_JURIDICA g ON g.ID_SITUACION = s.ID_SITUACION
+    LEFT JOIN DNDP.ASIGNACION a
+      ON a.ID_ASIGNACION = g.ID_ASIGNACION_GESTION AND a.ID_PERSONA = p.ID_PERSONA
+    WHERE TO_CHAR(p.NUMERO) = :documento AND ${clause}
+      AND TRIM(TO_CHAR(g.CIERRE_CASO)) IN (
+        'Cierre automático por cambio de ERON o regional.',
+        'Cierre automático por actualización relevante de SISIPEC.'
+      )
+    ORDER BY a.FECHA_FIN DESC NULLS LAST, g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
+  `, { documento: doc, ...binds }, { operation: 'persona.listAutomaticClosuresByDocumento' });
+  return Array.isArray(result?.rows) ? result.rows : [];
+}
+
 async function listDistinctDefensores({ tipo = '', scopeDepartamentos = DEFAULT_SCOPE_DEPARTAMENTOS } = {}) {
   const { clause: scopeClause, binds: scopeBinds } = buildScopeWhereClause('s.DEPARTAMENTO', 'dep', scopeDepartamentos);
   const tipoClause = buildTipoFilter(tipo);
@@ -1654,6 +1682,7 @@ async function updatePersonaById(idPersona, fields = {}) {
 }
 
 module.exports = {
+  listAutomaticClosuresByDocumento,
   listRowsWithActiveSituacionAndGestiones,
   listCondenadosSummary,
   countCondenadosSummary,
