@@ -27,9 +27,13 @@ function ReporteAtencionesDefensores({ user }) {
     defensorId: '',
     defensorNombre: '',
     defensorBusqueda: '',
+    tipo: 'all',
+    lugar: '',
+    incluirFueraPrision: false,
   }));
   const [defensores, setDefensores] = useState([]);
   const [regionales, setRegionales] = useState([]);
+  const [establecimientos, setEstablecimientos] = useState([]);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [loadingReport, setLoadingReport] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -52,6 +56,7 @@ function ReporteAtencionesDefensores({ user }) {
           .filter((item) => item.id && item.nombre && item.label)
           .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
         setDefensores(options);
+        setEstablecimientos(Array.isArray(data?.establecimientos) ? data.establecimientos : []);
         setRegionales(
           (Array.isArray(data?.regionales) ? data.regionales : [])
             .map((item) => String(item || '').trim())
@@ -94,6 +99,7 @@ function ReporteAtencionesDefensores({ user }) {
     setFilters((current) => ({
       ...current,
       [key]: value,
+      ...(key === 'tipo' && value !== 'all' ? { incluirFueraPrision: false } : {}),
     }));
   };
 
@@ -157,6 +163,8 @@ function ReporteAtencionesDefensores({ user }) {
         ['Recursos', report.resumen.recursosPresentados],
         ['Casos cerrados', report.resumen.casosCerrados],
         ['Total actuaciones', calculateTotalActuaciones(report.resumen)],
+        ['Personas asignadas actualmente', report.resumen.personasAsignadas],
+        ['Personas con caso activo', report.resumen.personasActivas],
         ['Personas activas con gestión', report.resumen.personasActivasConGestion],
         ['Total personas con casos cerrados', report.resumen.totalPersonasConCasosCerrados],
       ]
@@ -173,7 +181,7 @@ function ReporteAtencionesDefensores({ user }) {
 
       <form className="report-attentions-form" onSubmit={submit}>
         <label>
-          <span>Defensoría Regional</span>
+          <span>Defensoría Regional (encabezado)</span>
           <select
             value={filters.regional}
             onChange={(event) => updateFilter('regional', event.target.value)}
@@ -183,6 +191,37 @@ function ReporteAtencionesDefensores({ user }) {
             <option value="">Seleccione una regional</option>
             {regionales.map((regional) => <option key={regional} value={regional}>{regional}</option>)}
           </select>
+        </label>
+        <label>
+          <span>Tipo de caso</span>
+          <select value={filters.tipo} onChange={(event) => updateFilter('tipo', event.target.value)}>
+            <option value="all">Condenados y sindicados</option>
+            <option value="condenado">Condenados</option>
+            <option value="sindicado">Sindicados</option>
+          </select>
+        </label>
+        <label>
+          <span>Establecimiento (nombre exacto)</span>
+          <input
+            type="text"
+            list="reporte-establecimientos-list"
+            value={filters.lugar}
+            onChange={(event) => updateFilter('lugar', event.target.value)}
+            placeholder="Todos los establecimientos"
+          />
+          <datalist id="reporte-establecimientos-list">
+            {establecimientos.map((lugar) => <option key={lugar} value={lugar} />)}
+          </datalist>
+        </label>
+        <label>
+          <span>Incluir personas fuera de prisión en el conteo actual</span>
+          <input
+            type="checkbox"
+            className="report-attentions-checkbox"
+            checked={filters.incluirFueraPrision}
+            disabled={filters.tipo !== 'all'}
+            onChange={(event) => updateFilter('incluirFueraPrision', event.target.checked)}
+          />
         </label>
         <label>
           <span>Defensor(a) Público(a)</span>
@@ -230,7 +269,7 @@ function ReporteAtencionesDefensores({ user }) {
       {error ? <div className="status-banner status-banner--error" role="alert">{error}</div> : null}
       {!loadingCatalog && defensores.length === 0 ? (
         <div className="status-banner status-banner--error" role="alert">
-          No hay defensores con actuaciones registradas.
+          No hay defensores con asignaciones o actuaciones registradas.
         </div>
       ) : null}
 
@@ -256,7 +295,12 @@ function ReporteAtencionesDefensores({ user }) {
             ))}
           </div>
           <p className="report-attentions-note">
-            El PDF incluye los conteos completos, los cinco detalles de actuaciones y el estado actual de los casos asignados.
+            Las fechas delimitan las actuaciones. Las personas asignadas y sus estados se cuentan al generar el reporte;
+            por defecto se incluyen quienes siguen en prisión. La regional corresponde al encabezado.
+            El histórico de actuaciones conserva al defensor que realizó cada gestión, incluso después de reasignar.
+          </p>
+          <p className="report-attentions-note">
+            Los cierres del periodo usan la fecha disponible de decisión o gestión; no existe una fecha de cierre independiente.
           </p>
         </section>
       ) : null}

@@ -46,6 +46,18 @@ function validateFilters({ fechaInicio, fechaFin, defensorId } = {}) {
   return { fechaInicio: start.text, fechaFin: end.text, defensorKey };
 }
 
+function validateScope({ tipo = 'all', lugar = '', incluirFueraPrision = false } = {}) {
+  if (!['all', 'condenado', 'sindicado'].includes(tipo)) {
+    throw createReportError('El tipo de caso no es válido.');
+  }
+  const includeInactive = incluirFueraPrision === true
+    || ['1', 'true', 'si', 'sí'].includes(String(incluirFueraPrision).trim().toLowerCase());
+  if (tipo !== 'all' && includeInactive) {
+    throw createReportError('Para incluir personas fuera de prisión seleccione todos los tipos de caso.');
+  }
+  return { tipo, lugar: normalizeWhitespace(lugar), incluirFueraPrision: includeInactive };
+}
+
 function buildDefensorOptions(rows = []) {
   const mapped = rows
     .map((row) => {
@@ -132,11 +144,12 @@ function buildDefensorOptions(rows = []) {
 }
 
 async function getReportOptions() {
-  const [defensorRows, regionales] = await Promise.all([
+  const [defensorRows, regionales, establecimientos] = await Promise.all([
     reporteRepo.listAvailableDefensores(),
     reporteRepo.listAvailableRegionales(),
+    reporteRepo.listAvailableEstablecimientos(),
   ]);
-  return { defensores: buildDefensorOptions(defensorRows), regionales };
+  return { defensores: buildDefensorOptions(defensorRows), regionales, establecimientos };
 }
 
 function toIsoDate(value) {
@@ -155,17 +168,20 @@ function mapDetail(row) {
     identificacion: String(row?.IDENTIFICACION || '').trim(),
     lugarPrivacion: String(row?.LUGAR_PRIVACION || '').trim() || 'Sin información',
     fecha: toIsoDate(row?.FECHA),
+    fuenteAutor: String(row?.FUENTE_AUTOR || '').trim(),
   };
 }
 
 function mapAssignedCase(row) {
   return {
     idPersona: Number(row?.ID_PERSONA || 0) || null,
+    idSituacion: Number(row?.ID_SITUACION || 0) || null,
     nombre: String(row?.NOMBRE_USUARIO || '').trim(),
     identificacion: String(row?.IDENTIFICACION || '').trim(),
     lugarPrivacion: String(row?.LUGAR_PRIVACION || '').trim() || 'Sin información',
     estado: String(row?.ESTADO || '').trim() || 'Analizar el caso',
     activo: Number(row?.ACTIVO) === 1,
+    situacionActiva: row?.SITUACION_ACTIVA == null ? null : Number(row.SITUACION_ACTIVA) === 1,
   };
 }
 
@@ -184,15 +200,24 @@ function sortAssignedCases(items) {
   });
 }
 
-function buildReport({ defensor, fechaInicio, fechaFin, eventRows = [], assignedRows = [] }) {
+function buildReport({ defensor, fechaInicio, fechaFin, scope = {}, eventRows = [], assignedRows = [] }) {
   const details = Object.fromEntries(EVENT_KEYS.map((key) => [key, []]));
   eventRows.forEach((row) => {
     const type = String(row?.TIPO || '').trim().toLowerCase();
     if (!Object.prototype.hasOwnProperty.call(details, type)) return;
     details[type].push(mapDetail(row));
   });
+  const closedSituations = new Set();
+  details.cierre = details.cierre.sort((a, b) => a.fecha.localeCompare(b.fecha)).filter((item) => {
+    if (!item.idSituacion || closedSituations.has(item.idSituacion)) return false;
+    closedSituations.add(item.idSituacion);
+    return true;
+  });
 
-  const assignedCases = sortAssignedCases(assignedRows.map(mapAssignedCase));
+  const assignedCases = sortAssignedCases(Array.from(new Map(
+    assignedRows.map(mapAssignedCase).filter((item) => item.idPersona != null)
+      .map((item) => [item.idPersona, item])
+  ).values()));
   const activeCases = assignedCases.filter((item) => item.activo);
   const closedAssignedPeopleCount = uniqueCount(
     assignedCases.filter((item) => !item.activo),
@@ -209,10 +234,12 @@ function buildReport({ defensor, fechaInicio, fechaFin, eventRows = [], assigned
     metadata: {
       regional: String(defensor?.regional || '').trim(),
       defensor: String(defensor?.nombre || '').trim(),
-      defensorId: String(defensor?.cedula || '').trim(),
+      defensorId: String(defensor?.cedula || defensor?.id || '').trim(),
       fechaInicio,
       fechaFin,
       generadoEn: new Date().toISOString(),
+      ...validateScope(scope),
+      corteAsignaciones: 'ACTUAL',
     },
     resumen: {
       casosAnalizados: details.analisis.length,
@@ -232,6 +259,7 @@ function buildReport({ defensor, fechaInicio, fechaFin, eventRows = [], assigned
       personasActivasConGestion: activeWithEvents.length,
       personasConCasoCerrado: closedPeopleCount,
       totalPersonasConCasosCerrados: closedAssignedPeopleCount,
+      personasFueraPrision: uniqueCount(assignedCases.filter((item) => item.situacionActiva === false), 'idPersona'),
     },
     detalles: {
       casosAnalizados: details.analisis,
@@ -240,12 +268,14 @@ function buildReport({ defensor, fechaInicio, fechaFin, eventRows = [], assigned
       reiteraciones: details.reiteracion,
       recursos: details.recurso,
       casosAsignados: assignedCases,
+      casosCerrados: details.cierre,
     },
   };
 }
 
 async function generateReport(filters) {
   const validated = validateFilters(filters);
+  const scope = validateScope(filters);
   const selectedRegional = String(filters?.regional || '').trim();
   if (!selectedRegional) {
     throw createReportError('Debe seleccionar la regional para el encabezado del informe.');
@@ -254,11 +284,12 @@ async function generateReport(filters) {
   const options = await getReportOptions();
   const defensor = options.defensores.find((item) => item.id === validated.defensorKey);
   if (!defensor) {
-    throw createReportError('El defensor seleccionado no tiene actuaciones disponibles.', 404, 'DEFENSOR_NOT_FOUND');
+    throw createReportError('No se encontró el defensor seleccionado.', 404, 'DEFENSOR_NOT_FOUND');
   }
 
   const params = {
     ...validated,
+    ...scope,
     defensorCedula: /^\d+$/.test(defensor.id) ? defensor.id : '',
     defensorNombre: defensor.nombre,
   };
@@ -270,6 +301,7 @@ async function generateReport(filters) {
     defensor: { ...defensor, regional: selectedRegional },
     fechaInicio: validated.fechaInicio,
     fechaFin: validated.fechaFin,
+    scope,
     eventRows,
     assignedRows,
   });
@@ -278,6 +310,7 @@ async function generateReport(filters) {
 module.exports = {
   EVENT_KEYS,
   validateFilters,
+  validateScope,
   buildReport,
   buildDefensorOptions,
   getReportOptions,

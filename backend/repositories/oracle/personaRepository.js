@@ -99,6 +99,7 @@ const BASE_SELECT_COLUMNS = [
 
   'g.ID_GESTION AS G_ID_GESTION',
   'g.ID_SITUACION AS G_ID_SITUACION',
+  'g.DEFENSOR_GESTION AS G_DEFENSOR_GESTION',
   'a.NOMBRE_PAG AS G_PAG',
   'a.CEDULA_PAG AS G_CEDULA_PAG',
   'a.CEDULA_DEFENSOR AS G_CEDULA_DEFENSOR',
@@ -229,7 +230,15 @@ function buildTipoFilter(tipo) {
 }
 
 function sqlFilled(columnRef) {
-  return `${columnRef} IS NOT NULL AND TRIM(TO_CHAR(${columnRef})) NOT IN ('-', '--')`;
+  const text = `REGEXP_REPLACE(REPLACE(TO_CHAR(${columnRef}), UNISTR('\\00A0'), ' '), '[[:space:]]+', ' ')`;
+  return `NVL(TRIM(${text}), '-') NOT IN ('-', '--')`;
+}
+
+// Oracle convierte '' en NULL: incluso NOT (NULL = 'SI') es desconocido.
+// Toda respuesta vacía debe producir un predicado verdadero/falso, también
+// al negar condiciones de recurso, actuación, decisión y procedencia.
+function normalizedStateSqlExpr(columnRef) {
+  return `NVL(${normalizedMojibakeSqlExpr(columnRef)}, '-')`;
 }
 
 // Oracle deriva el estado exclusivamente de los hitos diligenciados del flujo.
@@ -246,13 +255,15 @@ function sqlAnyFilled(columnRefs) {
   return `(${columnRefs.map((columnRef) => `(${sqlFilled(columnRef)})`).join(' OR ')})`;
 }
 
-const ACTUACION_NORMALIZADA_EXPR = normalizedMojibakeSqlExpr('g.ACTUACION_ADELANTAR');
-const DECISION_NORMALIZADA_EXPR = normalizedMojibakeSqlExpr('g.SENTIDO_DECISION');
-const RECURSO_NORMALIZADO_EXPR = normalizedMojibakeSqlExpr('g.SE_PRESENTA_RECURSO');
-const DECISION_USUARIO_NORMALIZADA_EXPR = normalizedMojibakeSqlExpr('g.DECISION_USUARIO');
-const CIERRE_CASO_NORMALIZADO_EXPR = normalizedMojibakeSqlExpr('g.CIERRE_CASO');
+const ACTUACION_NORMALIZADA_EXPR = normalizedStateSqlExpr('g.ACTUACION_ADELANTAR');
+const DECISION_NORMALIZADA_EXPR = normalizedStateSqlExpr('g.SENTIDO_DECISION');
+const RECURSO_NORMALIZADO_EXPR = normalizedStateSqlExpr('g.SE_PRESENTA_RECURSO');
+const DECISION_USUARIO_NORMALIZADA_EXPR = normalizedStateSqlExpr('g.DECISION_USUARIO');
+const CIERRE_CASO_NORMALIZADO_EXPR = normalizedStateSqlExpr('g.CIERRE_CASO');
 const HAS_EXPLICIT_CIERRE_CASO_EXPR = `(${CIERRE_CASO_NORMALIZADO_EXPR} IN (
   'SE CIERRA PORQUE LA PERSONA YA NO ESTA EN EL ERON POR RAZON AJENA A ESTE TRAMITE.',
+  'CIERRE AUTOMATICO POR CAMBIO DE ERON O REGIONAL.',
+  'CIERRE AUTOMATICO POR ACTUALIZACION RELEVANTE DE SISIPEC.',
   'OTRO MOTIVO.'
 ))`;
 const HAS_FECHA_DECISION_RECURSO_EXPR = sqlFilled('g.FECHA_DECISION_RECURSO');
@@ -298,7 +309,7 @@ const HAS_BLOQUE5_DATA_EXPR = sqlAnyFilled([
   'g.SENTIDO_DECISION_RESUELVE_RECURSO',
 ]);
 function sqlNegativeProcedencia(columnRef) {
-  const normalized = normalizedMojibakeSqlExpr(columnRef);
+  const normalized = normalizedStateSqlExpr(columnRef);
   return `(${normalized} = 'NO' OR ${normalized} LIKE 'NO APLICA%' OR ${normalized} LIKE 'NO CUMPLE%')`;
 }
 const ALL_PROCEDENCIAS_NEGATIVAS_EXPR = `(
@@ -313,10 +324,9 @@ const ALL_PROCEDENCIAS_NEGATIVAS_EXPR = `(
     OR ${sqlNegativeProcedencia('g.UTILIDAD_PUBLICA')}
   )
 )`;
-const OTRAS_SOLICITUDES_NORMALIZADA_EXPR = normalizedMojibakeSqlExpr('g.OTRAS_SOLICITUDES_TRAMITAR');
+const OTRAS_SOLICITUDES_NORMALIZADA_EXPR = normalizedStateSqlExpr('g.OTRAS_SOLICITUDES_TRAMITAR');
 const OTRAS_SOLICITUDES_SIN_RESPUESTA_POSITIVA_EXPR = `(
   ${OTRAS_SOLICITUDES_NORMALIZADA_EXPR} IN (
-    '',
     '-',
     '--',
     'NINGUNA',
@@ -328,7 +338,7 @@ const HAS_EXPLICIT_NINGUNA_OTRAS_SOLICITUDES_EXPR = `(
   ${OTRAS_SOLICITUDES_NORMALIZADA_EXPR} = 'NINGUNA'
 )`;
 function sqlAffirmativeProcedencia(columnRef) {
-  const normalized = normalizedMojibakeSqlExpr(columnRef);
+  const normalized = normalizedStateSqlExpr(columnRef);
   return `(REGEXP_REPLACE(${normalized}, '^[0-9]+[^A-Z]*', '') LIKE 'SI%')`;
 }
 const HAS_POSITIVE_ANALYSIS_OUTCOME_EXPR = `(
@@ -362,8 +372,8 @@ const AURORA_DERIVED_ESTADO_CODIGO_EXPR = `
       OR ${ACTUACION_NORMALIZADA_EXPR} LIKE '%NINGUNA%'
       OR ${ACTUACION_NORMALIZADA_EXPR} LIKE '%NO PROCEDE NADA%'
       OR (${IS_UTILIDAD_PUBLICA_EXPR} AND (
-        ${normalizedMojibakeSqlExpr('g.CUMPLE_REQUISITO_MARGINALIDAD')} = 'NO'
-        OR ${normalizedMojibakeSqlExpr('g.CUMPLE_REQUISITO_JEFATURA_HOGAR')} = 'NO'
+        ${normalizedStateSqlExpr('g.CUMPLE_REQUISITO_MARGINALIDAD')} = 'NO'
+        OR ${normalizedStateSqlExpr('g.CUMPLE_REQUISITO_JEFATURA_HOGAR')} = 'NO'
       ))
       OR (${IS_DECISION_NEGATIVA_EXPR} AND (
         ${IS_RECURSO_NO_PRESENTADO_EXPR}
@@ -410,7 +420,7 @@ const AURORA_DERIVED_ESTADO_CODIGO_EXPR = `
 `;
 
 const CELESTE_HAS_ANALISIS_COMPLETO_EXPR = `(
-  TRIM(NVL(${DEFENSOR_ACTIVO_EXPR}, '')) IS NOT NULL
+  ${sqlFilled(DEFENSOR_ACTIVO_EXPR)}
   AND ${sqlFilled('g.FECHA_ANALISIS')}
   AND ${sqlFilled('g.ACTUACION_ADELANTAR')}
   AND ${sqlFilled('g.RESUMEN_ANALISIS_CASO')}
@@ -455,12 +465,20 @@ const CELESTE_DERIVED_ESTADO_CODIGO_EXPR = `
   END
 `;
 
+// El cierre de una gestión se deriva de sus respuestas. ACTIVO describe la
+// situación carcelaria actual y no acredita un cierre jurídico en una fecha.
+function buildGestionEstadoCodigoExpr(defensorExpr = DEFENSOR_ACTIVO_EXPR) {
+  return `CASE
+    WHEN ${normalizedMojibakeSqlExpr(SITUACION_JURIDICA_EFECTIVA_EXPR)} LIKE '%SINDICAD%'
+      THEN (${CELESTE_DERIVED_ESTADO_CODIGO_EXPR.replaceAll(DEFENSOR_ACTIVO_EXPR, defensorExpr)})
+    ELSE (${AURORA_DERIVED_ESTADO_CODIGO_EXPR})
+  END`;
+}
+
 const DERIVED_ESTADO_CODIGO_EXPR = `
   CASE
     WHEN NVL(s.ACTIVO, 0) <> 1 THEN 'CASO_CERRADO'
-    WHEN ${normalizedMojibakeSqlExpr(SITUACION_JURIDICA_EFECTIVA_EXPR)} LIKE '%SINDICAD%'
-      THEN (${CELESTE_DERIVED_ESTADO_CODIGO_EXPR})
-    ELSE (${AURORA_DERIVED_ESTADO_CODIGO_EXPR})
+    ELSE (${buildGestionEstadoCodigoExpr()})
   END
 `;
 
@@ -629,7 +647,7 @@ function buildCondenadosSummaryWhereClause({
     ...(defensorId ? [] : [['defensor', DEFENSOR_ACTIVO_EXPR, 'prefix']]),
     ...(!useCurrentLugar && (centroCatalogado || centroId === OTROS_LUGARES_ACTIVOS_ID)
       ? []
-      : [['lugar', 's.ESTABLECIMIENTO', centroId ? 'exact' : 'prefix']]),
+      : [['lugar', 's.ESTABLECIMIENTO', centroId || filters?.lugarExacto ? 'exact' : 'prefix']]),
     ['departamento', 's.DEPARTAMENTO', 'prefix'],
     ['municipio', 's.MUNICIPIO', 'prefix'],
     ['estadoAccion', `(${ESTADO_ACCION_EXPR})`, 'contains'],
@@ -784,6 +802,8 @@ async function listCondenadosSummary({
 
   const baseSelectSql = `
       SELECT
+        p.ID_PERSONA AS ID_PERSONA,
+        s.ID_SITUACION AS ID_SITUACION,
         TO_CHAR(p.NUMERO) AS "Numero de identificacion",
         TO_CHAR(p.NUMERO) AS "numero",
         p.NOMBRE AS "Nombre",
@@ -1489,6 +1509,10 @@ async function listDistinctDefensores({ tipo = '', scopeDepartamentos = DEFAULT_
 async function listAssignedCasesForReport({
   defensorCedula = '',
   defensorNombre = '',
+  tipo = 'all',
+  lugar = '',
+  centroId = '',
+  incluirFueraPrision = false,
   scopeDepartamentos = DEFAULT_SCOPE_DEPARTAMENTOS,
 } = {}) {
   const rawDefensorCedula = String(defensorCedula || '').trim();
@@ -1519,12 +1543,17 @@ async function listAssignedCasesForReport({
     )`;
   }
 
-  const { clause: scopeClause, binds: scopeBinds } = buildScopeWhereClause(
-    's.DEPARTAMENTO',
-    'reportDep',
-    scopeDepartamentos
-  );
-  Object.assign(binds, scopeBinds);
+  // Mismo universo y filtros del listado: situación más reciente, tipo jurídico,
+  // establecimiento y exclusión explícita de situaciones inactivas por defecto.
+  const { clause: universeClause, binds: universeBinds } = buildCondenadosSummaryWhereClause({
+    tipo,
+    filters: { lugar, centroId, incluirFueraPrision, lugarExacto: true },
+    scopeDepartamentos,
+    includeInactiveSituations: tipo === 'all' && (
+      incluirFueraPrision === true || ['1', 'true', 'si', 'sí'].includes(String(incluirFueraPrision).toLowerCase())
+    ),
+  });
+  Object.assign(binds, universeBinds);
   const activeSituacionCte = buildActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
   const sql = `
     WITH
@@ -1551,6 +1580,8 @@ async function listAssignedCasesForReport({
     assigned_rows AS (
       SELECT
         p.ID_PERSONA,
+        s.ID_SITUACION,
+        NVL(s.ACTIVO, 0) AS SITUACION_ACTIVA,
         TO_CHAR(p.NOMBRE) AS NOMBRE_USUARIO,
         TO_CHAR(p.NUMERO) AS IDENTIFICACION,
         COALESCE(
@@ -1572,7 +1603,7 @@ async function listAssignedCasesForReport({
         ON g.ID_SITUACION = s.ID_SITUACION
        AND g.RN = 1
       WHERE ${defensorClause}
-        AND ${scopeClause}
+        AND ${universeClause}
     )
     SELECT
       assigned_rows.*,
@@ -1625,6 +1656,7 @@ module.exports = {
   findActiveContextByDocumento,
   listDistinctDefensores,
   listAssignedCasesForReport,
+  buildGestionEstadoCodigoExpr,
   previewCurrentGestionActionReconciliation,
   reconcileGestionActionById,
   reconcileCurrentGestionActions,

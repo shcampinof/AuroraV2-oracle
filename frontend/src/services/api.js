@@ -447,12 +447,15 @@ export async function getDefensores() {
   return readJsonOrThrow(res, 'Error consultando defensores'); // { defensores }
 }
 
-export async function getReporteAtencionesDefensores({ fechaInicio, fechaFin, regional, defensorId }) {
+export async function getReporteAtencionesDefensores({ fechaInicio, fechaFin, regional, defensorId, tipo = 'all', lugar = '', incluirFueraPrision = false }) {
   const params = new URLSearchParams({
     fechaInicio: String(fechaInicio || ''),
     fechaFin: String(fechaFin || ''),
     regional: String(regional || ''),
     defensorId: String(defensorId || ''),
+    tipo,
+    lugar,
+    incluirFueraPrision: incluirFueraPrision ? '1' : '0',
   });
   const res = await fetchJson(`${API_BASE}/reportes/atenciones-defensores?${params.toString()}`, {
     cache: 'no-store',

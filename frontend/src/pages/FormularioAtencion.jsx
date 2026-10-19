@@ -20,7 +20,7 @@ import { AURORA_FIELD_IDS } from '../config/auroraFieldIds.ts';
 import { reportError } from '../utils/reportError.js';
 import { getLabelAccionCaso } from '../utils/actuacionesLabels.js';
 import { shouldBlockNuevaActuacion } from '../utils/actuacionesValidation.js';
-import { isSituacionActiva } from '../utils/pplStatus.js';
+import { isGestionEditable, isSituacionActiva } from '../utils/pplStatus.js';
 import {
   buildDefensorNameOptions,
   normalizeDefensorNombreInput,
@@ -81,6 +81,12 @@ const ALIASES_CIERRE_CASO = [
   'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública',
   'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad publica',
 ];
+const AYUDA_CIERRE_CASO = 'Antes de seleccionar una opción de cierre, por favor escriba en el resumen del análisis del caso por qué se selecciona.';
+const EXPORT_FIELD_CIERRE_CASO = {
+  label: ALIASES_CIERRE_CASO[0],
+  key: ALIASES_CIERRE_CASO[0],
+  aliases: ALIASES_CIERRE_CASO.slice(1),
+};
 const ALIASES_SENTIDO_DECISION_RECURSO = [
   'Sentido de la decisión que resuelve recurso',
   'Sentido de la decision que resuelve recurso',
@@ -432,6 +438,7 @@ const EXPORT_FIELDS_AURORA_BLOQUE_3 = [
   { label: '35. Con qué proceso(s) debe acumular penas (si aplica)', key: KEY_Q35_UTF8, aliases: [KEY_Q35_LEGACY] },
   { label: '36. Otras solicitudes a tramitar', key: 'Otras solicitudes a tramitar' },
   { label: '37. Resumen del análisis del caso', key: 'Resumen del análisis del caso' },
+  EXPORT_FIELD_CIERRE_CASO,
 ];
 
 const EXPORT_FIELDS_AURORA_BLOQUE_4 = [
@@ -463,7 +470,6 @@ const EXPORT_FIELDS_AURORA_BLOQUE_5_UTILIDAD = [
   },
   { label: '56. Fecha de la decisión del recurso', key: KEY_FECHA_DECISION_RECURSO, isDate: true },
   { label: '57. Sentido de la decisión que resuelve recurso', key: 'Sentido de la decisión que resuelve recurso' },
-  { label: '58. Cierre del caso por imposibilidad de avanzar (si aplica)', key: 'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública' },
 ];
 
 const EXPORT_FIELDS_AURORA_BLOQUE_5_TRAMITE = [
@@ -488,7 +494,6 @@ const EXPORT_FIELDS_AURORA_BLOQUE_5_TRAMITE = [
   },
   { label: '53. Fecha de la decisión del recurso', key: KEY_FECHA_DECISION_RECURSO, isDate: true },
   { label: '54. Sentido de la decisión que resuelve recurso', key: 'Sentido de la decisión que resuelve la solicitud' },
-  { label: '55. Cierre del caso por imposibilidad de avanzar (si aplica)', key: 'Cierre del caso por imposibilidad de avanzar (si aplica)' },
 ];
 
 const EXPORT_FIELDS_CELESTE_BLOQUE_2 = [
@@ -1739,6 +1744,23 @@ function Campo({
   );
 }
 
+function CampoCierreCaso({ registro, onChange }) {
+  return (
+    <div style={{ gridColumn: '1 / -1' }}>
+      <Campo
+        label={ALIASES_CIERRE_CASO[0]}
+        name={ALIASES_CIERRE_CASO[0]}
+        type="select"
+        value={readRegistroTextByAliases(registro, ALIASES_CIERRE_CASO)}
+        onChange={onChange}
+        options={OPCIONES_CIERRE_CASO_IMPOSIBILIDAD_AVANZAR}
+        required={false}
+      />
+      <p className="hint-text">({displayText(AYUDA_CIERRE_CASO)})</p>
+    </div>
+  );
+}
+
 function CampoCheckboxMultiple({
   label,
   name,
@@ -2036,6 +2058,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   const flow = useMemo(() => (registro ? computeFlow(registro, tipoRegistro) : null), [registro, tipoRegistro]);
   const numeroInsistencias = useMemo(() => getNumeroInsistencias(registro), [registro]);
   const personaFueraPrision = useMemo(() => Boolean(registro) && !isSituacionActiva(registro), [registro]);
+  const gestionSoloLectura = Boolean(registro) && !isGestionEditable(registro);
   const cambioSituacionRegistrado = Boolean(
     registro?.__historialActivoInactivo ?? registro?.tieneHistorialActivoInactivo
   );
@@ -2161,7 +2184,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   const enqueueAutosaveSnapshot = useCallback(
     (source, { immediate = false, restored = false } = {}) => {
-      if (!source || personaFueraPrision) return;
+      if (!source || !isGestionEditable(source)) return;
       const context = getAutosaveContextFor(source);
       const fullData = pickAutosaveBlockData(source);
       if (!context || !Object.keys(fullData).length) return;
@@ -2198,7 +2221,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
       if (immediate) void flushAutosave();
     },
-    [flushAutosave, getAutosaveContextFor, personaFueraPrision]
+    [flushAutosave, getAutosaveContextFor]
   );
 
   autosavePerformRef.current = async (job, queue) => {
@@ -2373,7 +2396,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   const restoreAutosaveDraft = useCallback(
     (source, activeId = '') => {
-      if (!source || !isSituacionActiva(source)) return { record: source, restored: false };
+      if (!source || !isGestionEditable(source)) return { record: source, restored: false };
       const context = getAutosaveContextFor(source, activeId);
       const draft = readFormAutosaveDraft(window.localStorage, context);
       if (!draft?.data) return { record: source, restored: false };
@@ -2454,7 +2477,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   }
 
   function handleChange(name, value) {
-    if (personaFueraPrision) return;
+    if (gestionSoloLectura) return;
     camposModificadosEnFormularioRef.current.add(normalizeFieldName(name));
     if (isCampoAutoguardableDesdeBloque3(name)) autosaveChangedRef.current = true;
     setRegistro((prev) => {
@@ -3079,8 +3102,15 @@ export default function FormularioAtencion({ numeroInicial }) {
     [registro]
   );
   const auroraVisibleBlocks = useMemo(
-    () => new Set(auroraRuleState?.visibleBlocks || []),
-    [auroraRuleState]
+    () => {
+      const blocks = new Set(auroraRuleState?.visibleBlocks || []);
+      if (personaFueraPrision && !gestionSoloLectura) {
+        blocks.add('bloque4');
+        blocks.add(actuacionIncluyeUtilidadPublica ? 'bloque5UtilidadPublica' : 'bloque5TramiteNormal');
+      }
+      return blocks;
+    },
+    [auroraRuleState, personaFueraPrision, gestionSoloLectura, actuacionIncluyeUtilidadPublica]
   );
   const auroraDisabledFields = useMemo(
     () => new Set(auroraRuleState?.disabledFields || []),
@@ -3098,17 +3128,16 @@ export default function FormularioAtencion({ numeroInicial }) {
     () => evaluateCelesteRules({ answers: registro || {} }),
     [registro]
   );
-  const estadoTramiteVisible = useMemo(() => {
-    const confirmado = String(registro?.estadoEtiqueta || '').trim();
-    if (confirmado) return confirmado;
-    const provisional = flow === 'sindicado'
-      ? celesteRuleState?.derivedStatus
-      : auroraRuleState?.derivedStatus;
-    return String(provisional || registro?.['Estado del trámite'] || 'Analizar el caso').trim();
-  }, [registro, flow, auroraRuleState, celesteRuleState]);
   const celesteVisibleBlocks = useMemo(
-    () => new Set(celesteRuleState?.visibleBlocks || []),
-    [celesteRuleState]
+    () => {
+      const blocks = new Set(celesteRuleState?.visibleBlocks || []);
+      if (personaFueraPrision && !gestionSoloLectura) {
+        blocks.add('bloque4Celeste');
+        blocks.add('bloque5Celeste');
+      }
+      return blocks;
+    },
+    [celesteRuleState, personaFueraPrision, gestionSoloLectura]
   );
   const getMissingRequiredAuroraByBlock = useCallback(
     (blockId) => {
@@ -3200,6 +3229,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   ]);
 
   const casoCerrado = useMemo(() => {
+    if (personaFueraPrision) return true;
     const bloque5Visible =
       auroraVisibleBlocks.has('bloque5UtilidadPublica') ||
       auroraVisibleBlocks.has('bloque5TramiteNormal');
@@ -3229,6 +3259,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     }
     return false;
   }, [
+    personaFueraPrision,
     registro,
     actuacionIncluyeUtilidadPublica,
     decisionUsuarioBloquea,
@@ -3373,7 +3404,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   useEffect(() => {
     if (!registro || !auroraActivo) return;
-    const next = String(registro?.estadoEtiqueta || auroraRuleState?.derivedStatus || '').trim();
+    const next = personaFueraPrision ? 'Caso cerrado' : String(registro?.estadoEtiqueta || auroraRuleState?.derivedStatus || '').trim();
     if (!next) return;
     const current = String(registro['Estado del trámite'] ?? '').trim();
     const currentAction = String(registro['Acción a impulsar'] ?? '').trim();
@@ -3389,7 +3420,7 @@ export default function FormularioAtencion({ numeroInicial }) {
         'Acción a impulsar': next,
       });
     });
-  }, [registro, auroraActivo, auroraRuleState]);
+  }, [registro, auroraActivo, auroraRuleState, personaFueraPrision]);
 
   useEffect(() => {
     if (!registro || !auroraActivo) return;
@@ -3407,7 +3438,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   useEffect(() => {
     if (!registro || flow !== 'sindicado') return;
-    const estadoTramiteSindicado = String(registro?.estadoEtiqueta || celesteRuleState?.derivedStatus || '').trim();
+    const estadoTramiteSindicado = personaFueraPrision ? 'Caso cerrado' : String(registro?.estadoEtiqueta || celesteRuleState?.derivedStatus || '').trim();
     if (!estadoTramiteSindicado) return;
 
     setRegistro((prev) => {
@@ -3431,7 +3462,7 @@ export default function FormularioAtencion({ numeroInicial }) {
         'Estado del caso': nextCaso,
       });
     });
-  }, [registro, flow, celesteRuleState]);
+  }, [registro, flow, celesteRuleState, personaFueraPrision]);
 
   useEffect(() => {
     // REGLA: P35 solo se habilita si P34 = "Sí". Si no, queda deshabilitada y vacía.
@@ -3951,8 +3982,8 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   async function handleGuardar() {
     if (guardando) return;
-    if (personaFueraPrision) {
-      setError('La persona figura fuera de prisión. El registro histórico no se puede editar.');
+    if (gestionSoloLectura) {
+      setError('La persona figura fuera de prisión. Solo se pueden completar gestiones que ya habían alcanzado el bloque 5.');
       return;
     }
     const doc = getDocumentoActual(registro);
@@ -4369,7 +4400,7 @@ export default function FormularioAtencion({ numeroInicial }) {
           )}
           {personaFueraPrision && (
             <div className="ppl-inactive-alert" role="alert" style={{ marginTop: '1rem' }}>
-              FUERA DE PRISIÓN — registro histórico disponible solo para consulta. No se permiten modificaciones ni nuevas actuaciones.
+              FUERA DE PRISIÓN — el caso permanece cerrado. Solo se pueden completar las gestiones que ya habían alcanzado el bloque 5.
             </div>
           )}
           <div className="card" style={{ marginTop: '1rem' }}>
@@ -4395,9 +4426,6 @@ export default function FormularioAtencion({ numeroInicial }) {
 
           {mostrarFormularioDetalle && (
           <div ref={formularioDetalleRef} className="card" style={{ marginTop: '1rem' }}>
-            <div className="ppl-situation-change-alert" role="status" style={{ marginBottom: '1rem' }}>
-              <span>{displayText(`Estado: ${estadoTramiteVisible}`)}</span>
-            </div>
             {autosaveStatus.phase !== 'idle' && (
               <div className={`form-autosave-status form-autosave-status--${autosaveStatus.phase}`} role="status">
                 <span>{displayText(autosaveStatus.message)}</span>
@@ -4414,12 +4442,14 @@ export default function FormularioAtencion({ numeroInicial }) {
             )}
             {personaFueraPrision && (
               <div className="ppl-inactive-alert" role="status">
-                Caso cerrado. La persona figura fuera de prisión y este registro histórico no se puede editar.
+                {gestionSoloLectura
+                  ? 'Caso cerrado. Esta gestión no había alcanzado el bloque 5 y está disponible solo para consulta.'
+                  : 'Caso cerrado. Puede completar la información de esta gestión porque ya había alcanzado el bloque 5.'}
               </div>
             )}
             <fieldset
               className="readonly-form-fieldset"
-              disabled={personaFueraPrision || guardando}
+              disabled={gestionSoloLectura || guardando}
             >
             <h3 className="block-title">{displayText('BLOQUE 1. Información de la persona privada de la libertad')}</h3>
 
@@ -4766,6 +4796,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                   <Campo
                     label="28. Defensor(a) público(a) asignado para tramitar la solicitud"
                     name="Defensor(a) Público(a) Asignado para tramitar la solicitud"
+                    disabled={personaFueraPrision}
                     type="catalog-datalist"
                     value={getDefensorAsignadoValue(registro)}
                     onChange={handleChange}
@@ -4866,6 +4897,8 @@ export default function FormularioAtencion({ numeroInicial }) {
                   onChange={handleChange}
                   showObligatoria
                 />
+
+                <CampoCierreCaso registro={registro} onChange={handleChange} />
 
                 {bloqueCierre === 'bloque3' && motivoCierre && (
                   <div className="form-field" style={{ gridColumn: '1 / -1' }}>
@@ -5143,16 +5176,6 @@ export default function FormularioAtencion({ numeroInicial }) {
                               !isEquivalenteSi(sePresentaRecursoBloque5)
                             )}
                           />
-                          <Campo
-                            label="58. Cierre del caso por imposibilidad de avanzar (si aplica)"
-                            name="Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública"
-                            type="select"
-                            value={registro['Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública']}
-                            onChange={handleChange}
-                            options={OPCIONES_CIERRE_CASO_IMPOSIBILIDAD_AVANZAR}
-                            required={false}
-                            disabled={isAuroraFieldDisabled('Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública', bloquearBloque5)}
-                          />
                         </div>
                       </>
                     )}
@@ -5299,16 +5322,6 @@ export default function FormularioAtencion({ numeroInicial }) {
                               !isEquivalenteSi(sePresentaRecursoBloque5)
                             }
                           />
-                          <Campo
-                            label="55. Cierre del caso por imposibilidad de avanzar (si aplica)"
-                            name="Cierre del caso por imposibilidad de avanzar (si aplica)"
-                            type="select"
-                            value={registro['Cierre del caso por imposibilidad de avanzar (si aplica)']}
-                            onChange={handleChange}
-                            options={OPCIONES_CIERRE_CASO_IMPOSIBILIDAD_AVANZAR}
-                            required={false}
-                            disabled={bloquearBloque5}
-                          />
                         </div>
                       </>
                     )}
@@ -5399,6 +5412,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                       <Campo
                         label="19. Defensor(a) p\u00fablico(a) asignado para tramitar la solicitud"
                         name="Defensor(a) Público(a) Asignado para tramitar la solicitud"
+                        disabled={personaFueraPrision}
                         type="catalog-datalist"
                         value={getDefensorAsignadoValue(registro)}
                         onChange={handleChange}
@@ -5549,8 +5563,8 @@ export default function FormularioAtencion({ numeroInicial }) {
           </fieldset>
 
           <div className="actions-center"> 
-            <button className="save-button" type="button" onClick={handleGuardar} disabled={personaFueraPrision || guardando}>
-              {personaFueraPrision ? 'SOLO LECTURA' : guardando ? 'GUARDANDO…' : 'GUARDAR ENTREVISTA'}
+            <button className="save-button" type="button" onClick={handleGuardar} disabled={gestionSoloLectura || guardando}>
+              {gestionSoloLectura ? 'SOLO LECTURA' : guardando ? 'GUARDANDO…' : 'GUARDAR ENTREVISTA'}
             </button>
 
             {(guardadoOk || personaFueraPrision) && (

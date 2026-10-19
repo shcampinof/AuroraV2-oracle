@@ -284,6 +284,419 @@
       },
       "expectedCode": "CASO_CERRADO",
       "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-normal-recurso-vacio",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "No concede la solicitud",
+        "Fecha de decisión de la autoridad": "2026-07-19"
+      },
+      "expectedCode": "PRESENTAR_RECURSO",
+      "expectedLabel": "Presentar recurso"
+    },
+    {
+      "id": "aurora-normal-recurso-si",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "No concede la solicitud",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Se presenta recurso": "Sí"
+      },
+      "expectedCode": "PENDIENTE_DECISION",
+      "expectedLabel": "Pendiente de decisión"
+    },
+    {
+      "id": "aurora-normal-recurso-no",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "No concede la solicitud",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Se presenta recurso": "No"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-normal-recurso-resuelto",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "No concede la solicitud",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Se presenta recurso": "Sí",
+        "Sentido de la decisión que resuelve la solicitud": "Confirma la decisión"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-subrogado-recurso-vacio",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "No concede subrogado penal",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Actuación a adelantar": "Libertad condicional"
+      },
+      "expectedCode": "PRESENTAR_RECURSO",
+      "expectedLabel": "Presentar recurso"
+    },
+    {
+      "id": "aurora-subrogado-recurso-si",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "No concede subrogado penal",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Actuación a adelantar": "Libertad condicional",
+        "Se presenta recurso": "Sí"
+      },
+      "expectedCode": "PENDIENTE_DECISION",
+      "expectedLabel": "Pendiente de decisión"
+    },
+    {
+      "id": "aurora-subrogado-recurso-no",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "No concede subrogado penal",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Actuación a adelantar": "Libertad condicional",
+        "Se presenta recurso": "No"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-subrogado-recurso-resuelto",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "No concede subrogado penal",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Actuación a adelantar": "Libertad condicional",
+        "Se presenta recurso": "Sí",
+        "Sentido de la decisión que resuelve la solicitud": "Confirma la decisión"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-utilidad-recurso-vacio",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "Niega utilidad pública",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Actuación a adelantar": "Utilidad pública (solo mujeres)"
+      },
+      "expectedCode": "PRESENTAR_RECURSO",
+      "expectedLabel": "Presentar recurso"
+    },
+    {
+      "id": "aurora-utilidad-recurso-si",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "Niega utilidad pública",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Actuación a adelantar": "Utilidad pública (solo mujeres)",
+        "Se presenta recurso": "Sí"
+      },
+      "expectedCode": "PENDIENTE_DECISION",
+      "expectedLabel": "Pendiente de decisión"
+    },
+    {
+      "id": "aurora-utilidad-recurso-no",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "Niega utilidad pública",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Actuación a adelantar": "Utilidad pública (solo mujeres)",
+        "Se presenta recurso": "No"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-utilidad-recurso-resuelto",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "Niega utilidad pública",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Actuación a adelantar": "Utilidad pública (solo mujeres)",
+        "Se presenta recurso": "Sí",
+        "Sentido de la decisión que resuelve la solicitud": "Confirma la decisión"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-utilidad-sin-actuacion-recurso-vacio",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "Niega utilidad pública",
+        "Fecha de decisión de la autoridad": "2026-07-19"
+      },
+      "expectedCode": "PRESENTAR_RECURSO",
+      "expectedLabel": "Presentar recurso"
+    },
+    {
+      "id": "aurora-utilidad-sin-actuacion-recurso-si",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "Niega utilidad pública",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Se presenta recurso": "Sí"
+      },
+      "expectedCode": "PENDIENTE_DECISION",
+      "expectedLabel": "Pendiente de decisión"
+    },
+    {
+      "id": "aurora-utilidad-sin-actuacion-recurso-no",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "Niega utilidad pública",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Se presenta recurso": "No"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-utilidad-sin-actuacion-recurso-resuelto",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "Niega utilidad pública",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Se presenta recurso": "Sí",
+        "Sentido de la decisión que resuelve la solicitud": "Confirma la decisión"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-decision-positiva-sin-actuacion",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "Concede la solicitud"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-utilidad-positiva-sin-actuacion",
+      "flow": "aurora",
+      "answers": {
+        "Sentido de la decisión": "Otorga utilidad pública"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-radicacion-sin-actuacion",
+      "flow": "aurora",
+      "answers": {
+        "Fecha de presentación de la solicitud a la autoridad": "2026-05-29"
+      },
+      "expectedCode": "PENDIENTE_DECISION",
+      "expectedLabel": "Pendiente de decisión"
+    },
+    {
+      "id": "aurora-fecha-decision-sin-actuacion-ni-sentido",
+      "flow": "aurora",
+      "answers": {
+        "Fecha de decisión de la autoridad": "2026-07-19"
+      },
+      "expectedCode": "PENDIENTE_DECISION",
+      "expectedLabel": "Pendiente de decisión"
+    },
+    {
+      "id": "aurora-procedencia-positiva-otras-solicitudes-vacias",
+      "flow": "aurora",
+      "answers": {
+        "Defensor(a) Público(a) Asignado para tramitar la solicitud": "Defensor prueba",
+        "Fecha de análisis jurídico del caso": "2026-01-10",
+        "Procedencia de libertad condicional": "Sí procede solicitud de libertad condicional",
+        "Procedencia de prisión domiciliaria de mitad de pena": "No aplica",
+        "Procedencia de utilidad pública (solo para mujeres)": "No cumple por tipo de delito",
+        "Procedencia de pena cumplida": "No",
+        "Procedencia de acumulación de penas": "No",
+        "Resumen del análisis del caso": "Resumen del caso"
+      },
+      "expectedCode": "ENTREVISTAR_USUARIO",
+      "expectedLabel": "Entrevistar al usuario"
+    },
+    {
+      "id": "celeste-actuacion-con-espacios",
+      "flow": "celeste",
+      "answers": {
+        "Defensor(a) Público(a) Asignado para tramitar la solicitud": "Defensor prueba",
+        "Fecha de análisis jurídico del caso": "2026-04-10",
+        "PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS": " \t  ",
+        "RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO": "Resumen del caso",
+        "Fecha de entrevista": "2026-04-15"
+      },
+      "expectedCode": "ANALIZAR_CASO",
+      "expectedLabel": "Analizar el caso"
+    },
+    {
+      "id": "celeste-resumen-con-espacios",
+      "flow": "celeste",
+      "answers": {
+        "Defensor(a) Público(a) Asignado para tramitar la solicitud": "Defensor prueba",
+        "Fecha de análisis jurídico del caso": "2026-04-10",
+        "PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS": "Se avanzará",
+        "RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO": " \t  "
+      },
+      "expectedCode": "ANALIZAR_CASO",
+      "expectedLabel": "Analizar el caso"
+    },
+    {
+      "id": "celeste-decision-negativa-recurso-si",
+      "flow": "celeste",
+      "answers": {
+        "SENTIDO DE LA DECISIÓN": "Niega la solicitud",
+        "¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?": "Sí"
+      },
+      "expectedCode": "PENDIENTE_DECISION",
+      "expectedLabel": "Pendiente de decisión"
+    },
+    {
+      "id": "celeste-decision-negativa-recurso-no",
+      "flow": "celeste",
+      "answers": {
+        "SENTIDO DE LA DECISIÓN": "Niega la solicitud",
+        "¿SE RECURRIÓ EN CASO DE DECISIÓN NEGATIVA?": "No"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-otras-solicitudes-positivas-sin-subrogados",
+      "flow": "aurora",
+      "answers": {
+        "Defensor(a) Público(a) Asignado para tramitar la solicitud": "Defensor prueba",
+        "Fecha de análisis jurídico del caso": "2026-01-10",
+        "Procedencia de libertad condicional": "No",
+        "Procedencia de prisión domiciliaria de mitad de pena": "No",
+        "Procedencia de utilidad pública (solo para mujeres)": "No",
+        "Procedencia de pena cumplida": "No",
+        "Procedencia de acumulación de penas": "No",
+        "Otras solicitudes a tramitar": "Solicitud de traslado",
+        "Resumen del análisis del caso": "Resumen del caso"
+      },
+      "expectedCode": "ENTREVISTAR_USUARIO",
+      "expectedLabel": "Entrevistar al usuario"
+    },
+    {
+      "id": "aurora-otras-solicitudes-positivas-con-entrevista",
+      "flow": "aurora",
+      "answers": {
+        "Defensor(a) Público(a) Asignado para tramitar la solicitud": "Defensor prueba",
+        "Fecha de análisis jurídico del caso": "2026-01-10",
+        "Procedencia de libertad condicional": "No",
+        "Procedencia de prisión domiciliaria de mitad de pena": "No",
+        "Procedencia de utilidad pública (solo para mujeres)": "No",
+        "Procedencia de pena cumplida": "No",
+        "Procedencia de acumulación de penas": "No",
+        "Otras solicitudes a tramitar": "Solicitud de traslado",
+        "Resumen del análisis del caso": "Resumen del caso",
+        "Fecha de entrevista": "2026-01-11",
+        "Actuación a adelantar": "Solicitud de traslado",
+        "Decisión del usuario": "Sí, desea que el defensor avance con la solicitud",
+        "Requiere pruebas": "No",
+        "Poder en caso de avanzar con la solicitud": "No requiere poder"
+      },
+      "expectedCode": "PRESENTAR_SOLICITUD",
+      "expectedLabel": "Presentar solicitud"
+    },
+    {
+      "id": "aurora-todas-procedencias-negativas-y-ninguna",
+      "flow": "aurora",
+      "answers": {
+        "Defensor(a) Público(a) Asignado para tramitar la solicitud": "Defensor prueba",
+        "Fecha de análisis jurídico del caso": "2026-01-10",
+        "Procedencia de libertad condicional": "No",
+        "Procedencia de prisión domiciliaria de mitad de pena": "No",
+        "Procedencia de utilidad pública (solo para mujeres)": "No",
+        "Procedencia de pena cumplida": "No",
+        "Procedencia de acumulación de penas": "No",
+        "Resumen del análisis del caso": "Resumen del caso",
+        "Otras solicitudes a tramitar": "Ninguna"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-todas-procedencias-negativas-otras-sin-respuesta",
+      "flow": "aurora",
+      "answers": {
+        "Defensor(a) Público(a) Asignado para tramitar la solicitud": "Defensor prueba",
+        "Fecha de análisis jurídico del caso": "2026-01-10",
+        "Procedencia de libertad condicional": "No",
+        "Procedencia de prisión domiciliaria de mitad de pena": "No",
+        "Procedencia de utilidad pública (solo para mujeres)": "No",
+        "Procedencia de pena cumplida": "No",
+        "Procedencia de acumulación de penas": "No",
+        "Resumen del análisis del caso": "Resumen del caso"
+      },
+      "expectedCode": "ANALIZAR_CASO",
+      "expectedLabel": "Analizar el caso"
+    },
+    {
+      "id": "aurora-resumen-con-espacios",
+      "flow": "aurora",
+      "answers": {
+        "Defensor(a) Público(a) Asignado para tramitar la solicitud": "Defensor prueba",
+        "Fecha de análisis jurídico del caso": "2026-01-10",
+        "Procedencia de libertad condicional": "Sí procede solicitud de libertad condicional",
+        "Procedencia de prisión domiciliaria de mitad de pena": "No aplica",
+        "Procedencia de utilidad pública (solo para mujeres)": "No cumple por tipo de delito",
+        "Procedencia de pena cumplida": "No",
+        "Procedencia de acumulación de penas": "No",
+        "Otras solicitudes a tramitar": "Ninguna",
+        "Resumen del análisis del caso": " \t  "
+      },
+      "expectedCode": "ANALIZAR_CASO",
+      "expectedLabel": "Analizar el caso"
+    },
+    {
+      "id": "aurora-actuacion-con-espacios",
+      "flow": "aurora",
+      "answers": {
+        "Defensor(a) Público(a) Asignado para tramitar la solicitud": "Defensor prueba",
+        "Fecha de análisis jurídico del caso": "2026-01-10",
+        "Procedencia de libertad condicional": "Sí procede solicitud de libertad condicional",
+        "Procedencia de prisión domiciliaria de mitad de pena": "No aplica",
+        "Procedencia de utilidad pública (solo para mujeres)": "No cumple por tipo de delito",
+        "Procedencia de pena cumplida": "No",
+        "Procedencia de acumulación de penas": "No",
+        "Otras solicitudes a tramitar": "Ninguna",
+        "Resumen del análisis del caso": "Resumen del caso",
+        "Fecha de entrevista": "2026-01-11",
+        "Decisión del usuario": "Si, desea que el defensor avance con la solicitud",
+        "Actuación a adelantar": " \t  ",
+        "Requiere pruebas": "No",
+        "Poder en caso de avanzar con la solicitud": "No requiere poder"
+      },
+      "expectedCode": "ENTREVISTAR_USUARIO",
+      "expectedLabel": "Entrevistar al usuario"
+    },
+    {
+      "id": "aurora-utilidad-negada-con-hitos-completos-y-recurso-vacio",
+      "flow": "aurora",
+      "answers": {
+        "Fecha de análisis jurídico del caso": "2025-11-27",
+        "Resumen del análisis del caso": "Análisis completo",
+        "Procedencia de utilidad pública (solo para mujeres)": "Sí cumple requisitos objetivos",
+        "Fecha de entrevista": "2025-11-27",
+        "Decisión del usuario": "Sí, desea que el defensor avance con la solicitud",
+        "Actuación a adelantar": "Utilidad pública (solo mujeres)",
+        "Fecha de entrevista psicosocial": "2025-11-27",
+        "Cumple el requisito de marginalidad": "Sí",
+        "Cumple el requisito de jefatura de hogar": "Sí",
+        "Fecha en la que se reciben todas las pruebas": "2026-05-29",
+        "Fecha de radicación de solicitud de utilidad pública": "2026-05-29",
+        "Fecha de decisión de la autoridad": "2026-07-19",
+        "Sentido de la decisión": "Niega utilidad pública"
+      },
+      "expectedCode": "PRESENTAR_RECURSO",
+      "expectedLabel": "Presentar recurso"
     }
   ]
 }

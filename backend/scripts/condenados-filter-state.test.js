@@ -157,10 +157,9 @@ async function testEstadoUsesDerivedWorkflowMilestones() {
   assert(captured, 'La búsqueda combinada debe ejecutar SQL.');
   assert.strictEqual(captured.binds.estadoCodigo, 'ENTREVISTAR_USUARIO');
   assert.strictEqual(captured.binds.defensorFilter, 'PEDRO PABLO DIAZ CRISTANCHO%');
-  assert.match(captured.sql, /g\.FECHA_ANALISIS IS NOT NULL/);
-  assert.match(captured.sql, /g\.RESUMEN_ANALISIS_CASO IS NOT NULL/);
-  assert.match(captured.sql, /g\.FECHA_ENTREVISTA IS NOT NULL/);
-  assert.match(captured.sql, /g\.ACTUACION_ADELANTAR IS NOT NULL/);
+  for (const column of ['FECHA_ANALISIS', 'RESUMEN_ANALISIS_CASO', 'FECHA_ENTREVISTA', 'ACTUACION_ADELANTAR']) {
+    assert(captured.sql.includes(`NVL(TRIM(REGEXP_REPLACE(REPLACE(TO_CHAR(g.${column})`));
+  }
   assert.match(captured.sql, /THEN 'ENTREVISTAR_USUARIO'/);
   assert.match(captured.sql, /= :estadoCodigo/);
 }
@@ -287,7 +286,7 @@ async function testSaveReconcilesOneGestionWithOracleState() {
   assert.match(captured.sql, /WHERE g\.ID_GESTION = :idGestion/);
   assert.match(
     captured.sql,
-    /WHEN g\.FECHA_DECISION_RECURSO IS NOT NULL[\s\S]+AND NOT \(g\.SENTIDO_DECISION_RESUELVE_RECURSO IS NOT NULL[\s\S]+THEN 'PENDIENTE_DECISION'/
+    /WHEN NVL\(TRIM\(REGEXP_REPLACE\(REPLACE\(TO_CHAR\(g\.FECHA_DECISION_RECURSO\)[\s\S]+AND NOT \(NVL\(TRIM\(REGEXP_REPLACE\(REPLACE\(TO_CHAR\(g\.SENTIDO_DECISION_RESUELVE_RECURSO\)[\s\S]+THEN 'PENDIENTE_DECISION'/
   );
   assert.match(captured.sql, /OTRO MOTIVO\./);
   assert.match(captured.sql, /SE CIERRA PORQUE LA PERSONA YA NO ESTA EN EL ERON/);
@@ -301,7 +300,7 @@ async function testSaveReconcilesOneGestionWithOracleState() {
   );
   assert.match(
     captured.sql,
-    /OTRAS_SOLICITUDES_TRAMITAR[\s\S]+g\.FECHA_ANALISIS IS NOT NULL[\s\S]+OR/
+    /OTRAS_SOLICITUDES_TRAMITAR[\s\S]+TO_CHAR\(g\.FECHA_ANALISIS\)[\s\S]+OR/
   );
   assert.doesNotMatch(captured.sql, /CASO CERRADO: EN LAS PREGUNTAS 30 A 34/);
   assert.doesNotMatch(captured.sql, /LIKE '%HACER SEGUIMIENTO/);
@@ -466,8 +465,8 @@ async function testAuroraFilterUsesTheRadicationDateForTheSelectedFlow() {
 
 async function testPlaceholderAnswersRemainEmptyInDerivedState() {
   const captured = await captureStateSearch({ documento: '123456' });
-  assert.match(captured.sql, /TRIM\(TO_CHAR\(g\.DECISION_USUARIO\)\) NOT IN \('-', '--'\)/);
-  assert.match(captured.sql, /OTRAS_SOLICITUDES_TRAMITAR[\s\S]*IN \(\s*'',\s*'-',\s*'--',\s*'NINGUNA'/);
+  assert.match(captured.sql, /NVL\(TRIM\(REGEXP_REPLACE\(REPLACE\(TO_CHAR\(g\.DECISION_USUARIO\)[^\n]+, '-'\) NOT IN \('-', '--'\)/);
+  assert.match(captured.sql, /OTRAS_SOLICITUDES_TRAMITAR[\s\S]*IN \(\s*'-',\s*'--',\s*'NINGUNA'/);
   assert.match(captured.sql, /OTRAS_SOLICITUDES_TRAMITAR[\s\S]*= 'NINGUNA'/);
   assert.match(captured.sql, /HAS_POSITIVE_ANALYSIS_OUTCOME|REGEXP_REPLACE/);
 }
@@ -535,8 +534,24 @@ async function testReportUsesTheSameAssignedUsersUniverseAndState() {
   assert.match(captured.sql, /a\.CEDULA_DEFENSOR IS NULL[\s\S]+a\.NOMBRE_DEFENSOR[\s\S]+= :defensorNombre/);
   assert.match(captured.sql, /CASE[\s\S]+NVL\(s\.ACTIVO, 0\) <> 1 THEN 'CASO_CERRADO'/);
   assert.match(captured.sql, /CASE WHEN ESTADO_CODIGO = 'CASO_CERRADO' THEN 0 ELSE 1 END AS ACTIVO/);
-  assert.doesNotMatch(captured.sql, /TRIM\(s\.SITUACION\) IS NOT NULL/);
+  assert.match(captured.sql, /TRIM\(s\.SITUACION\) IS NOT NULL/);
+  assert.match(captured.sql, /AND NVL\(s\.ACTIVO, 0\) = 1/);
   assert.deepStrictEqual(result, [{ ESTADO_CODIGO: 'CASO_CERRADO', ACTIVO: 0, ESTADO: 'Caso cerrado' }]);
+}
+
+async function testReportScopeMatchesListFilters() {
+  const { captured } = await captureAssignedCasesReport({
+    defensorNombre: 'DEFENSOR PRUEBA', tipo: 'condenado', lugar: 'CPMS GIRARDOT',
+  });
+  assert.strictEqual(captured.binds.lugarFilter, 'CPMS GIRARDOT');
+  assert.match(captured.sql, /LIKE '%condenad%'/);
+  assert.match(captured.sql, /= :lugarFilter/);
+  assert.match(captured.sql, /AND NVL\(s\.ACTIVO, 0\) = 1/);
+  const { captured: withInactive } = await captureAssignedCasesReport({
+    defensorNombre: 'DEFENSOR PRUEBA', incluirFueraPrision: true,
+  });
+  assert.doesNotMatch(withInactive.sql, /AND NVL\(s\.ACTIVO, 0\) = 1/);
+  assert.doesNotMatch(withInactive.sql, /TRIM\(s\.SITUACION\) IS NOT NULL/);
 }
 
 async function testReportWithoutDefenderIdentityFailsClosed() {
@@ -572,6 +587,7 @@ async function testReportWithoutDefenderIdentityFailsClosed() {
   await testInvalidIdentityFiltersFailClosed();
   await testPagFiltersActiveAndAssignmentStateBeforePagination();
   await testReportUsesTheSameAssignedUsersUniverseAndState();
+  await testReportScopeMatchesListFilters();
   await testReportWithoutDefenderIdentityFailsClosed();
   console.log('OK condenados-filter-state.test');
 })().catch((error) => {

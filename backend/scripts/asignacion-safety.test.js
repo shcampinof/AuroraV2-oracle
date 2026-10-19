@@ -20,6 +20,7 @@ async function testRepositoryUsesDatabaseClock() {
       defensorCedula: '20',
       pagCedula: '30',
       pagNombre: 'PAG PRUEBA',
+      idSituacion: 40,
       fechaAsignacion: new Date('2000-01-01T00:00:00Z'),
     });
 
@@ -31,6 +32,10 @@ async function testRepositoryUsesDatabaseClock() {
     assert.match(captured.sql, /EXIT WHEN v_id_asignacion > v_max_asignacion/);
     assert.match(captured.sql, /VALUES\s*\(\s*v_id_asignacion/);
     assert.match(captured.sql, /:nombrePag,\s*SYSDATE\s*\)/);
+    assert.match(captured.sql, /DEFENSOR_GESTION/);
+    assert.match(captured.sql, /IF v_gestion_cerrada = 1 THEN\s+insertar_gestion_defensor/);
+    assert.match(captured.sql, /ELSIF TRIM\(v_defensor_gestion\) IS NULL[\s\S]*UPDATE DNDP\.GESTION_JURIDICA/);
+    assert.strictEqual(captured.binds.idSituacion, 40);
     assert(!Object.prototype.hasOwnProperty.call(captured.binds, 'fechaAsignacion'));
     assert.strictEqual(captured.options.autoCommit, true);
   } finally {
@@ -78,6 +83,7 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
     reconcileGestionActionById: personaRepo.reconcileGestionActionById,
     updatePersonaById: personaRepo.updatePersonaById,
     getLatestBySituacion: gestionRepo.getLatestBySituacion,
+    insertGestion: gestionRepo.insertGestion,
     replaceActiveAssignmentByPersona: asignacionRepo.replaceActiveAssignmentByPersona,
     endActiveAssignmentByPersona: asignacionRepo.endActiveAssignmentByPersona,
     findUniqueByNombre: defensoresRepo.findUniqueByNombre,
@@ -85,6 +91,7 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
   const assignmentWrites = [];
   const assignmentEnds = [];
   const personaWrites = [];
+  const gestionWrites = [];
 
   personaRepo.findActiveContextByDocumento = async () => ({
     P_ID_PERSONA: 10,
@@ -107,7 +114,11 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
     personaWrites.push(args);
     return 1;
   };
-  gestionRepo.getLatestBySituacion = async () => ({ ID_GESTION: 30 });
+  gestionRepo.getLatestBySituacion = async () => ({ ID_GESTION: 30, DEFENSOR_GESTION: 'DEFENSOR ACTUAL' });
+  gestionRepo.insertGestion = async (idSituacion, fields) => {
+    gestionWrites.push({ idSituacion, fields });
+    return 31;
+  };
   asignacionRepo.replaceActiveAssignmentByPersona = async (idPersona, assignment) => {
     assignmentWrites.push({ idPersona, assignment });
     return 1;
@@ -137,6 +148,7 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
     assert.strictEqual(assignmentWrites[0].idPersona, 10);
     assert.strictEqual(assignmentWrites[0].assignment.defensorNombre, 'DEFENSOR DISTINTO');
     assert.strictEqual(assignmentWrites[0].assignment.defensorCedula, '20');
+    assert.strictEqual(assignmentWrites[0].assignment.idSituacion, 20);
     assert(!Object.prototype.hasOwnProperty.call(assignmentWrites[0].assignment, 'fechaAsignacion'));
     assert.strictEqual(updated.defensorAsignado, 'DEFENSOR ACTUAL');
 
@@ -168,12 +180,18 @@ async function testGenericDefenderChangeCreatesFreshAssignment() {
     });
     assert.deepStrictEqual(assignmentEnds, [10], 'La señal explícita debe cerrar la asignación activa.');
     assert.strictEqual(assignmentWrites.length, 1, 'Desasignar no debe crear una asignación nueva.');
+    assert.deepStrictEqual(
+      gestionWrites,
+      [{ idSituacion: 20, fields: { DEFENSOR_GESTION: null } }],
+      'Desasignar debe abrir una nueva gestión disponible sin defensor.'
+    );
   } finally {
     personaRepo.findActiveContextByDocumento = originals.findActiveContextByDocumento;
     personaRepo.listRowsWithActiveSituacionAndGestiones = originals.listRowsWithActiveSituacionAndGestiones;
     personaRepo.reconcileGestionActionById = originals.reconcileGestionActionById;
     personaRepo.updatePersonaById = originals.updatePersonaById;
     gestionRepo.getLatestBySituacion = originals.getLatestBySituacion;
+    gestionRepo.insertGestion = originals.insertGestion;
     asignacionRepo.replaceActiveAssignmentByPersona = originals.replaceActiveAssignmentByPersona;
     asignacionRepo.endActiveAssignmentByPersona = originals.endActiveAssignmentByPersona;
     defensoresRepo.findUniqueByNombre = originals.findUniqueByNombre;
@@ -211,11 +229,15 @@ async function testInactivePrisonRecordRejectsUpdates() {
 
 async function testBulkUnassignmentClosesOnlyEligibleActiveAssignments() {
   const personaRepo = require('../repositories/oracle/personaRepository');
+  const gestionRepo = require('../repositories/oracle/gestionRepository');
   const asignacionRepo = require('../repositories/oracle/asignacionRepository');
   const servicePath = require.resolve('../services/pplService');
   const originalFindContext = personaRepo.findActiveContextByDocumento;
+  const originalGetLatestBySituacion = gestionRepo.getLatestBySituacion;
+  const originalInsertGestion = gestionRepo.insertGestion;
   const originalEndAssignment = asignacionRepo.endActiveAssignmentByPersona;
   const endedAssignments = [];
+  const gestionWrites = [];
 
   personaRepo.findActiveContextByDocumento = async (documento) => ({
     111: { P_ID_PERSONA: 10, S_ID_SITUACION: 20, S_ACTIVO: 1 },
@@ -225,6 +247,15 @@ async function testBulkUnassignmentClosesOnlyEligibleActiveAssignments() {
   asignacionRepo.endActiveAssignmentByPersona = async (idPersona) => {
     endedAssignments.push(idPersona);
     return 1;
+  };
+  gestionRepo.getLatestBySituacion = async (idSituacion) => ({
+    ID_GESTION: 30,
+    ID_SITUACION: idSituacion,
+    DEFENSOR_GESTION: 'DEFENSOR ACTUAL',
+  });
+  gestionRepo.insertGestion = async (idSituacion, fields) => {
+    gestionWrites.push({ idSituacion, fields });
+    return 31;
   };
   delete require.cache[servicePath];
 
@@ -238,8 +269,15 @@ async function testBulkUnassignmentClosesOnlyEligibleActiveAssignments() {
       [10],
       'Solo debe cerrarse la asignación de una persona con situación activa.'
     );
+    assert.deepStrictEqual(
+      gestionWrites,
+      [{ idSituacion: 20, fields: { DEFENSOR_GESTION: null } }],
+      'La persona desasignada debe quedar con una gestión nueva disponible para PAG.'
+    );
   } finally {
     personaRepo.findActiveContextByDocumento = originalFindContext;
+    gestionRepo.getLatestBySituacion = originalGetLatestBySituacion;
+    gestionRepo.insertGestion = originalInsertGestion;
     asignacionRepo.endActiveAssignmentByPersona = originalEndAssignment;
     delete require.cache[servicePath];
   }

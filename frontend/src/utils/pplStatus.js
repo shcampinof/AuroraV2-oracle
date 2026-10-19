@@ -16,3 +16,9 @@ export function isSituacionActiva(source) {
 export function getEstadoReclusion(source) {
   return isSituacionActiva(source) ? ESTADO_RECLUSION_ACTIVO : ESTADO_RECLUSION_INACTIVO;
 }
+
+export function isGestionEditable(source) {
+  return isSituacionActiva(source) || (
+    Number(source?.__oracleIdGestion) > 0 && source?.__bloque5Alcanzado === true
+  );
+}

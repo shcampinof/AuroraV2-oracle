@@ -4,6 +4,7 @@ import { getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
 import { reportError } from '../utils/reportError.js';
 import { getLabelAccionCaso } from '../utils/actuacionesLabels.js';
 import { shouldShowVirtualPendingActuacion } from '../utils/actuacionesValidation.js';
+import { isGestionEditable } from '../utils/pplStatus.js';
 import './HistorialActuacionesPPL.css';
 
 function decodeUnicodeEscapes(text) {
@@ -576,6 +577,7 @@ export default function HistorialActuacionesPPL({
                     String(actuacionActivaId || '').trim() &&
                     String(actuacion?.id || '').trim() === String(actuacionActivaId || '').trim();
                   const textoAccionFila = getLabelAccionCaso(!actuacion?.bloque3Iniciado);
+                  const permiteCompletar = soloLectura && isGestionEditable(actuacion?.registro);
 
                   return (
                     <tr key={String(actuacion?.id || '')} className={isActive ? 'historial-row-active' : ''}>
@@ -606,7 +608,7 @@ export default function HistorialActuacionesPPL({
                               : onSelectActuacion?.(actuacion)
                           }
                         >
-                          {displayText(soloLectura ? 'Ver detalle' : textoAccionFila)}
+                          {displayText(permiteCompletar ? 'Completar gestión' : soloLectura ? 'Ver detalle' : textoAccionFila)}
                         </button>
                       </td>
                     </tr>

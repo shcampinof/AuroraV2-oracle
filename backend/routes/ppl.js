@@ -788,6 +788,9 @@ function keepLatestByDocumento(rows) {
 
 function resolveDefensorFromRegistro(registro) {
   const source = registro && typeof registro === 'object' ? registro : {};
+  if (Number(source?.__oracleIdGestion || 0) > 0) {
+    return String(source?.defensorGestion || '').trim();
+  }
   const directKeys = [
     'Defensor(a) Publico(a) Asignado para tramitar la solicitud',
     'Defensor(a) Público(a) Asignado para tramitar la solicitud',
@@ -817,7 +820,8 @@ function resolveDefensorFromRegistro(registro) {
 
 function hydrateRegistroDefensor(registro, fallbackDefensor = '') {
   const base = registro && typeof registro === 'object' ? registro : {};
-  const defensor = resolveDefensorFromRegistro(base) || String(fallbackDefensor || '').trim();
+  const hasGestion = Number(base?.__oracleIdGestion || 0) > 0;
+  const defensor = resolveDefensorFromRegistro(base) || (hasGestion ? '' : String(fallbackDefensor || '').trim());
   if (!defensor) return { ...base, defensorAsignado: '' };
   return {
     ...base,
@@ -1299,7 +1303,7 @@ router.put('/:documento', async (req, res) => {
     return res.status(404).json({ message: 'No encontrado' });
   } catch (err) {
     console.error('[ppl:update] Error Oracle:', err?.message || err);
-    if (err?.code === 'PPL_SITUACION_INACTIVA') {
+    if (err?.code === 'PPL_SITUACION_INACTIVA' || err?.code === 'PPL_GESTION_MISMATCH') {
       return res.status(409).json({ code: err.code, message: err.message });
     }
     if (err?.code === 'DEFENSOR_NOT_IN_CATALOG') {

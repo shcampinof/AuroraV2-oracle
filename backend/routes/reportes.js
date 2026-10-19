@@ -20,6 +20,9 @@ router.get('/atenciones-defensores', async (req, res, next) => {
       fechaFin: req.query.fechaFin,
       regional: req.query.regional,
       defensorId: req.query.defensorId,
+      tipo: req.query.tipo,
+      lugar: req.query.lugar,
+      incluirFueraPrision: req.query.incluirFueraPrision,
     });
     return res.json(report);
   } catch (error) {

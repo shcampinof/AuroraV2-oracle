@@ -346,6 +346,8 @@ function hasExplicitNingunaInP36(record: FormRecord): boolean {
 function hasExplicitClosure(record: FormRecord): boolean {
   const allowed = [
     'Se cierra porque la persona ya no está en el ERON por razón ajena a este trámite.',
+    'Cierre automático por cambio de ERON o regional.',
+    'Cierre automático por actualización relevante de SISIPEC.',
     'Otro motivo.',
   ];
   const value = getAny(record, [

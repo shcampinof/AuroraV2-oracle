@@ -31,6 +31,7 @@ COPY backend/package*.json ./
 RUN npm ci --omit=dev --no-audit && npm cache clean --force
 
 COPY backend/ ./
+COPY shared/ ../shared/
 COPY scripts/cargas_bd/ ../scripts/cargas_bd/
 COPY scripts/docker-entrypoint.sh /usr/local/bin/aurora-entrypoint.sh
 COPY --from=frontend-builder /app/frontend/dist ./public/app

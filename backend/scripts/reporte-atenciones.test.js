@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { buildDefensorOptions, buildReport, validateFilters } = require('../services/reporteAtencionesService');
+const { buildDefensorOptions, buildReport, validateFilters, validateScope } = require('../services/reporteAtencionesService');
 const {
   EVENT_UNIONS,
   EVENT_ASSIGNMENT_SCOPE_SQL,
@@ -39,9 +39,15 @@ function run() {
   assert.strictEqual(EVENT_UNIONS.filter(([type]) => type === 'reiteracion').length, 5);
   assert.match(
     EVENT_ASSIGNMENT_SCOPE_SQL,
-    /a\.FECHA_FIN IS NULL[\s\S]*OR \([\s\S]*e\.FECHA >= TRUNC\(a\.FECHA_ASIGNACION\)[\s\S]*e\.FECHA < TRUNC\(a\.FECHA_FIN\) \+ 1/,
-    'una asignación vigente debe incluir la historia del caso aunque su fecha técnica sea posterior'
+    /a\.ORDEN = 1 OR e\.FECHA >= TRUNC\(a\.FECHA_ASIGNACION\)[\s\S]*a\.FECHA_FIN IS NULL OR e\.FECHA < TRUNC\(a\.FECHA_FIN\) \+ 1/,
+    'solo la primera asignación cubre las actuaciones importadas anteriores a su alta'
   );
+  assert.deepStrictEqual(validateScope(), { tipo: 'all', lugar: '', incluirFueraPrision: false });
+  assert.deepStrictEqual(validateScope({ incluirFueraPrision: 'true', lugar: ' CPMS  GIRARDOT ' }), {
+    tipo: 'all', lugar: 'CPMS GIRARDOT', incluirFueraPrision: true,
+  });
+  assert.throws(() => validateScope({ tipo: 'otro' }), /tipo de caso/);
+  assert.throws(() => validateScope({ tipo: 'condenado', incluirFueraPrision: true }), /todos los tipos/);
   const defensorOptions = buildDefensorOptions([
     { CEDULA: null, NOMBRE: 'NANCY LANUZA', REGIONAL: null, CORREO: null },
     { CEDULA: '1234', NOMBRE: 'DEFENSOR CON CATÁLOGO', REGIONAL: 'MAGDALENA', CORREO: 'd@example.test' },
@@ -143,6 +149,16 @@ function run() {
     orderingReport.detalles.casosAsignados.map((item) => item.estado),
     ['Analizar el caso', 'Entrevistar al usuario', 'Presentar solicitud', 'Presentar recurso', 'Caso cerrado']
   );
+
+  const repeatedReport = buildReport({
+    assignedRows: [assignedRows[0], assignedRows[0], assignedRows[1], assignedRows[1]],
+  });
+  assert.strictEqual(repeatedReport.resumen.personasAsignadas, 2, 'se cuentan personas, no filas de gestiones');
+  assert.strictEqual(repeatedReport.resumen.personasActivas, 1);
+  assert.strictEqual(repeatedReport.resumen.totalPersonasConCasosCerrados, 1);
+  const transferredReport = buildReport({ eventRows: [rawEvent('analisis')], assignedRows: [] });
+  assert.strictEqual(transferredReport.resumen.casosAnalizados, 1, 'la actuación se conserva sin asignación actual');
+  assert.strictEqual(transferredReport.resumen.personasAsignadas, 0);
 
   console.log('OK reporte-atenciones.test');
 }

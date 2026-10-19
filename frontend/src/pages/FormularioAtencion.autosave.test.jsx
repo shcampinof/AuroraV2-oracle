@@ -285,4 +285,65 @@ describe.each(['condenado', 'sindicado'])('autoguardado del formulario %s', (tip
     expect(updatePpl).toHaveBeenCalledTimes(1);
     expect(updatePpl.mock.calls[0][1].data[summaryKey]).toBe('Borrador previo');
   });
+
+  it('permite guardar manual y automáticamente una gestión cerrada que ya llegó al bloque 5', async () => {
+    Object.assign(base, {
+      __situacionActiva: false,
+      __bloque5Alcanzado: true,
+      estadoCodigo: 'CASO_CERRADO',
+      estadoEtiqueta: 'Caso cerrado',
+      [summaryKey]: 'Gestión previa a la libertad',
+      'Fecha de análisis jurídico del caso': '2026-10-01',
+    });
+    await mount();
+    expect(container.textContent).toContain('Puede completar la información de esta gestión');
+    expect(container.textContent).toContain('BLOQUE 5');
+    const field = tipo === 'condenado'
+      ? 'Fecha de presentación de la solicitud a la autoridad'
+      : 'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA';
+    await edit(field, '2026-10-03');
+    await advance(30000);
+    expect(updatePpl).toHaveBeenCalledTimes(1);
+    expect(updatePpl.mock.calls[0][1]).toMatchObject({
+      actuacionId: 'actuacion-17', data: { [field]: '2026-10-03' },
+    });
+    await click('GUARDAR ENTREVISTA');
+    expect(updatePpl).toHaveBeenCalledTimes(2);
+    expect(updatePpl.mock.calls[1][1].data).toMatchObject({
+      [field]: '2026-10-03', 'Estado del caso': 'Cerrado', 'Estado del trámite': 'Caso cerrado',
+    });
+  });
+
+  it('mantiene solo consulta para una gestión cerrada que no había llegado al bloque 5', async () => {
+    Object.assign(base, { __situacionActiva: false, __bloque5Alcanzado: false });
+    await mount();
+    const save = [...container.querySelectorAll('button')].find((item) => item.textContent === 'SOLO LECTURA');
+    expect(save.disabled).toBe(true);
+    const summary = [...container.querySelectorAll('textarea')].find((item) => item.name === summaryKey);
+    expect(summary.matches(':disabled')).toBe(true);
+    await edit(summaryKey, 'Intento sin permiso');
+    await advance(60000);
+    expect(updatePpl).not.toHaveBeenCalled();
+    expect(draft()).toBeNull();
+  });
+
+  it('al seleccionar otra gestión cerrada no hereda el permiso de la anterior', async () => {
+    Object.assign(base, { __situacionActiva: false, __bloque5Alcanzado: true });
+    await mount();
+    expect([...container.querySelectorAll('button')].find((item) => item.textContent === 'GUARDAR ENTREVISTA').disabled).toBe(false);
+    fixture.record = { ...base, __oracleIdGestion: 18, __bloque5Alcanzado: false };
+    await click('Abrir actuación');
+    expect([...container.querySelectorAll('button')].find((item) => item.textContent === 'SOLO LECTURA').disabled).toBe(true);
+    await advance(60000);
+    expect(updatePpl).not.toHaveBeenCalled();
+  });
+
+  it('recupera borradores pendientes de una gestión cerrada autorizada', async () => {
+    Object.assign(base, { __situacionActiva: false, __bloque5Alcanzado: true });
+    const context = buildFormAutosaveContext({ subject: 'tester', documento: '123', gestionId: 17 });
+    writeFormAutosaveDraft(localStorage, context, { [summaryKey]: 'Gestión pendiente de completar' });
+    await mount();
+    expect(updatePpl).toHaveBeenCalledTimes(1);
+    expect(updatePpl.mock.calls[0][1].data[summaryKey]).toBe('Gestión pendiente de completar');
+  });
 });

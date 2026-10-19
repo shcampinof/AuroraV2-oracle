@@ -8,6 +8,7 @@ const calificacionConductaRepo = require('../repositories/oracle/calificacionCon
 const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const { DEFAULT_SCOPE_DEPARTAMENTOS } = require('../repositories/oracle/sqlFragments');
 const { getEstadoEtiqueta, resolveEstadoCodigo } = require('../domain/estadoCaso');
+const { hasReachedBlock5 } = require('../domain/gestionEditability');
 
 let dataVersion = 0;
 let dataVersionUpdatedAt = null;
@@ -173,6 +174,8 @@ const NUMERIC_FIELDS = new Set([
 
 const EXPLICIT_CIERRE_CASO_VALUES = new Map([
   'Se cierra porque la persona ya no está en el ERON por razón ajena a este trámite.',
+  'Cierre automático por cambio de ERON o regional.',
+  'Cierre automático por actualización relevante de SISIPEC.',
   'Otro motivo.',
 ].map((value) => [normalizeText(value), value]));
 
@@ -558,6 +561,10 @@ function toLegacyRecord(raw = {}) {
   const numero = coalesce(raw.P_NUMERO, '');
   const numeroText = numero === '' ? '' : String(numero);
   const situacionActiva = Number(raw.S_ACTIVO) === 1;
+  const hasGestion = Number(raw.G_ID_GESTION || 0) > 0;
+  const defensorActivo = String(raw.G_DEFENSOR ?? '').trim();
+  const defensorGestion = String(raw.G_DEFENSOR_GESTION ?? '').trim();
+  const defensorActuacion = hasGestion ? defensorGestion : defensorActivo;
   const estadoCodigo = situacionActiva
     ? resolveEstadoCodigo(raw.ESTADO_CODIGO) || 'ANALIZAR_CASO'
     : 'CASO_CERRADO';
@@ -618,10 +625,12 @@ function toLegacyRecord(raw = {}) {
     Cedula_PAG: String(raw.G_CEDULA_PAG ?? ''),
     'Fecha de asignación del PAG': toIsoDate(raw.G_FECHA_ASIGNACION),
     'Fecha de asignacion del PAG': toIsoDate(raw.G_FECHA_ASIGNACION),
-    'Defensor(a) Público(a) Asignado para tramitar la solicitud': String(raw.G_DEFENSOR ?? ''),
-    'Defensor(a) Publico(a) Asignado para tramitar la solicitud': String(raw.G_DEFENSOR ?? ''),
-    Defensor: String(raw.G_DEFENSOR ?? ''),
-    defensorAsignado: String(raw.G_DEFENSOR ?? ''),
+    'Defensor(a) Público(a) Asignado para tramitar la solicitud': defensorActuacion,
+    'Defensor(a) Publico(a) Asignado para tramitar la solicitud': defensorActuacion,
+    Defensor: defensorActuacion,
+    defensorAsignado: defensorActivo,
+    defensorActivo,
+    defensorGestion,
 
     // Estado y acción son el mismo concepto. La respuesta siempre usa el valor
     // canónico calculado por Oracle, incluso si una fila histórica conserva una
@@ -697,6 +706,7 @@ function toLegacyRecord(raw = {}) {
       Number(raw.S_MIN_ACTIVO_HISTORICO) === 0 && Number(raw.S_MAX_ACTIVO_HISTORICO) === 1,
   };
 
+  record.__bloque5Alcanzado = hasReachedBlock5(raw, computeTipo(record));
   return record;
 }
 
@@ -885,18 +895,21 @@ async function getActuacionesByDocumento(documento) {
 
   if (!records.length) return [];
 
-  let fallbackDefensor = '';
   return records.map((record, idx) => {
-    const defensor = extractDefensor(record);
-    if (defensor) fallbackDefensor = defensor;
-
     const gestionId = Number(record.__oracleIdGestion || 0);
     const rowIndex = gestionId > 0 ? gestionId : idx;
+    const defensorGestion = String(record?.defensorGestion || '').trim();
 
     return {
       id: buildActuacionId(doc, rowIndex),
       rowIndex,
-      registro: hydrateDefensorAliases(record, fallbackDefensor),
+      registro: {
+        ...record,
+        defensorGestion,
+        'Defensor(a) Público(a) Asignado para tramitar la solicitud': defensorGestion,
+        'Defensor(a) Publico(a) Asignado para tramitar la solicitud': defensorGestion,
+        Defensor: defensorGestion,
+      },
     };
   });
 }
@@ -907,10 +920,20 @@ function hasMeaningfulUpdates(grouped) {
 
 function assertSituacionEditable(context) {
   if (!Object.prototype.hasOwnProperty.call(context || {}, 'S_ACTIVO') || Number(context?.S_ACTIVO) === 1) return;
-  const err = new Error('La persona figura fuera de prisión. El registro es histórico y está disponible solo para consulta.');
+  const err = new Error('La persona figura fuera de prisión. Solo se pueden completar gestiones que ya habían alcanzado el bloque 5.');
   err.code = 'PPL_SITUACION_INACTIVA';
   err.status = 409;
   throw err;
+}
+
+async function ensureUnassignedGestionBySituacion(idSituacion) {
+  const latest = await gestionRepo.getLatestBySituacion(idSituacion);
+  if (latest && !String(latest.DEFENSOR_GESTION || '').trim()) {
+    return Number(latest.ID_GESTION || 0) || null;
+  }
+  return gestionRepo.insertGestion(idSituacion, { DEFENSOR_GESTION: null }, {
+    sequenceName: getOptionalGestionSequence(),
+  });
 }
 
 function gestionMismatchError() {
@@ -941,6 +964,10 @@ async function createActuacionByDocumento(documento, payload) {
       defensorCatalogado = await resolveDefensorCatalogado(nextDefensor);
     }
   }
+  const defensorActuacion = String(defensorCatalogado?.nombre || context.G_DEFENSOR || '').trim();
+  if (defensorActuacion) {
+    updates.GESTION.DEFENSOR_GESTION = defensorActuacion;
+  }
   if (Object.keys(updates.PERSONA).length) {
     await personaRepo.updatePersonaById(context.P_ID_PERSONA, updates.PERSONA);
   }
@@ -961,6 +988,7 @@ async function createActuacionByDocumento(documento, payload) {
       defensorCedula: defensorCatalogado.cedula,
       pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
       pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
+      idSituacion: context.S_ID_SITUACION,
     });
   }
 
@@ -991,7 +1019,7 @@ async function updateByDocumento(documento, payload) {
     scopeDepartamentos: SCOPE_DEPARTAMENTOS,
   });
   if (!context?.S_ID_SITUACION) return null;
-  assertSituacionEditable(context);
+  const situacionInactiva = Object.prototype.hasOwnProperty.call(context, 'S_ACTIVO') && Number(context.S_ACTIVO) !== 1;
 
   const updates = splitUpdatesByTable(payload);
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
@@ -999,6 +1027,7 @@ async function updateByDocumento(documento, payload) {
   const normalizedPayload = normalizePayload(payload);
 
   let targetGestionId = null;
+  let targetGestion = null;
   let explicitTarget = false;
   if (Number.isInteger(incoming?.rowIndex) && incoming.rowIndex > 0) {
     targetGestionId = Number(incoming.rowIndex);
@@ -1010,16 +1039,37 @@ async function updateByDocumento(documento, payload) {
   }
 
   if (explicitTarget) {
-    const target = await gestionRepo.getById(targetGestionId, context.S_ID_SITUACION);
-    if (!target) throw gestionMismatchError();
+    targetGestion = await gestionRepo.getById(targetGestionId, context.S_ID_SITUACION);
+    if (!targetGestion) throw gestionMismatchError();
   }
   if (!targetGestionId) {
+    if (situacionInactiva && !Number(context.G_ID_GESTION)) assertSituacionEditable(context);
     const latest = await gestionRepo.getLatestBySituacion(context.S_ID_SITUACION);
+    targetGestion = latest;
     targetGestionId = Number(latest?.ID_GESTION || 0) || null;
   }
 
+  if (situacionInactiva) {
+    // La elegibilidad se comprueba con la fila seleccionada ya guardada.
+    // No se heredan hitos de otra gestión ni del payload entrante.
+    const storedGestionRow = Object.fromEntries(Object.entries(targetGestion || {}).map(([key, value]) => [`G_${key}`, value]));
+    const tipoGestion = computeTipo(toLegacyRecord({ ...context, ...storedGestionRow }));
+    if (!hasReachedBlock5(storedGestionRow, tipoGestion)) assertSituacionEditable(context);
+
+    const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
+    if (normalizedPayload.__desasignarDefensor === true || (
+      payloadHasDefensorField(normalizedPayload) &&
+      normalizeText(nextDefensor) !== normalizeText(targetGestion?.DEFENSOR_GESTION || context.G_DEFENSOR || '')
+    )) {
+      const err = new Error('El caso cerrado permite completar la gestión existente, sin cambiar el defensor responsable.');
+      err.code = 'PPL_SITUACION_INACTIVA';
+      err.status = 409;
+      throw err;
+    }
+  }
+
   let defensorCatalogado = null;
-  if (payloadHasDefensorField(normalizedPayload) && normalizedPayload.__desasignarDefensor !== true) {
+  if (!situacionInactiva && payloadHasDefensorField(normalizedPayload) && normalizedPayload.__desasignarDefensor !== true) {
     const nextDefensor = String(extractDefensor(normalizedPayload) || '').trim();
     const currentDefensor = String(context.G_DEFENSOR || '').trim();
     if (nextDefensor && normalizeText(nextDefensor) !== normalizeText(currentDefensor)) {
@@ -1041,7 +1091,7 @@ async function updateByDocumento(documento, payload) {
     if (targetGestionId) {
       const affected = await gestionRepo.updateGestionById(targetGestionId, updates.GESTION, context.S_ID_SITUACION);
       if (!affected) {
-        if (explicitTarget) throw gestionMismatchError();
+        if (explicitTarget || situacionInactiva) throw gestionMismatchError();
         targetGestionId = await gestionRepo.insertGestion(context.S_ID_SITUACION, updates.GESTION, {
           sequenceName: getOptionalGestionSequence(),
         });
@@ -1055,13 +1105,17 @@ async function updateByDocumento(documento, payload) {
 
   if (normalizedPayload.__desasignarDefensor === true) {
     const affected = await asignacionRepo.endActiveAssignmentByPersona(context.P_ID_PERSONA);
-    if (affected > 0) dataVersion += 1;
+    if (affected > 0) {
+      await ensureUnassignedGestionBySituacion(context.S_ID_SITUACION);
+      dataVersion += 1;
+    }
   } else if (defensorCatalogado) {
     await asignacionRepo.replaceActiveAssignmentByPersona(context.P_ID_PERSONA, {
       defensorNombre: defensorCatalogado.nombre,
       defensorCedula: defensorCatalogado.cedula,
       pagNombre: coalesce(normalizedPayload.PAG, context.G_PAG),
       pagCedula: coalesce(normalizedPayload.Cedula_PAG, context.G_CEDULA_PAG),
+      idSituacion: context.S_ID_SITUACION,
     });
     dataVersion += 1;
   }
@@ -1139,6 +1193,7 @@ async function assignDefensor(documentos, defensor, options = {}) {
       pagNombre,
       pagCedula,
       defensorCedula,
+      idSituacion: context.S_ID_SITUACION,
     });
     if (affected > 0) updated += affected;
   }
@@ -1159,7 +1214,11 @@ async function unassignDefensor(documentos) {
     if (!context?.S_ID_SITUACION) continue;
     if (Object.prototype.hasOwnProperty.call(context, 'S_ACTIVO') && Number(context.S_ACTIVO) !== 1) continue;
 
-    updated += await asignacionRepo.endActiveAssignmentByPersona(context.P_ID_PERSONA);
+    const affected = await asignacionRepo.endActiveAssignmentByPersona(context.P_ID_PERSONA);
+    if (affected > 0) {
+      await ensureUnassignedGestionBySituacion(context.S_ID_SITUACION);
+      updated += affected;
+    }
   }
 
   if (updated > 0) dataVersion += 1;
