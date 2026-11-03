@@ -106,6 +106,8 @@ function testAllApiFiltersAreParsedAndTrimmed() {
     'centroId',
     'departamento',
     'municipio',
+    'regional',
+    'prioridadGestion',
     'estadoAccion',
     'estadoCodigo',
     'estado',
@@ -169,6 +171,17 @@ function testActiveCenterNamesRemainTheSourceOfTruth() {
   assert.deepEqual(leticia.valoresOriginales, ['CPMS LETICIA']);
 }
 
+function testUnassignedStateAndPriorityArePreserved() {
+  const mapped = contract.mapRow({ ...activeRawRow(), ESTADO_CODIGO: 'SIN_ASIGNACION',
+    PRIORIDAD_GESTION: 'gris', FECHA_REFERENCIA_GESTION: null });
+  assert.equal(mapped.estadoEtiqueta, 'Sin asignación');
+  assert.equal(mapped.accionPendiente.codigo, 'SIN_ASIGNACION');
+  assert.equal(mapped.prioridadGestion, 'gris');
+  assert.equal(mapped.diasPrioridadGestion, null);
+  assert.equal(mapped.fechaReferenciaGestion, '');
+}
+
+testUnassignedStateAndPriorityArePreserved();
 testEveryColumnHasMappedDataContract();
 testInactiveRowsCloseStateAndAction();
 testPersistedCalculatedActionDoesNotExposeHomologationWarning();

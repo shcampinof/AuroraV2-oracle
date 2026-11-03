@@ -13,7 +13,9 @@
     "service:logs": "pm2 logs aurora",
     "service:status": "pm2 status aurora",
     "qa:smoke": "npm --prefix frontend run lint && npm --prefix frontend run test && npm --prefix frontend run build && npm --prefix backend test",
-    "qa:encoding": "npm run encoding:check"
+    "qa:encoding": "npm run encoding:check",
+    "qa:release": "npm run qa:smoke && npm run qa:encoding && npm --prefix backend audit --omit=dev && npm --prefix frontend audit",
+    "qa:browser": "node backend/scripts/release-browser.integration.js"
   },
   "dependencies": {
     "pm2": "^7.0.1"

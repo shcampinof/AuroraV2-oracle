@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import Header from './components/Header.jsx';
 import Sidebar from './components/Sidebar.jsx';
+import OfflineSyncNotice from './components/OfflineSyncNotice.jsx';
 import DataTreatmentNotice from './components/DataTreatmentNotice.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 
@@ -14,7 +15,6 @@ import AdminUsuarios from './pages/AdminUsuarios.jsx';
 import CajaHerramientas from './pages/CajaHerramientas.jsx';
 import ManualInteractivo from './pages/ManualInteractivo.jsx';
 import ReporteAtencionesDefensores from './pages/ReporteAtencionesDefensores.jsx';
-import ReporteGeneral from './pages/ReporteGeneral.jsx';
 import { completeAzureAdRedirect, getAuthConfig, logout, refreshSession } from './services/auth.js';
 import {
   PPL_DATA_UPDATED_EVENT,
@@ -24,6 +24,7 @@ import {
 } from './services/api.js';
 import { FEATURE_FLAGS } from './config/featureFlags.js';
 import { startPplDataVersionMonitor } from './utils/pplDataVersionMonitor.js';
+import { canAccessAssignments } from './utils/assignmentAccess.js';
 
 const VISTAS = new Set([
   'inicio',
@@ -32,7 +33,6 @@ const VISTAS = new Set([
   'asignacion',
   'herramientas',
   'reporte-atenciones',
-  'reporte-general',
   ...(FEATURE_FLAGS.manualInteractivo ? ['manual'] : []),
   'admin-cargas',
   'admin-usuarios',
@@ -69,7 +69,7 @@ function esAdmin(user) {
 }
 
 function tieneAccesoPag(user) {
-  return normalizarRoles(user?.roles).includes('pag');
+  return canAccessAssignments(user);
 }
 
 function vistaDesdeHash(hashValue) {
@@ -179,9 +179,6 @@ function App() {
     if (vistaActual === 'admin-usuarios' && !esAdmin(session.user)) {
       window.location.hash = '/inicio';
     }
-    if (vistaActual === 'reporte-general' && !esAdmin(session.user)) {
-      window.location.hash = '/inicio';
-    }
     if (vistaActual === 'asignacion' && !tieneAccesoPag(session.user)) {
       window.location.hash = '/inicio';
     }
@@ -192,7 +189,6 @@ function App() {
     if (!VISTAS.has(vista)) return;
     if (vista === 'admin-cargas' && !tieneAccesoCargas(session?.user)) return;
     if (vista === 'admin-usuarios' && !esAdmin(session?.user)) return;
-    if (vista === 'reporte-general' && !esAdmin(session?.user)) return;
     if (vista === 'asignacion' && !tieneAccesoPag(session?.user)) return;
     const nextHash = `/${vista}`;
     if (window.location.hash !== `#${nextHash}`) {
@@ -243,7 +239,6 @@ function App() {
 
   const puedeAdministrarCargas = tieneAccesoCargas(session.user);
   const puedeAdministrarUsuarios = esAdmin(session.user);
-  const puedeVerReporteGeneral = esAdmin(session.user);
   const puedeAccederPag = tieneAccesoPag(session.user);
 
   let contenido = null;
@@ -261,7 +256,7 @@ function App() {
   }
 
   if (vistaActual === 'asignacion' && puedeAccederPag) {
-    contenido = <AsignacionDefensores key="asignacion-condenados" tipo="condenado" />;
+    contenido = <AsignacionDefensores key="asignacion-condenados" tipo="condenado" user={session.user} />;
   }
 
   if (vistaActual === 'herramientas') {
@@ -270,10 +265,6 @@ function App() {
 
   if (vistaActual === 'reporte-atenciones') {
     contenido = <ReporteAtencionesDefensores user={session.user} />;
-  }
-
-  if (vistaActual === 'reporte-general' && puedeVerReporteGeneral) {
-    contenido = <ReporteGeneral />;
   }
 
   if (FEATURE_FLAGS.manualInteractivo && vistaActual === 'manual') {
@@ -298,10 +289,12 @@ function App() {
             onChangeView={cambiarVista}
             showAdminCargas={puedeAdministrarCargas}
             showAdminUsuarios={puedeAdministrarUsuarios}
-            showReporteGeneral={puedeVerReporteGeneral}
             showPag={puedeAccederPag}
           />
-          <main className="content-area">{conditionsAccepted ? contenido : <Home />}</main>
+          <main className="content-area">
+            {conditionsAccepted ? <OfflineSyncNotice key={session.user.id || session.user.email} /> : null}
+            {conditionsAccepted ? contenido : <Home />}
+          </main>
         </div>
       </div>
       {!conditionsAccepted ? (

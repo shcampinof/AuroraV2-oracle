@@ -99,6 +99,7 @@ const LEGACY_COLUMNS = [
   'Fecha de la decisión del recurso',
   'Sentido de la decisión que resuelve recurso',
   'Cierre del caso por imposibilidad de avanzar (si aplica)',
+  'Razón o explicación del cierre del caso',
   'Sentido de la decisión que resuelve la solicitud',
   'Estado del caso',
   'Estado del trámite',
@@ -173,8 +174,11 @@ const NUMERIC_FIELDS = new Set([
 ]);
 
 const EXPLICIT_CIERRE_CASO_VALUES = new Map([
+  'Se cierra porque la persona fue trasladada a un eron de competencia de otra regional de la defensoria del pueblo',
+  'Se cierra porque la persona se encuentra en libertad',
   'Se cierra porque la persona ya no está en el ERON por razón ajena a este trámite.',
   'Cierre automático por cambio de ERON o regional.',
+  'Cierre automático por cambio de regional.',
   'Cierre automático por actualización relevante de SISIPEC.',
   'Otro motivo.',
 ].map((value) => [normalizeText(value), value]));
@@ -556,6 +560,7 @@ bind(
   'GESTION',
   'CIERRE_CASO'
 );
+bind(['Razón o explicación del cierre del caso', 'Razon o explicacion del cierre del caso', 'RAZON_CIERRE_CASO'], 'GESTION', 'RAZON_CIERRE_CASO');
 
 function toLegacyRecord(raw = {}) {
   const numero = coalesce(raw.P_NUMERO, '');
@@ -690,6 +695,7 @@ function toLegacyRecord(raw = {}) {
     'SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO': String(raw.G_SENTIDO_DECISION_RESUELVE_RECURSO ?? ''),
     'Cierre del caso por imposibilidad de avanzar (si aplica)': String(raw.G_CIERRE_CASO ?? ''),
     'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública': String(raw.G_CIERRE_CASO ?? ''),
+    'Razón o explicación del cierre del caso': String(raw.G_RAZON_CIERRE_CASO ?? ''),
     'Sentido de la decisión que resuelve la solicitud': String(raw.G_SENTIDO_DECISION_RESUELVE_RECURSO ?? ''),
     estadoCodigo,
     estadoEtiqueta,
@@ -950,6 +956,25 @@ function gestionMismatchError() {
   return err;
 }
 
+function validateRazonCierreCaso(updates, stored = {}) {
+  const hasCierre = Object.prototype.hasOwnProperty.call(updates, 'CIERRE_CASO');
+  const hasRazon = Object.prototype.hasOwnProperty.call(updates, 'RAZON_CIERRE_CASO');
+  if (!hasCierre && !hasRazon) return;
+
+  const cierre = hasCierre ? updates.CIERRE_CASO : stored.CIERRE_CASO;
+  if (normalizeText(cierre) !== normalizeText('Otro motivo.')) {
+    updates.RAZON_CIERRE_CASO = null;
+    return;
+  }
+  const razon = hasRazon ? updates.RAZON_CIERRE_CASO : stored.RAZON_CIERRE_CASO;
+  if (!String(razon ?? '').trim()) {
+    const err = new Error('Debe diligenciar la razón o explicación del cierre del caso.');
+    err.code = 'PPL_RAZON_CIERRE_REQUERIDA';
+    err.status = 400;
+    throw err;
+  }
+}
+
 async function createActuacionByDocumento(documento, payload) {
   const doc = normalizeDocumento(documento);
   if (!doc) return null;
@@ -961,6 +986,7 @@ async function createActuacionByDocumento(documento, payload) {
   assertSituacionEditable(context);
 
   const updates = splitUpdatesByTable(payload);
+  validateRazonCierreCaso(updates.GESTION);
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
   const normalizedPayload = normalizePayload(payload);
   let defensorCatalogado = null;
@@ -1057,6 +1083,8 @@ async function updateByDocumento(documento, payload) {
     targetGestion = latest;
     targetGestionId = Number(latest?.ID_GESTION || 0) || null;
   }
+
+  validateRazonCierreCaso(updates.GESTION, targetGestion || {});
 
   if (situacionInactiva) {
     // La elegibilidad se comprueba con la fila seleccionada ya guardada.

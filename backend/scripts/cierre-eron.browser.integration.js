@@ -25,7 +25,7 @@ async function run() {
   const suffix = randomBytes(6).toString('hex').toUpperCase();
   const defensor = `DEFENSORA ANTERIOR QA ${suffix}`;
   const oldEron = `ERON ANTERIOR QA ${suffix}`;
-  const motivo = 'Cierre automático por cambio de ERON o regional.';
+  const motivo = 'Cierre automático por cambio de regional.';
   const user = { id: `qa-cierre-${suffix}`, name: 'QA CIERRE ERON', email: `qa.cierre.${suffix.toLowerCase()}@example.test`, provider: 'ldap', roles: ['pag'] };
   const token = signAppToken(user);
   let browser;

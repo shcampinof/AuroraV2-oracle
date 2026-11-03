@@ -1,6 +1,10 @@
 const { execute } = require('../../db/oraclePool');
 const personaRepo = require('./personaRepository');
-const { normalizedMojibakeSqlExpr } = require('./sqlFragments');
+const {
+  normalizedMojibakeSqlExpr, buildActiveSituacionCte, buildReportRegionalClause,
+  buildSindicadoClause, buildCondenadoClause, buildReportEronCtes,
+  buildReportEstablecimientoExpr, REPORT_REGIONAL_SIN_IDENTIFICAR,
+} = require('./sqlFragments');
 const { normalizeSearchText } = require('../../utils/textNormalization');
 
 const DEFENSOR_MATCH_SQL = `(
@@ -128,6 +132,10 @@ async function listAvailableRegionales() {
       SELECT DISTINCT TRIM(TO_CHAR(d.REGIONAL)) AS REGIONAL
       FROM DNDP.DEFENSORES d
       WHERE TRIM(TO_CHAR(d.REGIONAL)) IS NOT NULL
+      UNION
+      SELECT DISTINCT TRIM(TO_CHAR(c.REGIONAL)) AS REGIONAL
+      FROM DNDP.CAT_ERON_REGIONAL c
+      WHERE TRIM(TO_CHAR(c.REGIONAL)) IS NOT NULL
     )
     ORDER BY REGIONAL
   `;
@@ -139,26 +147,66 @@ async function listAvailableRegionales() {
 
 async function listAvailableEstablecimientos() {
   const result = await execute(`
-    SELECT DISTINCT TRIM(TO_CHAR(s.ESTABLECIMIENTO)) AS ESTABLECIMIENTO
-    FROM DNDP.SITUACION_CARCELARIA s
-    WHERE TRIM(TO_CHAR(s.ESTABLECIMIENTO)) IS NOT NULL
-    ORDER BY ESTABLECIMIENTO
+    SELECT DISTINCT TRIM(TO_CHAR(c.ESTABLECIMIENTO)) AS ESTABLECIMIENTO,
+      TRIM(TO_CHAR(c.REGIONAL)) AS REGIONAL
+    FROM DNDP.CAT_ERON_REGIONAL c
+    WHERE TRIM(TO_CHAR(c.ESTABLECIMIENTO)) IS NOT NULL
+      AND TRIM(TO_CHAR(c.REGIONAL)) IS NOT NULL AND NVL(c.ACTIVO, 1) = 1
+    ORDER BY ESTABLECIMIENTO, REGIONAL
   `, {}, { operation: 'reportes.atenciones.listAvailableEstablecimientos' });
-  return (result?.rows || []).map((row) => row.ESTABLECIMIENTO);
+  return result?.rows || [];
+}
+
+async function listDefensorRegionales() {
+  const result = await execute(`
+    ${buildActiveSituacionCte()},
+    ${buildReportEronCtes()},
+    gestiones_regionales AS (
+      SELECT /*+ MATERIALIZE */ DISTINCT TO_CHAR(ag.CEDULA_DEFENSOR) AS CEDULA,
+        TRIM(TO_CHAR(COALESCE(g.DEFENSOR_GESTION, ag.NOMBRE_DEFENSOR))) AS NOMBRE,
+        COALESCE(eron.REGIONAL, '${REPORT_REGIONAL_SIN_IDENTIFICAR}') AS REGIONAL_CASO,
+        CASE WHEN ${buildSindicadoClause()} THEN 1 ELSE 0 END AS ES_SINDICADO
+      FROM DNDP.GESTION_JURIDICA g
+      JOIN DNDP.SITUACION_CARCELARIA s ON s.ID_SITUACION = g.ID_SITUACION
+      LEFT JOIN report_eron_aliases eron_nombre ON eron_nombre.ALIAS = ${normalizedMojibakeSqlExpr(buildReportEstablecimientoExpr())}
+      LEFT JOIN report_erones eron ON eron.CENTRO_ID = eron_nombre.CENTRO_ID
+      LEFT JOIN DNDP.ASIGNACION ag ON ag.ID_ASIGNACION = g.ID_ASIGNACION_GESTION
+        AND ag.ID_PERSONA = s.ID_PERSONA
+      WHERE ${buildCondenadoClause()} OR ${buildSindicadoClause()}
+    )
+    SELECT DISTINCT TO_CHAR(a.CEDULA_DEFENSOR) AS CEDULA,
+      TRIM(TO_CHAR(COALESCE(d.NOMBRE, a.NOMBRE_DEFENSOR))) AS NOMBRE,
+      COALESCE(eron.REGIONAL, '${REPORT_REGIONAL_SIN_IDENTIFICAR}') AS REGIONAL_CASO,
+      CASE WHEN ${buildSindicadoClause()} THEN 1 ELSE 0 END AS ES_SINDICADO
+    FROM DNDP.ASIGNACION a
+    JOIN ranked_situacion s ON s.ID_PERSONA = a.ID_PERSONA AND s.RN = 1
+    LEFT JOIN report_eron_aliases eron_nombre ON eron_nombre.ALIAS = ${normalizedMojibakeSqlExpr(buildReportEstablecimientoExpr())}
+    LEFT JOIN report_erones eron ON eron.CENTRO_ID = eron_nombre.CENTRO_ID
+    LEFT JOIN DNDP.DEFENSORES d ON d.CEDULA = a.CEDULA_DEFENSOR
+    WHERE a.FECHA_FIN IS NULL
+      AND (${buildCondenadoClause()} OR ${buildSindicadoClause()})
+    UNION
+    SELECT DISTINCT g.CEDULA, g.NOMBRE, g.REGIONAL_CASO, g.ES_SINDICADO
+    FROM gestiones_regionales g
+    WHERE g.CEDULA IS NOT NULL OR NVL(${normalizedMojibakeSqlExpr('g.NOMBRE')}, '-') NOT IN ('-', '--')
+  `, {}, { operation: 'reportes.atenciones.listDefensorRegionales' });
+  return result?.rows || [];
 }
 
 // Las nuevas gestiones conservan su autor y su asignación original, incluso
 // después de finalizarla. Las filas legadas sin vínculo mantienen la
 // reconstrucción histórica porque versiones anteriores sobrescribían al autor.
-function buildEventsSql({ tipo = 'all', lugar = '' } = {}) {
-  const locationClause = lugar
+function buildEventsSql({ tipo = 'all', lugar = '', regional = '' } = {}) {
+  const regionalClause = buildReportRegionalClause({ regional, lugar, tipo }).clause;
+  const locationClause = lugar && !regional
     ? `AND ${normalizedMojibakeSqlExpr('s.ESTABLECIMIENTO')} = :lugar`
     : '';
   const tipoClause = tipo === 'all' ? '' : `AND ${normalizedMojibakeSqlExpr(
     "COALESCE(NULLIF(TRIM(TO_CHAR(s.SITUACION_JURIDICA_ACTUALIZADA)), ''), TO_CHAR(s.SITUACION))"
   )} LIKE :tipo`;
   return `
-    WITH personas_del_defensor AS (
+    WITH ${regional ? `${buildReportEronCtes()},` : ''}
+    personas_del_defensor AS (
       SELECT a.ID_PERSONA FROM DNDP.ASIGNACION a WHERE ${DEFENSOR_MATCH_SQL}
       UNION
       SELECT s.ID_PERSONA FROM DNDP.GESTION_JURIDICA g
@@ -166,7 +214,7 @@ function buildEventsSql({ tipo = 'all', lugar = '' } = {}) {
       WHERE ${normalizedMojibakeSqlExpr('g.DEFENSOR_GESTION')} = :defensorNombre
     ),
     gestiones_base AS (
-      ${buildEventBaseSelect(`${locationClause} ${tipoClause}`)}
+      ${buildEventBaseSelect(`${locationClause} ${tipoClause} AND ${regionalClause}`)}
     ),
     eventos AS (
       SELECT SUBSTR(ORIGEN, 1, INSTR(ORIGEN, '_') - 1) AS TIPO,
@@ -262,7 +310,8 @@ function buildEventsSql({ tipo = 'all', lugar = '' } = {}) {
 
 async function listEvents(params) {
   const binds = reportBinds(params);
-  if (params.lugar) binds.lugar = normalizeSearchText(params.lugar);
+  Object.assign(binds, buildReportRegionalClause(params).binds);
+  if (params.lugar && !params.regional) binds.lugar = normalizeSearchText(params.lugar);
   if (params.tipo && params.tipo !== 'all') binds.tipo = params.tipo === 'condenado' ? '%CONDENAD%' : '%SINDICAD%';
   const result = await execute(buildEventsSql(params), binds, { operation: 'reportes.atenciones.listEvents' });
   return Array.isArray(result?.rows) ? result.rows : [];
@@ -276,6 +325,7 @@ module.exports = {
   listAvailableDefensores,
   listAvailableRegionales,
   listAvailableEstablecimientos,
+  listDefensorRegionales,
   listEvents,
   listAssignedCases,
   normalizeDefensorName,

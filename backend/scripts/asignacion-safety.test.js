@@ -59,11 +59,13 @@ async function testGestionUpdateIsScopedToSituation() {
 
   try {
     const repository = require(repositoryPath);
-    await repository.updateGestionById(77, { RESUMEN_ANALISIS_CASO: 'Resumen' }, 20);
+    await repository.updateGestionById(77, { RESUMEN_ANALISIS_CASO: 'Resumen', RAZON_CIERRE_CASO: 'Razón propia' }, 20);
     assert.match(captured.sql, /WHERE ID_GESTION = :idGestion\s+AND ID_SITUACION = :idSituacion/);
     assert.strictEqual(captured.binds.idGestion, 77);
     assert.strictEqual(captured.binds.idSituacion, 20);
     assert.strictEqual(captured.options.autoCommit, true);
+    assert.match(captured.sql, /RAZON_CIERRE_CASO = :v1/);
+    assert.strictEqual(captured.binds.v1, 'Razón propia');
   } finally {
     oraclePool.execute = originalExecute;
     delete require.cache[repositoryPath];
@@ -278,6 +280,8 @@ async function testBothBlock5VariantsPersistEveryFieldInOneSave() {
     S_ACTIVO: 1,
     S_SITUACION: 'Condenado',
     G_ID_GESTION: 77,
+    G_CIERRE_CASO: writes.at(-1)?.fields.CIERRE_CASO,
+    G_RAZON_CIERRE_CASO: writes.at(-1)?.fields.RAZON_CIERRE_CASO,
   }];
   personaRepo.reconcileGestionActionById = async () => ({ updated: 1 });
   gestionRepo.getById = async (idGestion, idSituacion) => (
@@ -344,13 +348,54 @@ async function testBothBlock5VariantsPersistEveryFieldInOneSave() {
     assert(normal.FECHA_INSISTENCIA_1 instanceof Date);
     assert(normal.FECHA_INSISTENCIA_2 instanceof Date);
 
-    await service.updateByDocumento('123', {
+    await assert.rejects(() => service.updateByDocumento('123', {
       actuacionId: '123-77',
       data: {
         'Cierre del caso por imposibilidad de avanzar (si aplica)': 'Otro motivo.',
+        'Razón o explicación del cierre del caso': '   ',
+        'Resumen del análisis del caso': 'El resumen no reemplaza la razón.',
+      },
+    }), (error) => error.code === 'PPL_RAZON_CIERRE_REQUERIDA' && error.status === 400);
+    assert.strictEqual(writes.length, 2, 'No se escribe un cierre sin explicación.');
+
+    await assert.rejects(() => service.createActuacionByDocumento('123', {
+      data: { 'Cierre del caso por imposibilidad de avanzar (si aplica)': 'Otro motivo.' },
+    }), (error) => error.code === 'PPL_RAZON_CIERRE_REQUERIDA');
+    assert.strictEqual(writes.length, 2);
+
+    const closedRecord = await service.updateByDocumento('123', {
+      actuacionId: '123-77',
+      data: {
+        'Cierre del caso por imposibilidad de avanzar (si aplica)': 'Otro motivo.',
+        'Razón o explicación del cierre del caso': 'Explicación específica',
       },
     });
     assert.strictEqual(writes[2].fields.CIERRE_CASO, 'Otro motivo.');
+    assert.strictEqual(writes[2].fields.RAZON_CIERRE_CASO, 'Explicación específica');
+    assert.strictEqual(closedRecord['Razón o explicación del cierre del caso'], 'Explicación específica');
+
+    gestionRepo.getById = async () => ({ ID_GESTION: 77, CIERRE_CASO: 'Otro motivo.', RAZON_CIERRE_CASO: 'Razón guardada' });
+    await assert.rejects(() => service.updateByDocumento('123', {
+      actuacionId: '123-77', data: { 'Razón o explicación del cierre del caso': '' },
+    }), (error) => error.code === 'PPL_RAZON_CIERRE_REQUERIDA');
+    await service.updateByDocumento('123', {
+      actuacionId: '123-77', data: { 'Razón o explicación del cierre del caso': 'Razón corregida' },
+    });
+    assert.strictEqual(writes[3].fields.RAZON_CIERRE_CASO, 'Razón corregida');
+    await service.updateByDocumento('123', {
+      actuacionId: '123-77', data: { 'Cierre del caso por imposibilidad de avanzar (si aplica)': '-' },
+    });
+    assert.deepStrictEqual(writes[4].fields, { CIERRE_CASO: null, RAZON_CIERRE_CASO: null });
+    for (const option of [
+      'Se cierra porque la persona fue trasladada a un eron de competencia de otra regional de la defensoria del pueblo',
+      'Se cierra porque la persona se encuentra en libertad',
+    ]) {
+      const saved = await service.updateByDocumento('123', {
+        actuacionId: '123-77', data: { 'Cierre del caso por imposibilidad de avanzar (si aplica)': option },
+      });
+      assert.deepStrictEqual(writes.at(-1).fields, { CIERRE_CASO: option, RAZON_CIERRE_CASO: null });
+      assert.strictEqual(saved['Cierre del caso por imposibilidad de avanzar (si aplica)'], option);
+    }
   } finally {
     personaRepo.findActiveContextByDocumento = originals.findActiveContextByDocumento;
     personaRepo.listRowsWithActiveSituacionAndGestiones = originals.listRowsWithActiveSituacionAndGestiones;
@@ -358,6 +403,56 @@ async function testBothBlock5VariantsPersistEveryFieldInOneSave() {
     gestionRepo.getById = originals.getById;
     gestionRepo.updateGestionById = originals.updateGestionById;
     delete require.cache[servicePath];
+  }
+}
+
+async function testClosureReasonValidationReachesHttpClients() {
+  const express = require('express');
+  const consolidado = require('../db/oracleConsolidado.repo');
+  const originals = {
+    get: consolidado.getByDocumento,
+    update: consolidado.updateByDocumento,
+    create: consolidado.createActuacionByDocumento,
+  };
+  let tipo = 'Condenado';
+  let failure = Object.assign(new Error('Debe diligenciar la razón o explicación del cierre del caso.'), {
+    status: 400, code: 'PPL_RAZON_CIERRE_REQUERIDA',
+  });
+  consolidado.getByDocumento = async () => ({ 'Situación Jurídica': tipo });
+  consolidado.updateByDocumento = async () => { throw failure; };
+  consolidado.createActuacionByDocumento = async () => { throw failure; };
+  const app = express();
+  app.use(express.json());
+  app.use('/ppl', require('../routes/ppl'));
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((resolve) => server.once('listening', resolve));
+  async function request(method, suffix) {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/ppl/123${suffix}`, {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: { 'Cierre del caso por imposibilidad de avanzar (si aplica)': 'Otro motivo.' } }),
+    });
+    return { status: response.status, body: await response.json() };
+  }
+  try {
+    for (tipo of ['Condenado', 'Sindicado']) {
+      for (const [method, suffix] of [['PUT', ''], ['POST', '/actuaciones']]) {
+        const response = await request(method, suffix);
+        assert.equal(response.status, 400, `${tipo}: ${method} comunica la validación como HTTP 400.`);
+        assert.equal(response.body.code, 'PPL_RAZON_CIERRE_REQUERIDA');
+        assert.equal(response.body.message, failure.message);
+      }
+    }
+    failure = new Error('Fallo interno simulado');
+    for (const [method, suffix] of [['PUT', ''], ['POST', '/actuaciones']]) {
+      const response = await request(method, suffix);
+      assert.equal(response.status, 500, 'Un fallo inesperado conserva HTTP 500.');
+      assert(!response.body.message.includes(failure.message), 'No se expone el detalle interno.');
+    }
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    consolidado.getByDocumento = originals.get;
+    consolidado.updateByDocumento = originals.update;
+    consolidado.createActuacionByDocumento = originals.create;
   }
 }
 
@@ -498,6 +593,7 @@ function testNewDefenderNameIsUppercaseAndAccentFree() {
   await testBulkUnassignmentClosesOnlyEligibleActiveAssignments();
   await testNewActuacionAlwaysPersistsCanonicalAction();
   await testBothBlock5VariantsPersistEveryFieldInOneSave();
+  await testClosureReasonValidationReachesHttpClients();
   await testExplicitGestionMustBelongToCurrentSituationBeforeWriting();
   await testApiAlwaysExposesOracleDerivedStateAsAction();
   testUpdatedLegalSituationHasPriority();

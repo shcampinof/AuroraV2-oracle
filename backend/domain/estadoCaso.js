@@ -1,6 +1,7 @@
 const { normalizeSearchText } = require('../utils/textNormalization');
 
 const ESTADOS_CASO = Object.freeze([
+  { codigo: 'SIN_ASIGNACION', etiqueta: 'Sin asignación' },
   { codigo: 'ANALIZAR_CASO', etiqueta: 'Analizar el caso' },
   { codigo: 'ENTREVISTAR_USUARIO', etiqueta: 'Entrevistar al usuario' },
   { codigo: 'PRESENTAR_SOLICITUD', etiqueta: 'Presentar solicitud' },

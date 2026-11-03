@@ -33,6 +33,11 @@ function buildBloque3Base(): Record<string, unknown> {
 }
 
 describe('estadoActuaciones.rules', () => {
+  it('conserva el estado confirmado sin asignación con color neutro', () => {
+    expect(getEstadoDisplayInfo({ estadoCodigo: 'SIN_ASIGNACION' })).toEqual({
+      label: 'Sin asignación', className: 'estado--gris',
+    });
+  });
   it('ESTADO.ANALIZAR.1 - etiqueta Analizar el caso cuando el caso no tiene analisis completo', () => {
     const estado = obtenerEstadoActuacion({ fechaAsignacionPAG: formatDateDaysAgo(10) });
     expect(estado.etiqueta).toBe('Analizar el caso');

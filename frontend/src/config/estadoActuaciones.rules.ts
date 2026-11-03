@@ -88,6 +88,7 @@ export function normalizeEstadoActuacion(value: unknown): string {
 function canonicalEstadoLabel(value: unknown): string {
   const code = toText(value).toUpperCase();
   const codeLabels: Record<string, string> = {
+    SIN_ASIGNACION: 'Sin asignación',
     ANALIZAR_CASO: 'Analizar el caso',
     ENTREVISTAR_USUARIO: 'Entrevistar al usuario',
     PENDIENTE_AUDIENCIA: 'Pendiente audiencia',
@@ -99,6 +100,7 @@ function canonicalEstadoLabel(value: unknown): string {
   };
   if (codeLabels[code]) return codeLabels[code];
   const key = normalizeEstadoActuacion(value).replace(/[_-]+/g, ' ').trim();
+  if (key === 'sin asignacion') return 'Sin asignación';
   if (key === 'analizar el caso') return 'Analizar el caso';
   if (key === 'entrevistar al usuario') return 'Entrevistar al usuario';
   if (key === 'pendiente audiencia') return 'Pendiente audiencia';
@@ -115,6 +117,7 @@ function canonicalEstadoLabel(value: unknown): string {
 
 export function getEstadoClassByLabel(estado: unknown): string {
   const key = normalizeEstadoActuacion(estado);
+  if (key === 'sin asignacion') return 'estado--gris';
   if (key === 'analizar el caso') return 'estado--verde';
   if (key === 'entrevistar al usuario') return 'estado--amarillo';
   if (key === 'pendiente audiencia') return 'estado--azul';
@@ -278,6 +281,9 @@ export function obtenerEstadoActuacion(record: unknown): EstadoActuacionInfo {
   );
   const estadoKey = normalizeEstadoActuacion(confirmedStatus || derivedStatus);
 
+  if (estadoKey === 'sin asignacion') {
+    return buildEstadoInfo(estadoKey, 'Sin asignación', 'estado--gris');
+  }
   // Regla: ESTADO.CASO_CERRADO.1
   if (estadoKey === 'caso cerrado') {
     return buildEstadoInfo(estadoKey, 'Caso cerrado', 'estado--gris');

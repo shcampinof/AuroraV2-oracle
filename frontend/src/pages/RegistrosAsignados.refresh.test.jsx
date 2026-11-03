@@ -81,6 +81,49 @@ describe('actualización automática de usuarios asignados', () => {
     await act(async () => window.dispatchEvent(new CustomEvent(PPL_DATA_UPDATED_EVENT)));
   }
 
+  async function selectFilter(label, value) {
+    const field = [...container.querySelectorAll('label')].find((item) => item.textContent === label);
+    expect(field).toBeDefined();
+    const control = document.getElementById(field.htmlFor);
+    await act(async () => {
+      control.value = value;
+      control.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    return control;
+  }
+
+  it('busca por regional y tiempo del estado y los conserva al paginar', async () => {
+    getCondenadosFilterOptions.mockResolvedValue({ regionales: ['BOYACÁ'] });
+    await notify();
+    await selectFilter('Regional', 'BOYACÁ');
+    await selectFilter('Tiempo del estado', 'rojo');
+    const additionalLabel = [...container.querySelectorAll('label')].find((item) => item.textContent === 'Filtrar');
+    const additional = document.getElementById(additionalLabel.htmlFor);
+    expect([...additional.options].map((item) => item.textContent).join(' ')).not.toContain('Regional');
+    expect([...additional.options].map((item) => item.textContent).join(' ')).not.toContain('Prioridad');
+    await selectFilter('Filtrar', 'nombre');
+    await click('Buscar');
+    expect(getCondenados.mock.lastCall[0].filters).toMatchObject({ regional: 'BOYACÁ', prioridadGestion: 'rojo' });
+    await click('Siguiente');
+    expect(getCondenados.mock.lastCall[0]).toMatchObject({ page: 2, filters: { regional: 'BOYACÁ', prioridadGestion: 'rojo' } });
+    await click('Limpiar');
+    const primarySelects = [...container.querySelectorAll('.asignados-filter-grid select')];
+    expect(primarySelects.every((item) => item.value === '')).toBe(true);
+  });
+
+  it('permite buscar sin asignación y usa el color calculado en el servidor', async () => {
+    const data = payload();
+    data.rows[0] = { ...data.rows[0], situacionActiva: true, estadoCodigo: 'SIN_ASIGNACION',
+      estadoEtiqueta: 'Sin asignación', prioridadGestion: 'gris' };
+    getCondenados.mockResolvedValue(data);
+    await selectFilter('Acción a Impulsar / estado', 'SIN_ASIGNACION');
+    await click('Buscar');
+    expect(getCondenados.mock.lastCall[0].filters.estadoCodigo).toBe('SIN_ASIGNACION');
+    expect(container.querySelector('.estadoBadge').textContent).toBe('Sin asignación');
+    expect(container.querySelector('.estadoBadge').classList.contains('estado--gris')).toBe(true);
+    expect(container.querySelector('table').style.width).toMatch(/px$/);
+  });
+
   it('mantiene las filas y permite abrir el formulario mientras actualiza en segundo plano', async () => {
     await search();
     const update = deferred();

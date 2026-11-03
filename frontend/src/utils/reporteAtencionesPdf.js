@@ -1,3 +1,4 @@
+import { jsPDF } from 'jspdf';
 import { LOGO_AURORA_URL, LOGO_DEFENSORIA_URL } from '../config/externalAssets.js';
 import { calculateTotalActuaciones } from './reporteAtencionesSummary.js';
 
@@ -23,19 +24,28 @@ export function sanitizeReportFilePart(value) {
 function imageUrlToDataUrl(url) {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    image.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = image.naturalWidth;
-      canvas.height = image.naturalHeight;
-      const context = canvas.getContext('2d');
-      if (!context) {
-        reject(new Error('No fue posible preparar los logos institucionales.'));
-        return;
-      }
-      context.drawImage(image, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
+    const finish = (error, value) => {
+      clearTimeout(timer);
+      image.onload = null;
+      image.onerror = null;
+      if (error) reject(error);
+      else resolve(value);
     };
-    image.onerror = () => reject(new Error('No fue posible cargar los logos institucionales.'));
+    const timer = setTimeout(() => finish(new Error('Se agotó el tiempo de carga del logo institucional.')), 5000);
+    image.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('No fue posible preparar los logos institucionales.');
+        context.drawImage(image, 0, 0);
+        finish(null, canvas.toDataURL('image/png'));
+      } catch (error) {
+        finish(error);
+      }
+    };
+    image.onerror = () => finish(new Error('No fue posible cargar los logos institucionales.'));
     image.src = url;
   });
 }
@@ -116,10 +126,6 @@ function buildDocument(pdf, report, logos) {
   [
     ['Fecha inicio reporte', formatReportDate(report.metadata.fechaInicio)],
     ['Fecha final reporte', formatReportDate(report.metadata.fechaFin)],
-    ['Tipo de caso', { condenado: 'Condenados', sindicado: 'Sindicados' }[report.metadata.tipo] || 'Condenados y sindicados'],
-    ['Establecimiento', report.metadata.lugar || 'Todos los establecimientos'],
-    ['Conteo de personas asignadas', report.metadata.incluirFueraPrision ? 'Actual, incluye personas fuera de prisión' : 'Actual, personas que siguen en prisión'],
-    ['Alcance de las fechas', 'Actuaciones del periodo. Cierres: fecha disponible de decisión o gestión.'],
   ].forEach(([label, value]) => {
     addCell(pdf, label, margin, y, metaLeft, 21, { bold: true, fill: LIGHT_BLUE, size: 8.5 });
     addCell(pdf, value, margin + metaLeft, y, contentWidth - metaLeft, 21, { size: 8.5 });
@@ -143,12 +149,11 @@ function buildDocument(pdf, report, logos) {
     ['1.5. Número de recursos presentados', report.resumen.recursosPresentados],
     ['1.6. Número de casos cerrados durante el periodo', report.resumen.casosCerrados],
     ['1.7. Número total de actuaciones adelantadas en el periodo', calculateTotalActuaciones(report.resumen)],
-    ['2. Personas asignadas actualmente y gestión durante el periodo', ''],
+    ['2. Conteo total de personas con actuaciones durante el periodo', ''],
     ['2.1. Número de personas asignadas al defensor público', report.resumen.personasAsignadas],
     ['2.2. Número de personas activas (asignadas que aún no se han cerrado)', report.resumen.personasActivas],
     ['2.3. Número de personas activas que reportan alguna gestión de atención jurídica durante el periodo', report.resumen.personasActivasConGestion],
     ['2.4. Número de personas a quienes se les cerró el caso durante el periodo', report.resumen.personasConCasoCerrado],
-    ['2.5. Personas asignadas fuera de prisión incluidas en el conteo actual', report.resumen.personasFueraPrision || 0],
     ['2.6. Número total de personas con casos cerrados', report.resumen.totalPersonasConCasosCerrados],
   ];
   summaryRows.forEach(([label, value], index) => {
@@ -206,7 +211,6 @@ function buildDocument(pdf, report, logos) {
   detailTable('Detalle de solicitudes presentadas (1.3.)', report.detalles.solicitudes, 'Fecha de presentación de la solicitud');
   detailTable('Detalle de reiteraciones presentadas (1.4.)', report.detalles.reiteraciones, 'Fecha de reiteración');
   detailTable('Detalle de recursos presentados (1.5.)', report.detalles.recursos, 'Fecha de presentación del recurso');
-  detailTable('Detalle de cierres jurídicos (1.6.; fecha disponible de decisión o gestión)', report.detalles.casosCerrados || [], 'Fecha de referencia');
   detailTable('Estado actual de los casos asignados', report.detalles.casosAsignados, 'Estado');
 
   const pageCount = pdf.getNumberOfPages();
@@ -223,7 +227,6 @@ function buildDocument(pdf, report, logos) {
 }
 
 export async function downloadReporteAtencionesPdf(report) {
-  const { jsPDF } = await import('jspdf');
   const pdf = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait', compress: true });
   const [defensoria, aurora] = await Promise.all([
     imageUrlToDataUrl(LOGO_DEFENSORIA_URL).catch(() => ''),
@@ -241,5 +244,5 @@ export async function downloadReporteAtencionesPdf(report) {
     report.metadata.fechaInicio.replaceAll('-', ''),
     report.metadata.fechaFin.replaceAll('-', ''),
   ].join('_');
-  pdf.save(`${fileName}.pdf`);
+  await pdf.save(`${fileName}.pdf`, { returnPromise: true });
 }

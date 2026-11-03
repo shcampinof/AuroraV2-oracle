@@ -3,6 +3,7 @@ import math
 import os
 import re
 import sys
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -171,7 +172,7 @@ SISIPEC_COLUMNS = [
 
 SISIPEC_DATE_COLUMNS = {"FECHA_NACIMIENTO", "FECHA_CALIFICACION", "FECHA_CAPTURA", "FECHA_CORTE"}
 SISIPEC_NUMBER_COLUMNS = {
-    "EDAD", "ENFOQUE", "PENA", "PENA_DIAS", "REDENCION", "PRIVACION",
+    "EDAD", "PENA", "PENA_DIAS", "REDENCION", "PRIVACION",
     "TIEMPO_EFECTIVO", "PORCENTAJE",
 }
 
@@ -267,7 +268,7 @@ CREATE TABLE {qualified_name("SISIPEC")} (
     GENERO              NVARCHAR2(50),
     FECHA_NACIMIENTO    DATE,
     EDAD                NUMBER,
-    ENFOQUE             NUMBER,
+    ENFOQUE             NVARCHAR2(2000),
     ESTABLECIMIENTO     NVARCHAR2(400),
     DEPARTAMENTO        NVARCHAR2(255),
     MUNICIPIO           NVARCHAR2(255),
@@ -447,12 +448,53 @@ def read_aurora(path, config):
 def read_sisipec(path, config):
     df = pd.read_excel(path, dtype=str)
     df.columns = [str(column).strip().upper() for column in df.columns]
+    df = df.dropna(how="all")
+    # Incluye encabezados repetidos (ENFOQUE.1), numerados y descriptivos.
+    enfoque_indexes = [
+        index for index, column in enumerate(df.columns)
+        if re.match(r"^ENFOQUES?(?:$|[\W_]|[0-9])", column)
+    ]
+    if enfoque_indexes:
+        enfoques = pd.Series(
+            [
+                concatenate_enfoques(values)
+                for values in df.iloc[:, enfoque_indexes].itertuples(index=False, name=None)
+            ],
+            index=df.index,
+            dtype=object,
+        )
+        too_long = enfoques.str.len().gt(2000)
+        if too_long.any():
+            excel_row = int(too_long[too_long].index[0]) + 2
+            raise ValueError(f"El enfoque de la fila {excel_row} supera los 2000 caracteres.")
+        df = df.drop(columns=[df.columns[index] for index in enfoque_indexes])
+        df["ENFOQUE"] = enfoques
+        print(f"  Columnas de enfoque combinadas: {len(enfoque_indexes)}")
+        print(f"  Filas con enfoque: {int(enfoques.notna().sum()):,}")
     missing = [column for column in config.columns if column not in df.columns]
     for column in missing:
         df[column] = None
     if missing:
         print(f"  Advertencia: columnas faltantes cargadas como NULL: {', '.join(missing)}")
     return df.dropna(how="all").reset_index(drop=True)[config.columns]
+
+
+def concatenate_enfoques(values):
+    parts = []
+    seen = set()
+    for value in values:
+        if is_null(value):
+            continue
+        text = str(value).strip()
+        key = "".join(
+            char for char in unicodedata.normalize("NFD", text.casefold())
+            if not unicodedata.combining(char)
+        )
+        key = " ".join(key.split())
+        if key not in seen:
+            seen.add(key)
+            parts.append(text)
+    return "; ".join(parts) or None
 
 
 def read_ponal(path, config):
@@ -720,10 +762,209 @@ def insert_rows(connection, cursor, df, config):
     return inserted, errors
 
 
-def call_etl(connection, cursor, config):
+def ensure_sisipec_enfoque_capacity(cursor, connection, config):
+    if config.key != "sisipec":
+        return
+    owner, _ = parse_qualified_object(config.qualified_table)
+    cursor.execute(
+        """
+        SELECT DATA_TYPE, CHAR_LENGTH
+          FROM ALL_TAB_COLUMNS
+         WHERE OWNER = :1
+           AND TABLE_NAME = 'SITUACION_CARCELARIA'
+           AND COLUMN_NAME = 'ENFOQUE'
+        """,
+        [owner],
+    )
+    row = cursor.fetchone()
+    if not row or str(row[0]).upper() != "NVARCHAR2":
+        raise RuntimeError("SITUACION_CARCELARIA.ENFOQUE debe ser de tipo NVARCHAR2.")
+    if int(row[1] or 0) < 2000:
+        cursor.execute(
+            f"ALTER TABLE {qualified_name('SITUACION_CARCELARIA', owner)} "
+            "MODIFY (ENFOQUE NVARCHAR2(2000))"
+        )
+        connection.commit()
+        print("  SITUACION_CARCELARIA.ENFOQUE ampliada a 2000 caracteres.")
+
+
+def synchronize_sisipec_enfoques(cursor, df, config):
+    if config.key != "sisipec":
+        return
+    # El ETL no copia ENFOQUE. Completar solo las situaciones vigentes de
+    # SISIPEC; un archivo sin enfoque no borra correcciones del formulario.
+    enfoques = {}
+    for numero, enfoque in df[["NUMERO", "ENFOQUE"]].itertuples(index=False, name=None):
+        digits = re.sub(r"[^0-9]", "", str(numero)) if not is_null(numero) else ""
+        if digits and not is_null(enfoque):
+            enfoques[int(digits)] = str(enfoque).strip()
+    owner, _ = parse_qualified_object(config.qualified_table)
+    sql = f"""
+        UPDATE {qualified_name('SITUACION_CARCELARIA', owner)}
+           SET ENFOQUE = :1
+         WHERE ACTIVO = 1
+           AND FUENTE = 'SISIPEC'
+           AND ID_PERSONA IN (
+               SELECT ID_PERSONA FROM {qualified_name('PERSONA', owner)} WHERE NUMERO = :2
+           )
+    """
+    data = [(enfoque, numero) for numero, enfoque in enfoques.items()]
+    updated = 0
+    for start in range(0, len(data), BATCH_SIZE):
+        cursor.executemany(sql, data[start:start + BATCH_SIZE])
+        updated += cursor.rowcount
+    print(f"  Situaciones vigentes con enfoque actualizado: {updated:,}")
+
+
+# Solo estos cambios obligan a revisar otra vez una gestión del equipo bot.
+# Pena, privación, redención, tiempo efectivo, porcentaje y conducta (incluida
+# su fecha) se actualizan normalmente y no son disparadores de cierre.
+SISIPEC_BOT_REVIEW_FIELDS = (
+    "FECHA_CAPTURA", "SITUACION", "AUTORIDAD", "PROCESO", "DELITOS",
+    "FASE", "REQUERIMIENTOS", "CATEGORIZACION",
+)
+SISIPEC_BOT_NAME = "EQUIPO PPL DNDP"
+SISIPEC_BOT_CLOSURE = "Cierre automático por actualización relevante de SISIPEC."
+
+
+def normalize_sisipec_review_value(field, value):
+    if field == "FASE":
+        text = "" if is_null(value) else " ".join(str(value).upper().split())
+        return {
+            "OBS": "OBSERVACION", "OBSERVACION": "OBSERVACION",
+            "ALT": "ALTA", "ALTA": "ALTA", "MED": "MEDIANA", "MEDIANA": "MEDIANA",
+            "MIN": "MINIMA", "MINIMA": "MINIMA", "CON": "CONFIANZA", "CONFIANZA": "CONFIANZA",
+        }.get(text, "NO REPORTA")
+    if is_null(value):
+        return None
+    if field == "FECHA_CAPTURA":
+        date = clean_value(value, field, SOURCES["sisipec"])
+        return date.date() if date else None
+    text = " ".join(str(value).upper().split())
+    if field == "PROCESO":
+        return re.sub(r"[^0-9]", "", text) or None
+    if field == "REQUERIMIENTOS":
+        return {"S": "SI", "N": "NO"}.get(text, text)
+    return text
+
+
+def sisipec_bot_changed_fields(previous, incoming):
+    return tuple(
+        field for field in SISIPEC_BOT_REVIEW_FIELDS
+        if normalize_sisipec_review_value(field, previous.get(field))
+        != normalize_sisipec_review_value(field, incoming.get(field))
+    )
+
+
+def capture_sisipec_bot_transitions(cursor, df, config):
+    if config.key != "sisipec":
+        return []
+    incoming = {}
+    for row in df.to_dict("records"):
+        numero = re.sub(r"[^0-9]", "", str(row.get("NUMERO", "")))
+        if numero:
+            incoming[int(numero)] = row
+    owner, _ = parse_qualified_object(config.qualified_table)
+    cursor.execute(f"""
+        SELECT p.NUMERO, s.ID_PERSONA, s.ID_SITUACION,
+               {', '.join('s.' + field for field in SISIPEC_BOT_REVIEW_FIELDS)},
+               a.ID_ASIGNACION,
+               (SELECT g.ID_GESTION FROM {qualified_name('GESTION_JURIDICA', owner)} g
+                 WHERE g.ID_SITUACION = s.ID_SITUACION
+                 ORDER BY g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
+                 FETCH FIRST 1 ROWS ONLY) AS ID_GESTION
+          FROM {qualified_name('SITUACION_CARCELARIA', owner)} s
+          JOIN {qualified_name('PERSONA', owner)} p ON p.ID_PERSONA = s.ID_PERSONA
+          JOIN {qualified_name('ASIGNACION', owner)} a ON a.ID_PERSONA = s.ID_PERSONA
+         WHERE s.ACTIVO = 1 AND a.FECHA_FIN IS NULL
+           AND UPPER(TRIM(REGEXP_REPLACE(a.NOMBRE_DEFENSOR, '[[:space:]]+', ' '))) = :1
+    """, [SISIPEC_BOT_NAME])
+    columns = [column[0] for column in cursor.description]
+    transitions = []
+    for values in cursor.fetchall():
+        previous = dict(zip(columns, values))
+        row = incoming.get(previous["NUMERO"])
+        if row is None:
+            continue
+        changed = sisipec_bot_changed_fields(previous, row)
+        if changed:
+            transitions.append({**previous, "CHANGED_FIELDS": changed})
+    return transitions
+
+
+def apply_sisipec_bot_transitions(cursor, transitions, config):
+    if config.key != "sisipec" or not transitions:
+        return 0
+    owner, _ = parse_qualified_object(config.qualified_table)
+    persona = qualified_name("PERSONA", owner)
+    situacion = qualified_name("SITUACION_CARCELARIA", owner)
+    asignacion = qualified_name("ASIGNACION", owner)
+    gestion = qualified_name("GESTION_JURIDICA", owner)
+    applied = 0
+    for transition in transitions:
+        # Serializa con PAG. Una asignación nueva durante el ETL no se termina.
+        cursor.execute(f"SELECT ID_PERSONA FROM {persona} WHERE ID_PERSONA = :1 FOR UPDATE",
+                       [transition["ID_PERSONA"]])
+        cursor.fetchone()
+        cursor.execute(f"""
+            SELECT ID_ASIGNACION FROM {asignacion}
+             WHERE ID_PERSONA = :1 AND FECHA_FIN IS NULL
+        """, [transition["ID_PERSONA"]])
+        assignment = cursor.fetchone()
+        if not assignment or assignment[0] != transition["ID_ASIGNACION"]:
+            # Incluye los traslados regionales que ya resolvió el procedimiento.
+            continue
+        cursor.execute(f"SELECT ID_SITUACION FROM {situacion} WHERE ID_PERSONA = :1 AND ACTIVO = 1",
+                       [transition["ID_PERSONA"]])
+        current = cursor.fetchone()
+        if not current:
+            raise RuntimeError("El ETL no dejó una situación activa para revisar la gestión del bot.")
+        if transition["ID_GESTION"] is not None:
+            # El ETL puede trasladar la gestión a otra situación. Su ID y autor
+            # identifican el trabajo anterior; no se cierra una gestión nueva.
+            cursor.execute(f"""
+                UPDATE {gestion} g
+                   SET g.CIERRE_CASO = :motivo,
+                       g.DEFENSOR_GESTION = NVL(g.DEFENSOR_GESTION, :defensor),
+                       g.ID_ASIGNACION_GESTION = NVL(g.ID_ASIGNACION_GESTION, :asignacion)
+                 WHERE g.ID_GESTION = :gestion
+                   AND g.CIERRE_CASO IS NULL
+                   AND (g.DEFENSOR_GESTION IS NULL OR
+                        UPPER(TRIM(REGEXP_REPLACE(g.DEFENSOR_GESTION, '[[:space:]]+', ' '))) = :defensor)
+                   AND g.ID_SITUACION IN (SELECT ID_SITUACION FROM {situacion} WHERE ID_PERSONA = :persona)
+            """, {"motivo": SISIPEC_BOT_CLOSURE, "defensor": SISIPEC_BOT_NAME,
+                  "asignacion": assignment[0], "gestion": transition["ID_GESTION"],
+                  "persona": transition["ID_PERSONA"]})
+        cursor.execute(f"UPDATE {asignacion} SET FECHA_FIN = SYSDATE WHERE ID_ASIGNACION = :1 AND FECHA_FIN IS NULL",
+                       [assignment[0]])
+        # El ETL conserva la situación vigente. La nueva atención no hereda los
+        # hitos del bot y queda disponible para asignarla desde PAG.
+        cursor.execute(f"""
+            DECLARE
+                v_max NUMBER;
+                v_id NUMBER;
+            BEGIN
+                SELECT NVL(MAX(ID_GESTION), 0) INTO v_max FROM {gestion};
+                LOOP
+                    SELECT {qualified_name('SEQ_GESTION', owner)}.NEXTVAL INTO v_id FROM dual;
+                    EXIT WHEN v_id > v_max;
+                END LOOP;
+                INSERT INTO {gestion} (ID_GESTION, ID_SITUACION, FECHA_REGISTRO)
+                VALUES (v_id, :1, SYSTIMESTAMP);
+            END;
+        """, [current[0]])
+        applied += 1
+    print(f"  Gestiones del bot disponibles para nueva asignación: {applied:,}")
+    return applied
+
+
+def call_etl(connection, cursor, config, df):
     print(f"[5/6] Ejecutando {config.procedure}...")
     try:
+        transitions = capture_sisipec_bot_transitions(cursor, df, config)
         cursor.callproc(config.procedure)
+        apply_sisipec_bot_transitions(cursor, transitions, config)
+        synchronize_sisipec_enfoques(cursor, df, config)
         connection.commit()
     except oracledb.Error as exc:
         connection.rollback()
@@ -734,6 +975,9 @@ def call_etl(connection, cursor, config):
             print_ponal_input_diagnostics(cursor, config)
             print_not_null_diagnostics(cursor)
         raise RuntimeError(detail) from exc
+    except Exception:
+        connection.rollback()
+        raise
     print("  Procedimiento ejecutado correctamente.")
 
 
@@ -767,12 +1011,13 @@ def run_load(source, file_path, execute_etl=True):
     try:
         if execute_etl:
             validate_etl_procedure(cursor, config)
+            ensure_sisipec_enfoque_capacity(cursor, connection, config)
         prepare_table(cursor, connection, config)
         inserted, errors = insert_rows(connection, cursor, df, config)
         if errors:
             print(f"[5/6] Se omite ETL porque la carga tuvo {len(errors):,} errores.")
         elif execute_etl:
-            call_etl(connection, cursor, config)
+            call_etl(connection, cursor, config, df)
         else:
             print("[5/6] ETL omitido por parametro --no-etl.")
     finally:

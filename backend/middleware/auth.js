@@ -1,4 +1,4 @@
-const { isLocalAdminEnabled, verifyAppToken } = require('../services/authService');
+const { isLocalAdminEnabled, isManagedUserAccessEnabled, verifyAppToken } = require('../services/authService');
 const { findUser } = require('../services/userDirectoryService');
 
 function requireAuth(req, res, next) {
@@ -41,6 +41,13 @@ function requireAuth(req, res, next) {
     roles: Array.isArray(claims.roles) ? claims.roles : [],
   };
   const managedUser = isInstitutionalProvider ? findUser(tokenUser) : null;
+
+  if (isInstitutionalProvider && isManagedUserAccessEnabled() && !managedUser) {
+    return res.status(403).json({
+      message: 'Su usuario no se encuentra autorizado para ingresar a AURORA.',
+      code: 'AUTH_USER_NOT_ALLOWED',
+    });
+  }
 
   if (managedUser?.enabled === false) {
     return res.status(403).json({

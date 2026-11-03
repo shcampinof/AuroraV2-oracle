@@ -35,7 +35,7 @@ async function run() {
     ),
     gestion_fixture AS (
       SELECT 100 ID_GESTION, 10 ID_SITUACION, 501 ID_ASIGNACION_GESTION,
-        'Cierre automático por cambio de ERON o regional.' CIERRE_CASO,
+        'Cierre automático por cambio de regional.' CIERRE_CASO,
         'DEFENSORA ANTERIOR' DEFENSOR_GESTION, DATE '2026-01-01' FECHA_REGISTRO FROM dual
       UNION ALL SELECT 101, 11, 502, CAST(NULL AS VARCHAR2(200)), 'DEFENSOR ACTUAL', DATE '2026-10-19' FROM dual
       UNION ALL SELECT 102, 12, NULL, 'Cierre automático por cambio de ERON o regional.', 'DEFENSORA LEGADA', DATE '2025-01-01' FROM dual

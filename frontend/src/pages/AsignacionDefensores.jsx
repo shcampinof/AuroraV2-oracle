@@ -17,6 +17,7 @@ import { getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
 import { displayOrDash } from '../utils/pplDisplay.js';
 import { reportError } from '../utils/reportError.js';
 import { buildAsignacionBackendFilters } from '../utils/asignacionDefensores.js';
+import { hasAssignmentRole } from '../utils/assignmentAccess.js';
 import {
   isNombreDefensorValido,
   normalizeDefensorNombre,
@@ -93,7 +94,8 @@ const AsignacionRow = memo(function AsignacionRow({ row, selected, onToggle }) {
   );
 });
 
-function AsignacionDefensores({ tipo = 'condenado' }) {
+function AsignacionDefensores({ tipo = 'condenado', user }) {
+  const esDndp = hasAssignmentRole(user, 'dndp');
   const tipoAsignacion = String(tipo || '').trim().toLowerCase() === 'sindicado' ? 'sindicado' : 'condenado';
   const esSindicado = tipoAsignacion === 'sindicado';
   const [tab, setTab] = useState('asignacion'); // 'asignacion' | 'reasignacion' | 'eliminarAsignaciones' | 'crearDefensor'
@@ -132,6 +134,7 @@ function AsignacionDefensores({ tipo = 'condenado' }) {
   const [pagCedula, setPagCedula] = useState('');
   const [pagValidado, setPagValidado] = useState(null);
   const [validandoPag, setValidandoPag] = useState(false);
+  const accesoAsignacion = esDndp || Boolean(pagValidado?.cedula);
 
   const [fDocumento, setFDocumento] = useState('');
   const [fDepartamento, setFDepartamento] = useState('');
@@ -537,7 +540,7 @@ function AsignacionDefensores({ tipo = 'condenado' }) {
   }
 
   async function guardarAsignacion() {
-    if (!pagValidado?.cedula) {
+    if (!accesoAsignacion) {
       setError('Debe validar la cedula del PAG antes de guardar.');
       return;
     }
@@ -587,7 +590,7 @@ function AsignacionDefensores({ tipo = 'condenado' }) {
         ? String(nuevoDefensorId || '').trim()
         : '';
       const data = await assignDefensorPpl(documentos, defensor, {
-        pagCedula: pagValidado.cedula,
+        ...(!esDndp ? { pagCedula: pagValidado.cedula } : {}),
         ...(defensorCedula ? { defensorCedula } : {}),
       });
 
@@ -613,7 +616,7 @@ function AsignacionDefensores({ tipo = 'condenado' }) {
   }
 
   async function eliminarAsignacionesSeleccionadas() {
-    if (!pagValidado?.cedula) {
+    if (!accesoAsignacion) {
       setError('Debe validar la cedula del PAG antes de eliminar asignaciones.');
       return;
     }
@@ -632,7 +635,7 @@ function AsignacionDefensores({ tipo = 'condenado' }) {
     setError('');
     setToastOpen(false);
     try {
-      const data = await unassignDefensorPpl(documentos, { pagCedula: pagValidado.cedula });
+      const data = await unassignDefensorPpl(documentos, esDndp ? {} : { pagCedula: pagValidado.cedula });
       setToastMessage(
         isQueuedResponse(data)
           ? 'Eliminación de asignaciones guardada en cola. Se sincronizará cuando vuelva la conexión.'
@@ -894,6 +897,7 @@ function AsignacionDefensores({ tipo = 'condenado' }) {
         </div>
       ) : (
         <>
+      {esDndp ? <p className="hint-text" style={{ marginTop: '1rem' }}>Acceso DNDP: puede gestionar asignaciones sin registrar cédula ni regional PAG.</p> : (
       <div className="card" style={{ marginTop: '1rem' }}>
         <h3 className="block-title">Validacion de PAG</h3>
         <div className="grid-2">
@@ -934,8 +938,9 @@ function AsignacionDefensores({ tipo = 'condenado' }) {
           </div>
         </div>
       </div>
+      )}
 
-      {pagValidado?.cedula ? (
+      {accesoAsignacion ? (
         <>
       <div className="filter-panel" style={{ marginTop: '1rem' }}>
         <h3 className="filter-title">Filtros</h3>
@@ -1167,12 +1172,12 @@ function AsignacionDefensores({ tipo = 'condenado' }) {
               className="danger-button"
               type="button"
               onClick={eliminarAsignacionesSeleccionadas}
-              disabled={cargando || !pagValidado?.cedula || seleccionados.size === 0}
+              disabled={cargando || !accesoAsignacion || seleccionados.size === 0}
             >
               ELIMINAR ASIGNACIONES
             </button>
           ) : (
-            <button className="save-button" onClick={guardarAsignacion} disabled={cargando || !pagValidado?.cedula}>
+            <button className="save-button" onClick={guardarAsignacion} disabled={cargando || !accesoAsignacion}>
               {tab === 'asignacion' ? 'GUARDAR ASIGNACIÓN' : 'GUARDAR REASIGNACIÓN'}
             </button>
           )}

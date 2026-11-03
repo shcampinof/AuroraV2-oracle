@@ -1,6 +1,7 @@
 const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const reporteRepo = require('../repositories/oracle/reporteAtencionesRepository');
-const { listAcciones, resolveAccionCodigo } = require('../domain/catalogosHomologacion');
+const { REPORT_REGIONAL_SIN_IDENTIFICAR } = require('../repositories/oracle/sqlFragments');
+const { listAcciones, resolveAccionCodigo, resolveCentro } = require('../domain/catalogosHomologacion');
 const {
   choosePreferredDisplayText,
   normalizeWhitespace,
@@ -143,13 +144,53 @@ function buildDefensorOptions(rows = []) {
   return options.sort((left, right) => left.label.localeCompare(right.label, 'es'));
 }
 
+function attachCaseRegionales(options, rows) {
+  const byId = new Map(options.map((item) => [item.id, new Set()]));
+  const sindicadoIds = new Set();
+  const byName = new Map();
+  options.forEach((item) => {
+    const key = reporteRepo.normalizeDefensorName(item.nombre);
+    byName.set(key, [...(byName.get(key) || []), item]);
+  });
+  rows.forEach((row) => {
+    const regional = normalizeWhitespace(repairKnownMojibake(row.REGIONAL_CASO));
+    const cedula = defensoresRepo.normalizeCedula(row.CEDULA);
+    const name = reporteRepo.normalizeDefensorName(row.NOMBRE);
+    const sameName = byName.get(name) || [];
+    let id = cedula;
+    if (!id) {
+      id = byId.has(`NOMBRE:${name}`) ? `NOMBRE:${name}` : sameName.length === 1 ? sameName[0].id : '';
+    }
+    if (regional) byId.get(id)?.add(regional);
+    if (Number(row.ES_SINDICADO) === 1) sindicadoIds.add(id);
+  });
+  return options.map((item) => ({
+    ...item,
+    regionalesCasos: [...byId.get(item.id)].sort(),
+    tieneCasosSindicados: sindicadoIds.has(item.id),
+  }));
+}
+
 async function getReportOptions() {
-  const [defensorRows, regionales, establecimientos] = await Promise.all([
+  const [defensorRows, regionalRows, establecimientoRows, defensorRegionales] = await Promise.all([
     reporteRepo.listAvailableDefensores(),
     reporteRepo.listAvailableRegionales(),
     reporteRepo.listAvailableEstablecimientos(),
+    reporteRepo.listDefensorRegionales(),
   ]);
-  return { defensores: buildDefensorOptions(defensorRows), regionales, establecimientos };
+  const regionales = [...new Map(regionalRows.map((value) => [
+    reporteRepo.normalizeDefensorName(value), normalizeWhitespace(repairKnownMojibake(value)),
+  ])).values()];
+  const establecimientosRegionales = establecimientoRows.filter((row) => resolveCentro(row.ESTABLECIMIENTO)?.homologado).map((row) => ({
+    nombre: normalizeWhitespace(repairKnownMojibake(row.ESTABLECIMIENTO)),
+    regional: normalizeWhitespace(repairKnownMojibake(row.REGIONAL)),
+  }));
+  return {
+    defensores: attachCaseRegionales(buildDefensorOptions(defensorRows), defensorRegionales),
+    regionales: [...regionales, REPORT_REGIONAL_SIN_IDENTIFICAR],
+    establecimientos: [...new Set(establecimientosRegionales.map((item) => item.nombre))],
+    establecimientosRegionales,
+  };
 }
 
 function toIsoDate(value) {
@@ -278,18 +319,31 @@ async function generateReport(filters) {
   const scope = validateScope(filters);
   const selectedRegional = String(filters?.regional || '').trim();
   if (!selectedRegional) {
-    throw createReportError('Debe seleccionar la regional para el encabezado del informe.');
+    throw createReportError('Debe seleccionar la regional del informe.');
   }
 
   const options = await getReportOptions();
+  const regionalKey = reporteRepo.normalizeDefensorName(selectedRegional);
+  const regional = options.regionales.find((item) => reporteRepo.normalizeDefensorName(item) === regionalKey);
+  if (!regional) throw createReportError('La regional seleccionada no es válida.');
   const defensor = options.defensores.find((item) => item.id === validated.defensorKey);
   if (!defensor) {
     throw createReportError('No se encontró el defensor seleccionado.', 404, 'DEFENSOR_NOT_FOUND');
+  }
+  if (!defensor.regionalesCasos.some((item) => reporteRepo.normalizeDefensorName(item) === regionalKey)) {
+    throw createReportError('El defensor seleccionado no tiene casos en esta regional.');
+  }
+  if (scope.lugar && !options.establecimientosRegionales.some((item) =>
+    reporteRepo.normalizeDefensorName(item.regional) === regionalKey
+      && reporteRepo.normalizeDefensorName(item.nombre) === reporteRepo.normalizeDefensorName(scope.lugar)
+  )) {
+    throw createReportError('El ERON seleccionado no pertenece a esta regional.');
   }
 
   const params = {
     ...validated,
     ...scope,
+    regional,
     defensorCedula: /^\d+$/.test(defensor.id) ? defensor.id : '',
     defensorNombre: defensor.nombre,
   };
@@ -298,7 +352,7 @@ async function generateReport(filters) {
     reporteRepo.listAssignedCases(params),
   ]);
   return buildReport({
-    defensor: { ...defensor, regional: selectedRegional },
+    defensor: { ...defensor, regional },
     fechaInicio: validated.fechaInicio,
     fechaFin: validated.fechaFin,
     scope,
@@ -313,6 +367,7 @@ module.exports = {
   validateScope,
   buildReport,
   buildDefensorOptions,
+  attachCaseRegionales,
   getReportOptions,
   generateReport,
 };

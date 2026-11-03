@@ -81,11 +81,16 @@ const ALIASES_CIERRE_CASO = [
   'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública',
   'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad publica',
 ];
-const AYUDA_CIERRE_CASO = 'Antes de seleccionar una opción de cierre, por favor escriba en el resumen del análisis del caso por qué se selecciona.';
+const KEY_RAZON_CIERRE_CASO = 'Razón o explicación del cierre del caso';
+const ERROR_RAZON_CIERRE_CASO = 'Debe diligenciar la razón o explicación del cierre del caso.';
 const EXPORT_FIELD_CIERRE_CASO = {
   label: ALIASES_CIERRE_CASO[0],
   key: ALIASES_CIERRE_CASO[0],
   aliases: ALIASES_CIERRE_CASO.slice(1),
+};
+const EXPORT_FIELD_RAZON_CIERRE_CASO = {
+  label: KEY_RAZON_CIERRE_CASO,
+  key: KEY_RAZON_CIERRE_CASO,
 };
 const ALIASES_SENTIDO_DECISION_RECURSO = [
   'Sentido de la decisión que resuelve recurso',
@@ -359,9 +364,20 @@ const OPCIONES_BLOQUE_5B_MOTIVO_DECISION_NEGATIVA = [
 const OPCIONES_BLOQUE_5B_SENTIDO_DECISION_RESUELVE_SOLICITUD = ['Favorable', 'Desfavorable'];
 const OPCIONES_CIERRE_CASO_IMPOSIBILIDAD_AVANZAR = [
   '-',
-  'Se cierra porque la persona ya no est\u00e1 en el ERON por raz\u00f3n ajena a este tr\u00e1mite.',
+  'Se cierra porque la persona fue trasladada a un eron de competencia de otra regional de la defensoria del pueblo',
+  'Se cierra porque la persona se encuentra en libertad',
   'Otro motivo.',
 ];
+
+function requiereRazonCierreCaso(registro) {
+  const cierre = readRegistroTextByAliases(registro, ALIASES_CIERRE_CASO);
+  return normalizeFieldKey(cierre) === normalizeFieldKey('Otro motivo.');
+}
+
+function faltaRazonCierreCaso(registro) {
+  return requiereRazonCierreCaso(registro)
+    && !readRegistroTextByAliases(registro, [KEY_RAZON_CIERRE_CASO]).trim();
+}
 
 // CELESTE (PPL SINDICADOS)
 const OPCIONES_SITUACION_JURIDICA_ACTUALIZADA = ['Condenado', 'Sindicado'];
@@ -439,6 +455,7 @@ const EXPORT_FIELDS_AURORA_BLOQUE_3 = [
   { label: '36. Otras solicitudes a tramitar', key: 'Otras solicitudes a tramitar' },
   { label: '37. Resumen del análisis del caso', key: 'Resumen del análisis del caso' },
   EXPORT_FIELD_CIERRE_CASO,
+  EXPORT_FIELD_RAZON_CIERRE_CASO,
 ];
 
 const EXPORT_FIELDS_AURORA_BLOQUE_4 = [
@@ -510,6 +527,7 @@ const EXPORT_FIELDS_CELESTE_BLOQUE_3 = [
   { label: '21. Análisis jurídico y actuación a desplegar', key: 'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS' },
   { label: '22. Resumen del análisis jurídico del presente caso', key: 'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO' },
   EXPORT_FIELD_CIERRE_CASO,
+  EXPORT_FIELD_RAZON_CIERRE_CASO,
 ];
 
 const EXPORT_FIELDS_CELESTE_BLOQUE_4 = [{ label: '23. Fecha de la entrevista para informar al usuario', key: 'Fecha de entrevista', isDate: true }];
@@ -1453,6 +1471,7 @@ const CAMPOS_LIMPIABLES_DESDE_BLOQUE_3 = new Set(
     'Sentido de la decisión que resuelve la solicitud',
     'Cierre del caso por imposibilidad de avanzar (si aplica)',
     'Cierre del caso por imposibilidad de avanzar (si aplica) - Utilidad pública',
+    KEY_RAZON_CIERRE_CASO,
     'FECHA DE SOLICITUD DE AUDIENCIA DE CONTROL DE GARANTÍAS PARA SUSTENTAR REVOCATORIA',
     'FECHA DE REALIZACIÓN DE AUDIENCIA',
     'SENTIDO DE LA DECISIÓN',
@@ -1762,7 +1781,17 @@ function CampoCierreCaso({ registro, onChange }) {
         options={OPCIONES_CIERRE_CASO_IMPOSIBILIDAD_AVANZAR}
         required={false}
       />
-      <p className="hint-text">({displayText(AYUDA_CIERRE_CASO)})</p>
+      {requiereRazonCierreCaso(registro) && (
+        <Campo
+          label={KEY_RAZON_CIERRE_CASO}
+          name={KEY_RAZON_CIERRE_CASO}
+          type="textarea"
+          value={registro?.[KEY_RAZON_CIERRE_CASO] ?? ''}
+          onChange={onChange}
+          required
+          showObligatoria
+        />
+      )}
     </div>
   );
 }
@@ -2065,12 +2094,6 @@ export default function FormularioAtencion({ numeroInicial }) {
   const numeroInsistencias = useMemo(() => getNumeroInsistencias(registro), [registro]);
   const personaFueraPrision = useMemo(() => Boolean(registro) && !isSituacionActiva(registro), [registro]);
   const gestionSoloLectura = Boolean(registro) && !isGestionEditable(registro);
-  const cambioSituacionRegistrado = Boolean(
-    registro?.__historialActivoInactivo ?? registro?.tieneHistorialActivoInactivo
-  );
-  const fechaCambioSituacion = formatDateForExport(
-    registro?.['Fecha de corte'] ?? registro?.fechaCorte ?? ''
-  );
   const tieneInfoDesdePregunta29 = useCallback((source) => {
     if (!source || typeof source !== 'object') return false;
     return CAMPOS_AURORA_DESDE_P29.some((alias) =>
@@ -2218,6 +2241,15 @@ export default function FormularioAtencion({ numeroInicial }) {
       };
       autosaveContextKeyRef.current = context.key;
       writeFormAutosaveDraft(window.localStorage, context, fullData, job.queuedAt);
+      if (faltaRazonCierreCaso(source)) {
+        autosaveQueueRef.current.dropPending((pendingJob) => pendingJob?.context?.key === context.key);
+        setAutosaveStatus({
+          phase: 'pending',
+          savedAt: null,
+          message: `${ERROR_RAZON_CIERRE_CASO} El borrador está protegido en este equipo.`,
+        });
+        return;
+      }
       autosaveQueueRef.current.enqueue(job);
       setAutosaveStatus({
         phase: 'pending',
@@ -2242,11 +2274,11 @@ export default function FormularioAtencion({ numeroInicial }) {
       if (!payload.actuacionId && Number.isInteger(gestionId) && gestionId > 0) payload.rowIndex = gestionId;
       const updated = await updatePpl(job.context.documento, payload);
       autosaveBaselineRef.current.set(job.context.key, job.fullData);
-      const hasNewerChanges = queue.hasPending(
-        (pendingJob) => pendingJob?.context?.key === job.context.key
-      );
       const currentDraft = readFormAutosaveDraft(window.localStorage, job.context);
       const draftMatchesJob = !currentDraft || JSON.stringify(currentDraft.data) === JSON.stringify(job.fullData);
+      const hasNewerChanges = !draftMatchesJob || queue.hasPending(
+        (pendingJob) => pendingJob?.context?.key === job.context.key
+      );
       if (!hasNewerChanges && draftMatchesJob) removeFormAutosaveDraft(window.localStorage, job.context);
 
       if (isCurrentContext()) {
@@ -2372,6 +2404,7 @@ export default function FormularioAtencion({ numeroInicial }) {
       const current = registroRef.current;
       const contextBefore = getAutosaveContextFor(current);
       if (!current || !contextBefore) return;
+      if (faltaRazonCierreCaso(current)) return;
       try {
         const response = await getPplActuacionesByDocumento(contextBefore.documento);
         const rows = Array.isArray(response?.actuaciones) ? response.actuaciones : [];
@@ -2605,6 +2638,9 @@ export default function FormularioAtencion({ numeroInicial }) {
         ALIASES_CIERRE_CASO.forEach((key) => {
           setFieldValueAcrossAliases(base, key, value);
         });
+        if (!requiereRazonCierreCaso(base)) {
+          setFieldValueAcrossAliases(base, KEY_RAZON_CIERRE_CASO, '');
+        }
         return wrapRegistroForLookup(base);
       }
 
@@ -3997,6 +4033,12 @@ export default function FormularioAtencion({ numeroInicial }) {
       setError('Debe cargar un usuario antes de guardar.');
       return;
     }
+    if (faltaRazonCierreCaso(registro)) {
+      setError(ERROR_RAZON_CIERRE_CASO);
+      setToastMessage(ERROR_RAZON_CIERRE_CASO);
+      setToastOpen(true);
+      return;
+    }
     const ubicacionesControladas = [
       {
         label: 'nombre del lugar de privación de la libertad',
@@ -4367,8 +4409,9 @@ export default function FormularioAtencion({ numeroInicial }) {
 
         <div className="search-row search-row--form-main">
           <div className="form-field">
-            <label>Numero de Identificacion</label>
+            <label htmlFor="numero-busqueda-ppl">Número de identificación</label>
             <input
+              id="numero-busqueda-ppl"
               type="text"
               placeholder="Ingrese Documento"
               value={numeroBusqueda}
@@ -4396,14 +4439,6 @@ export default function FormularioAtencion({ numeroInicial }) {
 
       {!cargando && registro && (
         <>
-          {cambioSituacionRegistrado && (
-            <div className="ppl-situation-change-alert" role="status">
-              <span>Cambio de situación registrado</span>
-              {fechaCambioSituacion && (
-                <small>Fecha de corte: {fechaCambioSituacion}</small>
-              )}
-            </div>
-          )}
           {personaFueraPrision && (
             <div className="ppl-inactive-alert" role="alert" style={{ marginTop: '1rem' }}>
               FUERA DE PRISIÓN — el caso permanece cerrado. Solo se pueden completar las gestiones que ya habían alcanzado el bloque 5.

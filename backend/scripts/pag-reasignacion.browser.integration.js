@@ -59,8 +59,9 @@ async function run() {
       headers: { Authorization: `Bearer ${token}` },
       ...(body ? { data: body } : {}),
     });
-    assert(statuses.includes(response.status()), `${route}: HTTP ${response.status()}`);
-    return response.json();
+    const data = await response.json();
+    assert(statuses.includes(response.status()), `${route}: HTTP ${response.status()} ${data.message || ''}`);
+    return data;
   }
 
   try {
@@ -73,7 +74,7 @@ async function run() {
 
     const regional = (await execute(`
       SELECT REGIONAL FROM DNDP.REGIONALES
-       WHERE TRIM(REGIONAL) IS NOT NULL ORDER BY REGIONAL FETCH FIRST 1 ROWS ONLY`
+       WHERE REGIONAL = 'CUNDINAMARCA' FETCH FIRST 1 ROWS ONLY`
     )).rows[0]?.REGIONAL;
     assert(regional, 'Se requiere una regional para el fixture');
     await execute(`INSERT INTO DNDP.PERSONA (ID_PERSONA, NUMERO, NOMBRE)
@@ -81,8 +82,8 @@ async function run() {
     { idPersona, documento, nombre: `PRUEBA REASIGNACION ${suffix}` });
     await execute(`INSERT INTO DNDP.SITUACION_CARCELARIA
       (ID_SITUACION, ID_PERSONA, SITUACION, ACTIVO, DEPARTAMENTO, MUNICIPIO, ESTABLECIMIENTO)
-      VALUES (:idSituacion, :idPersona, 'Condenado', 1, 'BOGOTA', 'BOGOTA', :centro)`,
-    { idSituacion, idPersona, centro: `PRUEBA REASIGNACION ${suffix}` });
+      VALUES (:idSituacion, :idPersona, 'Condenado', 1, 'CUNDINAMARCA', 'GIRARDOT', :centro)`,
+    { idSituacion, idPersona, centro: 'CPMS GIRARDOT' });
     await execute(`INSERT INTO DNDP.PAG (CEDULA_PAG, NOMBRE_PAG, REGIONAL, ENCARGADO)
       VALUES (:cedula, :nombre, :regional, 0)`,
     { cedula: pagCedula, nombre: `PAG PRUEBA ${suffix}`, regional });

@@ -53,7 +53,7 @@ function targetSituacionesSql() {
   `;
 }
 
-async function previewByActiveDefensor(defensor, { limit = 500 } = {}) {
+async function previewByActiveDefensor(defensor, { limit = 500, offset = 0 } = {}) {
   const targetSql = targetSituacionesSql();
   const summarySql = `
     SELECT
@@ -80,6 +80,7 @@ async function previewByActiveDefensor(defensor, { limit = 500 } = {}) {
     WHERE g.ID_SITUACION IN (${targetSql})
           AND ${normalizedSqlExpr('g.DEFENSOR_GESTION')} = ${normalizedSqlExpr(':defensor')}
     ORDER BY g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
+    OFFSET ${Math.max(0, Math.floor(Number(offset) || 0))} ROWS
     FETCH FIRST ${Math.max(1, Math.min(1000, Number(limit) || 500))} ROWS ONLY
   `;
   const binds = { defensor: String(defensor || '').trim() };
@@ -95,6 +96,58 @@ async function previewByActiveDefensor(defensor, { limit = 500 } = {}) {
     totalAsignaciones: Number(summary?.TOTAL_ASIGNACIONES || 0),
     actuaciones: Array.isArray(detailResult?.rows) ? detailResult.rows : [],
   };
+}
+
+function selectedTarget(gestionIds) {
+  const binds = {};
+  const placeholders = gestionIds.map((id, index) => {
+    binds[`gestion${index}`] = id;
+    return `:gestion${index}`;
+  });
+  return {
+    binds,
+    where: `g.ID_GESTION IN (${placeholders.join(', ')})
+      AND g.ID_SITUACION IN (${targetSituacionesSql()})
+      AND ${normalizedSqlExpr('g.DEFENSOR_GESTION')} = ${normalizedSqlExpr(':defensor')}`,
+  };
+}
+
+async function previewSelected(defensor, gestionIds) {
+  const { where, binds } = selectedTarget(gestionIds);
+  const result = await execute(`
+    SELECT COUNT(*) AS TOTAL_ACTUACIONES, COUNT(DISTINCT s.ID_PERSONA) AS TOTAL_PERSONAS
+    FROM DNDP.GESTION_JURIDICA g
+    JOIN DNDP.SITUACION_CARCELARIA s ON s.ID_SITUACION = g.ID_SITUACION
+    WHERE ${where}
+  `, { ...binds, defensor }, { operation: 'actuacionCleanup.previewSelected' });
+  return {
+    totalActuaciones: Number(result.rows?.[0]?.TOTAL_ACTUACIONES || 0),
+    totalPersonas: Number(result.rows?.[0]?.TOTAL_PERSONAS || 0),
+    totalAsignaciones: 0,
+    actuaciones: gestionIds.map((id) => ({ ID_GESTION: id })),
+  };
+}
+
+async function deleteSelected(defensor, gestionIds) {
+  const { where, binds } = selectedTarget(gestionIds);
+  await execute(`
+    BEGIN
+      SAVEPOINT cleanup_selected;
+      FOR item IN (SELECT g.ID_GESTION FROM DNDP.GESTION_JURIDICA g WHERE ${where} FOR UPDATE) LOOP
+        NULL;
+      END LOOP;
+      DELETE FROM DNDP.GESTION_JURIDICA g WHERE ${where};
+      IF SQL%ROWCOUNT != :expectedCount THEN
+        RAISE_APPLICATION_ERROR(-20002, 'Cambio concurrente al eliminar actuaciones');
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      ROLLBACK TO cleanup_selected;
+      RAISE;
+    END;
+  `, { ...binds, defensor, expectedCount: gestionIds.length }, {
+    autoCommit: true, operation: 'actuacionCleanup.deleteSelected',
+  });
+  return { deleted: gestionIds.length, assignmentsDeleted: 0 };
 }
 
 async function deleteByActiveDefensor(defensor, expectedCount, expectedAssignments) {
@@ -156,4 +209,6 @@ async function deleteByActiveDefensor(defensor, expectedCount, expectedAssignmen
 module.exports = {
   previewByActiveDefensor,
   deleteByActiveDefensor,
+  previewSelected,
+  deleteSelected,
 };

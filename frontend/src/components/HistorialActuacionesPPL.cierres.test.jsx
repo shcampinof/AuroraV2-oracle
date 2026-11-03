@@ -8,7 +8,7 @@ import { getPplActuacionesByDocumento } from '../services/api.js';
 vi.mock('../services/api.js', () => ({ getPplActuacionesByDocumento: vi.fn() }));
 const cierre = {
   idGestion: 10, idSituacion: 20,
-  motivo: 'Cierre automático por cambio de ERON o regional.',
+  motivo: 'Cierre automático por cambio de regional.',
   defensor: 'DEFENSORA ANTERIOR', establecimiento: 'ERON ANTERIOR',
   departamento: 'CUNDINAMARCA', fechaCierre: '2026-10-19',
 };

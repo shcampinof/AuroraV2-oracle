@@ -345,8 +345,11 @@ function hasExplicitNingunaInP36(record: FormRecord): boolean {
 
 export function hasExplicitClosure(record: FormRecord): boolean {
   const allowed = [
+    'Se cierra porque la persona fue trasladada a un eron de competencia de otra regional de la defensoria del pueblo',
+    'Se cierra porque la persona se encuentra en libertad',
     'Se cierra porque la persona ya no está en el ERON por razón ajena a este trámite.',
     'Cierre automático por cambio de ERON o regional.',
+    'Cierre automático por cambio de regional.',
     'Cierre automático por actualización relevante de SISIPEC.',
     'Otro motivo.',
   ];

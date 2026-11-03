@@ -3,6 +3,7 @@ const path = require('path');
 require('dotenv').config({ path: process.env.DOTENV_CONFIG_PATH || path.join(__dirname, '..', '.env'), quiet: true });
 const db = require('../db/oraclePool');
 const { buildEventsSql } = require('../repositories/oracle/reporteAtencionesRepository');
+const { buildReportRegionalClause, REPORT_REGIONAL_SIN_IDENTIFICAR } = require('../repositories/oracle/sqlFragments');
 
 // Solo SELECT con fixtures en CTE: no inserta ni modifica expedientes.
 function literal(value, column) {
@@ -109,7 +110,90 @@ async function run() {
   assert.equal(results['2'].find((r) => r.ID_GESTION === 180).FUENTE_AUTOR, 'DEFENSOR_GESTION');
   const uniqueEvents = new Set(Object.values(results).flat().map((r) => `${r.ID_GESTION}:${r.ORIGEN}`));
   assert.equal(uniqueEvents.size, Object.values(results).flat().length, 'ningún evento se acredita a dos defensores');
+  const eronRows = [
+    { ESTABLECIMIENTO: 'CPMS ARMENIA', REGIONAL: 'REGIONAL A', ACTIVO: 1 },
+    { ESTABLECIMIENTO: 'CPMS ARMENIA', REGIONAL: 'REGIONAL A', ACTIVO: 1 },
+    { ESTABLECIMIENTO: 'CPMS CALARCA', REGIONAL: 'REGIONAL B', ACTIVO: 1 },
+    { ESTABLECIMIENTO: 'CPMSM ARMENIA', REGIONAL: 'REGIONAL A', ACTIVO: 0 },
+  ];
+  const eronFixture = fixture('eron_fixture', ['ESTABLECIMIENTO', 'REGIONAL', 'ACTIVO'], eronRows);
+  const regionalSituations = situaciones.map((s) => ({ ...s, ESTABLECIMIENTO: s.ID_SITUACION === 5 ? 'CPMS CALARCA' : 'EPMSC ARMENIA' }));
+  const regionalCtes = [ctes[0], fixture('situacion_fixture', columns('s'), regionalSituations), ...ctes.slice(2), eronFixture];
+  const regionalSql = buildEventsSql({ tipo: 'condenado', regional: 'REGIONAL A' })
+    .replace(/WITH /, `WITH ${regionalCtes.join(',\n')},\n`)
+    .replaceAll('DNDP.GESTION_JURIDICA', 'gestion_fixture')
+    .replaceAll('DNDP.SITUACION_CARCELARIA', 'situacion_fixture')
+    .replaceAll('DNDP.PERSONA', 'persona_fixture')
+    .replaceAll('DNDP.ASIGNACION', 'asignacion_fixture')
+    .replaceAll('DNDP.DEFENSORES', 'defensor_fixture')
+    .replaceAll('DNDP.CAT_ERON_REGIONAL', 'eron_fixture');
+  const scopedResults = [];
+  for (const regional of ['REGIONAL A', 'REGIONAL B']) {
+    const rows = (await db.execute(regionalSql, { fechaInicio: params.fechaInicio, fechaFin: params.fechaFin, tipo: params.tipo, defensorCedula: '1', defensorNombre: 'DEFENSOR A', regional })).rows;
+    assert(rows.length > 0);
+    assert(rows.every((row) => (row.ID_SITUACION === 5) === (regional === 'REGIONAL B')), 'cada actuación corresponde a la regional de su situación');
+    scopedResults.push(...rows);
+  }
+  assert.deepEqual(keys(scopedResults), keys(results['1']), 'los filtros regionales separan el histórico sin duplicarlo ni alterar la autoría');
+  const mixedSituations = [
+    { ID_SITUACION: 501, SITUACION: 'Condenado', ESTABLECIMIENTO: 'EPMSC ARMENIA' },
+    { ID_SITUACION: 502, SITUACION: 'Condenado', ESTABLECIMIENTO: 'CPMS CALARCA' },
+    { ID_SITUACION: 503, SITUACION: 'Sindicado', ESTABLECIMIENTO: 'CDT SIN HOMOLOGAR' },
+    { ID_SITUACION: 504, SITUACION: 'Sindicado', ESTABLECIMIENTO: 'CDT OTRA REGIONAL' },
+    { ID_SITUACION: 505, SITUACION: 'Sindicado', ESTABLECIMIENTO: 'CPMS ARMENIA' },
+    { ID_SITUACION: 506, SITUACION: 'Condenado', ESTABLECIMIENTO: 'ESTACION DE POLICIA ARMENIA' },
+    { ID_SITUACION: 507, SITUACION: 'Condenado', SITUACION_JURIDICA_ACTUALIZADA: 'Sindicado', ESTABLECIMIENTO: null },
+    { ID_SITUACION: 508, SITUACION: 'Sindicado', SITUACION_JURIDICA_ACTUALIZADA: 'Condenado', ESTABLECIMIENTO: 'CPMS CALARCA' },
+    { ID_SITUACION: 509, SITUACION: 'Condenado', ESTABLECIMIENTO: 'CPMS ARMENIA' },
+    { ID_SITUACION: 510, SITUACION: 'Sindicado', ESTABLECIMIENTO: null },
+    { ID_SITUACION: 511, SITUACION: 'Condenado', ESTABLECIMIENTO: null },
+    { ID_SITUACION: 512, SITUACION: 'Condenado', ESTABLECIMIENTO: 'CPMSM ARMENIA' },
+    { ID_SITUACION: 513, SITUACION: 'Sindicado', ESTABLECIMIENTO: 'CPMS CALARCA' },
+    { ID_SITUACION: 514, SITUACION: 'Sindicado', ESTABLECIMIENTO: '  ', LUGAR_PRIVACION: 'EPMSC ARMENIA' },
+  ].map((row) => ({ ...row, ID_PERSONA: row.ID_SITUACION, ACTIVO: 1 }));
+  const mixedCtes = [
+    fixture('gestion_fixture', columns('g'), mixedSituations.map((s) => ({
+      ID_GESTION: s.ID_SITUACION, ID_SITUACION: s.ID_SITUACION,
+      DEFENSOR_GESTION: 'DEFENSOR A', FECHA_ANALISIS: '2026-01-01 00:00:00',
+    }))),
+    fixture('situacion_fixture', columns('s'), mixedSituations),
+    fixture('persona_fixture', columns('p'), mixedSituations.map((s) => ({ ID_PERSONA: s.ID_PERSONA, NOMBRE: `PERSONA ${s.ID_PERSONA}`, NUMERO: String(s.ID_PERSONA) }))),
+    fixture('asignacion_fixture', ['ID_PERSONA', 'ID_ASIGNACION', 'NOMBRE_DEFENSOR', 'CEDULA_DEFENSOR', 'FECHA_ASIGNACION', 'FECHA_FIN'], asignaciones),
+    fixture('defensor_fixture', ['CEDULA', 'NOMBRE'], defensores),
+    eronFixture,
+  ];
+  for (const [scope, expected] of [
+    [{}, [501, 505, 509, 514]],
+    [{ lugar: 'CPMS ARMENIA' }, [501, 505, 509, 514]],
+    [{ tipo: 'condenado' }, [501, 509]],
+    [{ tipo: 'sindicado' }, [505, 514]],
+    [{ tipo: 'sindicado', lugar: 'CPMS ARMENIA' }, [505, 514]],
+    [{ regional: 'REGIONAL B' }, [502, 508, 513]],
+    [{ regional: 'REGIONAL C' }, []],
+    [{ regional: REPORT_REGIONAL_SIN_IDENTIFICAR }, [503, 504, 506, 507, 510, 511, 512]],
+    [{ regional: REPORT_REGIONAL_SIN_IDENTIFICAR, tipo: 'sindicado' }, [503, 504, 507, 510]],
+    [{ regional: REPORT_REGIONAL_SIN_IDENTIFICAR, tipo: 'condenado' }, [506, 511, 512]],
+    [{ regional: REPORT_REGIONAL_SIN_IDENTIFICAR, lugar: 'CPMS ARMENIA' }, []],
+  ]) {
+    const query = buildEventsSql({ regional: 'REGIONAL A', ...scope })
+      .replace(/WITH /, `WITH ${mixedCtes.join(',\n')},\n`)
+      .replaceAll('DNDP.GESTION_JURIDICA', 'gestion_fixture')
+      .replaceAll('DNDP.SITUACION_CARCELARIA', 'situacion_fixture')
+      .replaceAll('DNDP.PERSONA', 'persona_fixture')
+      .replaceAll('DNDP.ASIGNACION', 'asignacion_fixture')
+      .replaceAll('DNDP.DEFENSORES', 'defensor_fixture')
+      .replaceAll('DNDP.CAT_ERON_REGIONAL', 'eron_fixture');
+    const binds = { fechaInicio: params.fechaInicio, fechaFin: params.fechaFin, defensorCedula: '1', defensorNombre: 'DEFENSOR A' };
+    Object.assign(binds, buildReportRegionalClause({ regional: 'REGIONAL A', ...scope }).binds);
+    if (scope.tipo) binds.tipo = scope.tipo === 'condenado' ? '%CONDENAD%' : '%SINDICAD%';
+    const rows = (await db.execute(query, binds)).rows;
+    assert.deepEqual(rows.map((r) => r.ID_SITUACION).sort(), expected, 'condenados y sindicados respetan su ERON; los casos sin regional solo se consultan por separado');
+    assert.deepEqual((await db.execute(query, { ...binds, defensorCedula: '2', defensorNombre: 'DEFENSOR B' })).rows, [], 'el filtro nunca incluye casos de otro defensor');
+  }
   console.log('OK Oracle: autor histórico, importación, reasignación, mismo día, solicitudes independientes, cierres derivados, inactividad y límites de fecha (solo SELECT).');
+  console.log('OK Oracle: aislamiento por regional y ausencia de duplicados con fixtures (solo SELECT).');
+  console.log('OK Oracle: condenados y sindicados en su regional/ERON, alias históricos, situación actualizada y aislamiento por defensor (solo SELECT).');
+  console.log('OK Oracle: CDT, establecimientos sin homologar y ERON sin regional activa se consultan por separado, sin contaminar totales regionales (solo SELECT).');
 }
 
 if (require.main === module) {

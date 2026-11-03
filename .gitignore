@@ -26,6 +26,13 @@ documentacion/**
 !documentacion/
 !documentacion/documentacion_tecnica/
 !documentacion/documentacion_tecnica/GUIA_DESPLIEGUE_AURORA.md
+!documentacion/REVISION_PRODUCCION_2026-10-30.md
+!documentacion/revision-2026-10-30/
+!documentacion/revision-2026-10-30/resultados.json
+!documentacion/revision-2026-10-30/fuentes.sha256.json
+!documentacion/revision-2026-10-30/regresion-acceso-estados.md
+!documentacion/revision-2026-10-30/regresion-resultados.json
+!documentacion/revision-2026-10-30/regresion-fuentes.sha256.json
 !documentacion/documentación .md/
 !documentacion/documentación .md/**
 

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import PagUserModal from '../components/PagUserModal.jsx';
 
 import {
   deleteAdminUser,
   getAdminUsers,
+  getPagRegionales,
   importAdminUsersCsv,
   previewAdminUsersCsv,
   saveAdminUser,
@@ -12,9 +14,11 @@ import {
 const ROLE_OPTIONS = [
   { id: 'user', label: 'Usuario' },
   { id: 'pag', label: 'PAG' },
+  { id: 'dndp', label: 'DNDP' },
   { id: 'admin', label: 'Admin' },
   { id: 'carguebd', label: 'Cargas' },
 ];
+const EMPTY_FORM = { email: '', name: '', pagCedula: '', pagRegional: '', roles: ['user'], enabled: true };
 
 function formatDate(value) {
   if (!value) return '-';
@@ -44,7 +48,12 @@ function normalizeRoles(roles) {
 
 function AdminUsuarios() {
   const [users, setUsers] = useState([]);
-  const [form, setForm] = useState({ email: '', roles: ['user'], enabled: true });
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [editingId, setEditingId] = useState(null);
+  const [pagDialog, setPagDialog] = useState(null);
+  const [regionales, setRegionales] = useState([]);
+  const [regionalesLoading, setRegionalesLoading] = useState(true);
+  const [regionalesError, setRegionalesError] = useState('');
   const [query, setQuery] = useState('');
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
@@ -67,7 +76,7 @@ function AdminUsuarios() {
     return sortedUsers.filter((user) => {
       const roles = normalizeRoles(user.roles).join(' ');
       const status = user.enabled === false ? 'deshabilitado disabled' : 'habilitado enabled';
-      return [user.email, user.name, user.username, roles, status]
+      return [user.email, user.name, user.username, user.pagCedula, user.pagRegional, roles, status]
         .some((value) => String(value || '').toLowerCase().includes(q));
     });
   }, [query, sortedUsers]);
@@ -89,6 +98,24 @@ function AdminUsuarios() {
     setUsers(Array.isArray(data?.users) ? data.users : []);
   }
 
+  async function loadRegionales() {
+    setRegionalesLoading(true);
+    setRegionalesError('');
+    try {
+      const data = await getPagRegionales();
+      const options = [...new Set((data?.regionales || []).map((item) => String(item).trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'es'));
+      if (!options.length) throw new Error('No hay regionales disponibles.');
+      setRegionales(options);
+    } catch (err) {
+      setRegionalesError(String(err?.message || 'No fue posible cargar las regionales PAG.'));
+    } finally {
+      setRegionalesLoading(false);
+    }
+  }
+
+  useEffect(() => { loadRegionales(); }, []);
+
   useEffect(() => {
     let alive = true;
     setLoading(true);
@@ -107,10 +134,16 @@ function AdminUsuarios() {
   }, []);
 
   function setRole(role, checked) {
+    if (role === 'pag' && checked) {
+      openPagDialog(form, editingId, true);
+      return;
+    }
     setForm((current) => {
       const nextRoles = new Set(normalizeRoles(current.roles));
       if (checked) nextRoles.add(role);
-      else nextRoles.delete(role);
+      else nextRoles.forEach((value) => {
+        if (value === role || value.endsWith(`.${role}`)) nextRoles.delete(value);
+      });
       if (!nextRoles.size) nextRoles.add('user');
       return { ...current, roles: Array.from(nextRoles) };
     });
@@ -125,11 +158,18 @@ function AdminUsuarios() {
       setError('Ingrese el correo institucional.');
       return;
     }
+    if (form.roles.includes('pag')) {
+      openPagDialog(form, editingId, true);
+      return;
+    }
 
     setSubmitting(true);
     try {
-      await saveAdminUser({ ...form, email, roles: normalizeRoles(form.roles) });
-      setForm({ email: '', roles: ['user'], enabled: true });
+      const payload = { ...form, email, roles: normalizeRoles(form.roles) };
+      if (editingId) await updateAdminUser(editingId, payload);
+      else await saveAdminUser(payload);
+      setForm(EMPTY_FORM);
+      setEditingId(null);
       setMessage('Usuario guardado.');
       await refresh();
     } catch (err) {
@@ -205,6 +245,28 @@ function AdminUsuarios() {
     }
   }
 
+  function editUser(user) {
+    setEditingId(user.id || user.email);
+    setForm({ ...EMPTY_FORM, ...user, roles: normalizeRoles(user.roles) });
+    setMessage('');
+    setError('');
+    window.scrollTo?.({ top: 0, behavior: 'smooth' });
+  }
+
+  function openPagDialog(user, id = null, fromForm = false) {
+    setPagDialog({ user: { ...EMPTY_FORM, ...user, roles: [...new Set([...normalizeRoles(user.roles), 'pag'])] }, id, fromForm });
+  }
+
+  async function savePagUser(payload) {
+    if (pagDialog.id) await updateAdminUser(pagDialog.id, payload);
+    else await saveAdminUser(payload);
+    if (pagDialog.fromForm || pagDialog.id === editingId) { setForm(EMPTY_FORM); setEditingId(null); }
+    setPagDialog(null);
+    setError('');
+    setMessage('Usuario PAG guardado con cédula, correo y regional.');
+    await refresh().catch((err) => setError(String(err?.message || 'El PAG se guardó, pero no fue posible actualizar el listado.')));
+  }
+
   async function handleDelete(user) {
     const email = user.email || user.username || user.id;
     const confirmed = window.confirm(`¿Eliminar ${email} de usuarios autorizados? En modo restrictivo no podra ingresar hasta que se agregue nuevamente.`);
@@ -241,10 +303,16 @@ function AdminUsuarios() {
           Correo
           <input
             type="email"
+            readOnly={Boolean(editingId)}
             value={form.email}
             placeholder="usuario@defensoria.gov.co"
             onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
           />
+        </label>
+        <label>
+          Nombre
+          <input type="text" value={form.name} maxLength={200}
+            onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
         </label>
         <fieldset className="admin-users-roles">
           <legend>Roles</legend>
@@ -259,6 +327,13 @@ function AdminUsuarios() {
             </label>
           ))}
         </fieldset>
+        {form.roles.includes('pag') ? (
+          <div className="admin-users-pag-help">
+            <span>PAG: {form.pagCedula || 'Cédula pendiente'} · {form.pagRegional || 'Regional pendiente'} </span>
+            <button type="button" onClick={() => openPagDialog(form, editingId, true)}>Editar datos PAG</button>
+          </div>
+        ) : null}
+        {form.roles.includes('dndp') ? <p className="admin-users-pag-help">DNDP permite acceder a la asignación de casos sin cédula ni regional PAG.</p> : null}
         <label className="admin-users-enabled">
           <input
             type="checkbox"
@@ -270,7 +345,12 @@ function AdminUsuarios() {
         <button type="submit" className="primary-button" disabled={submitting}>
           {submitting ? 'Guardando...' : 'Guardar usuario'}
         </button>
+        {editingId ? <button type="button" className="secondary-button" disabled={submitting}
+          onClick={() => { setEditingId(null); setForm(EMPTY_FORM); }}>Cancelar edición</button> : null}
       </form>
+      {pagDialog ? <PagUserModal user={pagDialog.user} existing={Boolean(pagDialog.id)} regionales={regionales}
+        loading={regionalesLoading} catalogError={regionalesError} onRetry={loadRegionales}
+        onSave={savePagUser} onClose={() => setPagDialog(null)} /> : null}
 
       <section className="admin-users-import" aria-labelledby="csv-import-title">
         <div className="admin-users-import-header">
@@ -346,7 +426,7 @@ function AdminUsuarios() {
           <input
             type="search"
             value={query}
-            placeholder="Correo, nombre, rol o estado"
+            placeholder="Correo, nombre, cédula, regional, rol o estado"
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
@@ -392,14 +472,21 @@ function AdminUsuarios() {
                     </td>
                     <td>{formatDate(user.lastLoginAt)}</td>
                     <td className="admin-loads-actions">
+                      <button type="button" onClick={() => editUser(user)}>Editar</button>
                       <button type="button" onClick={() => patchUser(user, { enabled: !enabled })}>
                         {enabled ? 'Deshabilitar' : 'Habilitar'}
                       </button>
                       <button
                         type="button"
-                        onClick={() => patchUser(user, { roles: roles.includes('pag') ? roles.filter((role) => role !== 'pag') : [...roles, 'pag'] })}
+                        onClick={() => roles.includes('pag')
+                          ? patchUser(user, { roles: roles.filter((role) => role !== 'pag' && !role.endsWith('.pag')) })
+                          : openPagDialog(user, user.id || user.email)}
                       >
                         {roles.includes('pag') ? 'Quitar PAG' : 'Habilitar PAG'}
+                      </button>
+                      <button type="button" onClick={() => patchUser(user, { roles: roles.includes('dndp')
+                        ? roles.filter((role) => role !== 'dndp' && !role.endsWith('.dndp')) : [...roles, 'dndp'] })}>
+                        {roles.includes('dndp') ? 'Quitar DNDP' : 'Habilitar DNDP'}
                       </button>
                       <button
                         type="button"

@@ -107,7 +107,7 @@ router.get('/', (_req, res) => {
 router.get('/actuaciones/preview', async (req, res, next) => {
   try {
     const defensor = req.query?.defensor || cleanupDefensor();
-    const preview = await previewCleanup(defensor);
+    const preview = await previewCleanup(defensor, { offset: req.query?.offset });
     return res.json({ preview });
   } catch (err) {
     return next(err);
@@ -121,6 +121,8 @@ router.delete('/actuaciones', async (req, res, next) => {
       expectedCount: req.body?.expectedCount,
       expectedAssignments: req.body?.expectedAssignments,
       confirmation: req.body?.confirmation,
+      mode: req.body?.mode,
+      gestionIds: req.body?.gestionIds,
       user: req.user,
     });
     return res.json({

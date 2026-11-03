@@ -18,7 +18,8 @@ const {
 const { buildHomologationAudit } = require('../services/homologationAuditService');
 
 const router = express.Router();
-const { requirePag } = require('../middleware/roles');
+const { hasRole, requirePag, requireAssignmentAccess } = require('../middleware/roles');
+const { resolveAssignmentActor } = require('../services/assignmentAccessService');
 
 const DEFAULT_LIST_LIMIT = 5000;
 const MAX_LIST_LIMIT = 10000;
@@ -441,6 +442,12 @@ function buildEstadoSource(row) {
       '',
       ''
     ),
+    'Razón o explicación del cierre del caso': getValueWithFallback(
+      row,
+      'Razón o explicación del cierre del caso',
+      'Razon o explicacion del cierre del caso',
+      ''
+    ),
     'Fecha de presentación de la solicitud a la autoridad': firstFilled(
       getValueWithFallback(
         row,
@@ -596,6 +603,10 @@ function mapCondenadoRow(row) {
     totalSituaciones: Number(row?.TOTAL_SITUACIONES || 0),
     tieneHistorialActivoInactivo:
       Number(row?.MIN_ACTIVO_HISTORICO) === 0 && Number(row?.MAX_ACTIVO_HISTORICO) === 1,
+    prioridadGestion: String(row?.PRIORIDAD_GESTION || '').trim(),
+    fechaReferenciaGestion: toIsoDate(row?.FECHA_REFERENCIA_GESTION),
+    diasPrioridadGestion: row?.DIAS_PRIORIDAD_GESTION == null ? null : Number(row.DIAS_PRIORIDAD_GESTION),
+    fechaInicioAtencion: toIsoDate(row?.FECHA_INICIO_ATENCION),
     estadoCodigo: estadoCodigoCalculado,
     estadoEtiqueta: estadoEtiquetaCalculada,
     accionImpulsar: accionPendiente?.etiqueta || accionOriginal,
@@ -634,6 +645,8 @@ function getCondenadosFiltersFromQuery(query) {
     centroId: String(query?.centroId ?? '').trim(),
     departamento: String(query?.departamento ?? '').trim(),
     municipio: String(query?.municipio ?? '').trim(),
+    regional: String(query?.regional ?? '').trim(),
+    prioridadGestion: String(query?.prioridadGestion ?? '').trim(),
     estadoAccion: String(query?.estadoAccion ?? '').trim(),
     estadoCodigo: String(query?.estadoCodigo ?? '').trim(),
     estado: String(query?.estado ?? '').trim(),
@@ -745,7 +758,10 @@ function matchesCondenadoFilters(row, filters) {
   if (!matchesPrefix(row?.lugarReclusion, filters?.lugar)) return false;
   if (!matchesPrefix(row?.departamentoLugarReclusion, filters?.departamento)) return false;
   if (!matchesPrefix(row?.municipioLugarReclusion, filters?.municipio)) return false;
-  if (!matchesContains(getEstadoAccionText(row), filters?.estadoAccion)) return false;
+  const estadoAccionCodigo = resolveEstadoCodigo(filters?.estadoAccion);
+  if (estadoAccionCodigo) {
+    if (resolveEstadoCodigo(row?.estadoCodigo) !== estadoAccionCodigo) return false;
+  } else if (!matchesContains(getEstadoAccionText(row), filters?.estadoAccion)) return false;
 
   const estadoFiltro = canonicalEstadoLabel(filters?.estado);
   if (estadoFiltro) {
@@ -956,7 +972,7 @@ router.get('/condenados/filter-options', async (req, res) => {
   }
 });
 
-router.get('/condenados/homologation-audit', requirePag, async (req, res) => {
+router.get('/condenados/homologation-audit', requireAssignmentAccess, async (req, res) => {
   const requestedTipo = String(req.query.tipo || 'all').trim().toLowerCase();
   const tipo = ['all', 'condenado', 'sindicado'].includes(requestedTipo) ? requestedTipo : 'all';
   const pendingLimit = Math.max(1, Math.min(1000, Number.parseInt(String(req.query.limit || '100'), 10) || 100));
@@ -1100,8 +1116,9 @@ router.get('/pag/:cedula/validar', requirePag, async (req, res) => {
 
 // Asignacion masiva de defensor por documento(s)
 // POST /api/ppl/asignar-defensor
-// body: { documentos: string[] | string, defensor: string, pagCedula: string, defensorCedula?: string }
-router.post('/asignar-defensor', requirePag, async (req, res) => {
+// DNDP usa la identidad de sesion; PAG requiere pagCedula validada en Oracle.
+// body: { documentos: string[] | string, defensor: string, pagCedula?: string, defensorCedula?: string }
+router.post('/asignar-defensor', requireAssignmentAccess, async (req, res) => {
   const body = req.body || {};
   const defensor = String(body?.defensor || '').trim();
   const defensorCedula = defensoresRepo.normalizeCedula(body?.defensorCedula || body?.defensorId || '');
@@ -1112,7 +1129,7 @@ router.post('/asignar-defensor', requirePag, async (req, res) => {
   if (!defensor && !defensorCedula) {
     return res.status(400).json({ message: 'Debe indicar un defensor.' });
   }
-  if (!pagCedula) {
+  if (!hasRole(req.user, 'dndp') && !pagCedula) {
     return res.status(400).json({ message: 'Debe indicar la cedula del PAG que asigna.' });
   }
   if (!documentos.length) {
@@ -1120,7 +1137,7 @@ router.post('/asignar-defensor', requirePag, async (req, res) => {
   }
 
   try {
-    const pag = await pagRepo.findByCedula(pagCedula);
+    const pag = await resolveAssignmentActor(req.user, pagCedula);
     if (!pag) {
       return res.status(400).json({ message: 'Cedula PAG no valida para asignar.' });
     }
@@ -1134,7 +1151,7 @@ router.post('/asignar-defensor', requirePag, async (req, res) => {
       defensorNombre = String(defensorDb.nombre || '').trim() || defensorNombre;
     }
 
-    const pagAsignador = pag?.nombre ? `${pag.nombre} (${pag.cedula})` : String(pag.cedula || '').trim();
+    const pagAsignador = pag.cedula ? `${pag.nombre} (${pag.cedula})` : pag.nombre;
     const updated = await consolidado.assignDefensor(documentos, defensorNombre, {
       pagAsignador,
       pagNombre: String(pag?.nombre || '').trim(),
@@ -1157,7 +1174,8 @@ router.post('/asignar-defensor', requirePag, async (req, res) => {
       documentos: Array.from(new Set(documentos)),
       defensor: defensorNombre,
       defensorCedula,
-      pag,
+      pag: pag.tipo === 'dndp' ? null : pag,
+      asignador: pag,
     });
   } catch (err) {
     console.error('[ppl:asignar-defensor] Error Oracle:', err?.message || err);
@@ -1167,14 +1185,14 @@ router.post('/asignar-defensor', requirePag, async (req, res) => {
 
 // Desasignacion masiva de defensor por documento(s)
 // POST /api/ppl/desasignar-defensor
-// body: { documentos: string[] | string, pagCedula: string }
-router.post('/desasignar-defensor', requirePag, async (req, res) => {
+// body: { documentos: string[] | string, pagCedula?: string } (opcional solo para DNDP)
+router.post('/desasignar-defensor', requireAssignmentAccess, async (req, res) => {
   const body = req.body || {};
   const pagCedula = String(body?.pagCedula || '').trim();
   const rawDocs = Array.isArray(body?.documentos) ? body.documentos : [body?.documentos];
   const documentos = rawDocs.map((d) => String(d || '').trim()).filter(Boolean);
 
-  if (!pagCedula) {
+  if (!hasRole(req.user, 'dndp') && !pagCedula) {
     return res.status(400).json({ message: 'Debe indicar la cedula del PAG que desasigna.' });
   }
   if (!documentos.length) {
@@ -1182,7 +1200,7 @@ router.post('/desasignar-defensor', requirePag, async (req, res) => {
   }
 
   try {
-    const pag = await pagRepo.findByCedula(pagCedula);
+    const pag = await resolveAssignmentActor(req.user, pagCedula);
     if (!pag) {
       return res.status(400).json({ message: 'Cedula PAG no valida para desasignar.' });
     }
@@ -1202,7 +1220,8 @@ router.post('/desasignar-defensor', requirePag, async (req, res) => {
       updated,
       requested,
       documentos: Array.from(new Set(documentos)),
-      pag,
+      pag: pag.tipo === 'dndp' ? null : pag,
+      asignador: pag,
     });
   } catch (err) {
     console.error('[ppl:desasignar-defensor] Error Oracle:', err?.message || err);
@@ -1265,7 +1284,7 @@ router.post('/:documento/actuaciones', async (req, res) => {
     if (err?.code === 'PPL_SITUACION_INACTIVA' || err?.code === 'PPL_GESTION_MISMATCH' || err?.code === 'PPL_DEFENSOR_GESTION_IMMUTABLE') {
       return res.status(409).json({ code: err.code, message: err.message });
     }
-    if (err?.code === 'DEFENSOR_NOT_IN_CATALOG') {
+    if (err?.code === 'DEFENSOR_NOT_IN_CATALOG' || err?.code === 'PPL_RAZON_CIERRE_REQUERIDA') {
       return res.status(400).json({ code: err.code, message: err.message });
     }
     return res.status(500).json({ message: 'Error creando actuación.' });
@@ -1310,7 +1329,7 @@ router.put('/:documento', async (req, res) => {
     if (err?.code === 'PPL_SITUACION_INACTIVA' || err?.code === 'PPL_GESTION_MISMATCH' || err?.code === 'PPL_DEFENSOR_GESTION_IMMUTABLE') {
       return res.status(409).json({ code: err.code, message: err.message });
     }
-    if (err?.code === 'DEFENSOR_NOT_IN_CATALOG') {
+    if (err?.code === 'DEFENSOR_NOT_IN_CATALOG' || err?.code === 'PPL_RAZON_CIERRE_REQUERIDA') {
       return res.status(400).json({ code: err.code, message: err.message });
     }
     return res.status(500).json({ message: 'Error actualizando registro.' });

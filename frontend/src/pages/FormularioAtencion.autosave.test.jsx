@@ -33,6 +33,8 @@ describe.each(['condenado', 'sindicado'])('autoguardado del formulario %s', (tip
   const summaryKey = tipo === 'condenado'
     ? 'Resumen del análisis del caso'
     : 'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO';
+  const closureKey = 'Cierre del caso por imposibilidad de avanzar (si aplica)';
+  const reasonKey = 'Razón o explicación del cierre del caso';
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -97,6 +99,15 @@ describe.each(['condenado', 'sindicado'])('autoguardado del formulario %s', (tip
     return input;
   }
 
+  async function selectClosure(value) {
+    const select = container.querySelector(`[name="${closureKey}"]`);
+    await act(async () => {
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    return select;
+  }
+
   function draft() {
     const context = buildFormAutosaveContext({ subject: 'tester', documento: '123', gestionId: 17, actuacionId: 'actuacion-17' });
     return readFormAutosaveDraft(localStorage, context);
@@ -129,7 +140,101 @@ describe.each(['condenado', 'sindicado'])('autoguardado del formulario %s', (tip
     expect(closure).not.toBeNull();
     const summary = container.querySelector(`textarea[name="${summaryKey}"]`);
     expect(summary.compareDocumentPosition(closure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(container.textContent).toContain('Antes de seleccionar una opción de cierre');
+    expect(container.textContent).not.toContain('Antes de seleccionar una opción de cierre');
+    expect(container.querySelector(`[name="${reasonKey}"]`)).toBeNull();
+    expect(closure.closest('.form-field').querySelector('label').textContent).toBe(closureKey);
+  });
+
+  it('exige una explicación propia solo para Otro motivo antes de cualquier guardado', async () => {
+    const option = 'Otro motivo.';
+    await mount();
+    // Un guardado que ya estaba programado tampoco debe enviar un cierre sin razón.
+    await edit(summaryKey, 'Análisis independiente del cierre');
+    const closure = await selectClosure(option);
+    const reason = container.querySelector(`textarea[name="${reasonKey}"]`);
+    expect(reason).not.toBeNull();
+    expect(reason.required).toBe(true);
+    expect(closure.compareDocumentPosition(reason) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(reason.closest('.form-field').querySelector('label').textContent).toBe(`${reasonKey} *Obligatoria*`);
+    await edit(reasonKey, '   ');
+    expect(reason.value).toBe('   ');
+    await advance(60000);
+    await click('GUARDAR ENTREVISTA');
+    expect(updatePpl).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Debe diligenciar la razón o explicación del cierre del caso.');
+    expect(draft().data[closureKey]).toBe(option);
+    await edit(reasonKey, 'Explicación específica del cierre');
+    await advance(30000);
+    expect(updatePpl).toHaveBeenCalledTimes(1);
+    expect(updatePpl.mock.calls[0][1].data).toMatchObject({
+      [closureKey]: option,
+      [reasonKey]: 'Explicación específica del cierre',
+      [summaryKey]: 'Análisis independiente del cierre',
+    });
+    await selectClosure('-');
+    expect(container.querySelector(`[name="${reasonKey}"]`)).toBeNull();
+    await advance(30000);
+    expect(updatePpl.mock.calls.at(-1)[1].data).toMatchObject({ [closureKey]: '-', [reasonKey]: '' });
+  });
+
+  it.each([
+    'Se cierra porque la persona fue trasladada a un eron de competencia de otra regional de la defensoria del pueblo',
+    'Se cierra porque la persona se encuentra en libertad',
+  ])('permite guardar %s sin razón y limpia la explicación al cambiar desde Otro motivo', async (option) => {
+    await mount();
+    const closure = await selectClosure(option);
+    expect(closure.value).toBe(option);
+    expect([...closure.options].map((item) => item.value).filter((value) => value && value !== '-')).toEqual([
+      'Se cierra porque la persona fue trasladada a un eron de competencia de otra regional de la defensoria del pueblo',
+      'Se cierra porque la persona se encuentra en libertad',
+      'Otro motivo.',
+    ]);
+    expect(container.querySelector(`[name="${reasonKey}"]`)).toBeNull();
+    await advance(30000);
+    expect(updatePpl).toHaveBeenCalledTimes(1);
+    expect(updatePpl.mock.calls[0][1].data[closureKey]).toBe(option);
+    await selectClosure('Otro motivo.');
+    await edit(reasonKey, 'Explicación de otro motivo');
+    await advance(30000);
+    expect(updatePpl).toHaveBeenCalledTimes(2);
+    await selectClosure(option);
+    expect(container.querySelector(`[name="${reasonKey}"]`)).toBeNull();
+    await advance(30000);
+    expect(updatePpl).toHaveBeenCalledTimes(3);
+    expect(updatePpl.mock.calls.at(-1)[1].data).toMatchObject({ [closureKey]: option, [reasonKey]: '' });
+    await click('GUARDAR ENTREVISTA');
+    expect(updatePpl.mock.calls.at(-1)[1].data[closureKey]).toBe(option);
+  });
+
+  it('reconoce el nombre de traslado ya registrado al cargar una gestión', async () => {
+    const option = 'Se cierra porque la persona fue trasladada a un eron de competencia de otra regional de la defensoria del pueblo';
+    Object.assign(base, { [closureKey]: option });
+    await mount();
+    expect(container.querySelector(`[name="${closureKey}"]`).value).toBe(option);
+    expect(container.querySelector(`[name="${reasonKey}"]`)).toBeNull();
+    await click('GUARDAR ENTREVISTA');
+    expect(updatePpl.mock.calls.at(-1)[1].data[closureKey]).toBe(option);
+  });
+
+  it('carga la razón guardada al abrir la gestión y permite editarla', async () => {
+    Object.assign(base, { [closureKey]: 'Otro motivo.', [reasonKey]: 'Explicación guardada' });
+    await mount();
+    expect(container.querySelector(`[name="${reasonKey}"]`).value).toBe('Explicación guardada');
+    await edit(reasonKey, 'Explicación corregida');
+    await advance(30000);
+    expect(updatePpl.mock.calls[0][1].data[reasonKey]).toBe('Explicación corregida');
+  });
+
+  it('recupera el borrador de cierre incompleto y espera a que se diligencie la razón', async () => {
+    const context = buildFormAutosaveContext({ subject: 'tester', documento: '123', gestionId: 17 });
+    writeFormAutosaveDraft(localStorage, context, { [closureKey]: 'Otro motivo.', [reasonKey]: '' });
+    await mount();
+    await advance(60000);
+    expect(updatePpl).not.toHaveBeenCalled();
+    expect(draft().data[closureKey]).toBe('Otro motivo.');
+    await edit(reasonKey, 'Razón completada al volver');
+    await click('GUARDAR ENTREVISTA');
+    expect(updatePpl.mock.calls.at(-1)[1].data[reasonKey]).toBe('Razón completada al volver');
   });
 
   it('consultar sin editar no dispara guardados y funciona dentro de StrictMode', async () => {
@@ -191,6 +296,26 @@ describe.each(['condenado', 'sindicado'])('autoguardado del formulario %s', (tip
     expect(updatePpl).toHaveBeenCalledTimes(1);
     await advance(1);
     expect(updatePpl).toHaveBeenCalledTimes(2);
+    expect(draft()).toBeNull();
+  });
+
+  it.each([
+    [401, 'Sesión vencida o inválida.'],
+    [403, 'Su usuario no se encuentra habilitado para ingresar a AURORA.'],
+    [403, 'Su usuario no se encuentra autorizado para ingresar a AURORA.'],
+  ])('un rechazo %s conserva el borrador manual y automático hasta recuperar el acceso: %s', async (status, message) => {
+    await mount();
+    updatePpl.mockRejectedValue(Object.assign(new Error(message), { status }));
+    await edit(summaryKey, 'Cambio pendiente de autorización');
+    await advance(30000);
+    expect(draft().data[summaryKey]).toBe('Cambio pendiente de autorización');
+    await click('GUARDAR ENTREVISTA');
+    expect(draft().data[summaryKey]).toBe('Cambio pendiente de autorización');
+    expect(container.querySelector(`textarea[name="${summaryKey}"]`).value).toBe('Cambio pendiente de autorización');
+    expect(container.textContent).toContain(message);
+    updatePpl.mockImplementation(async (_doc, payload) => ({ tipo, registro: { ...base, ...payload.data } }));
+    await click('GUARDAR ENTREVISTA');
+    expect(updatePpl.mock.calls.at(-1)[1].data[summaryKey]).toBe('Cambio pendiente de autorización');
     expect(draft()).toBeNull();
   });
 

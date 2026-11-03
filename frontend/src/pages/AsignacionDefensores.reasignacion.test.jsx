@@ -8,6 +8,7 @@ import {
   getCondenados,
   getCondenadosFilterOptions,
   getDefensoresCatalogo,
+  unassignDefensorPpl,
   validatePagCedula,
 } from '../services/api.js';
 
@@ -110,5 +111,32 @@ describe('reasignaciones consecutivas desde PAG', () => {
       }));
     }
     expect(window.confirm).toHaveBeenCalledTimes(3);
+  });
+  it('DNDP accede y reasigna sin validar una cédula PAG', async () => {
+    await act(async () => root.render(<AsignacionDefensores user={{ roles: ['Aurora.DNDP'] }} />));
+    expect(container.querySelector('input[placeholder="Ingrese cedula de PAG"]')).toBeNull();
+    expect(container.textContent).toContain('Acceso DNDP');
+    await click('Reasignación');
+    await fill('Filtrar departamento', 'BOYACA');
+    await click('Filtrar');
+    await act(async () => container.querySelector('input[aria-label="Seleccionar 123"]').click());
+    await fill('Escriba para buscar defensor', 'DEFENSOR SEGUNDO');
+    await click('GUARDAR REASIGNACIÓN');
+    expect(validatePagCedula).not.toHaveBeenCalled();
+    expect(assignDefensorPpl).toHaveBeenCalledWith(['123'], 'DEFENSOR SEGUNDO', { defensorCedula: '22' });
+    expect(container.querySelector('tbody').textContent).toContain('DEFENSOR SEGUNDO');
+  });
+  it('DNDP puede retirar asignaciones sin enviar cédula PAG', async () => {
+    unassignDefensorPpl.mockResolvedValue({ updated: 1 });
+    await act(async () => root.render(<AsignacionDefensores user={{ roles: ['dndp'] }} />));
+    await click('Eliminar asignaciones');
+    await fill('Filtrar departamento', 'BOYACA');
+    await click('Filtrar');
+    await act(async () => container.querySelector('input[aria-label="Seleccionar 123"]').click());
+    const remove = [...container.querySelectorAll('button')].find((item) => item.textContent.trim().startsWith('ELIMINAR ASIGNACIONES'));
+    expect(remove).toBeDefined();
+    await act(async () => remove.click());
+    expect(unassignDefensorPpl).toHaveBeenCalledWith(['123'], {});
+    expect(validatePagCedula).not.toHaveBeenCalled();
   });
 });

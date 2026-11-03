@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
-FROM node:20.19-bookworm-slim AS frontend-builder
+ARG NODE_VERSION=24.22.2
+FROM node:${NODE_VERSION}-bookworm-slim AS frontend-builder
 WORKDIR /app/frontend
 
 ARG VITE_API_BASE_URL=/api
@@ -12,16 +13,16 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM node:20.19-bookworm-slim AS production
+FROM node:${NODE_VERSION}-bookworm-slim AS production
 ENV NODE_ENV=production
 ENV PORT=7860
 
 WORKDIR /app
 
-COPY scripts/cargas_bd/requirements.txt ./scripts/cargas_bd/requirements.txt
+COPY scripts/cargas_bd/requirements*.txt ./scripts/cargas_bd/
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 python3-pip gosu \
-  && pip3 install --break-system-packages --no-cache-dir -r ./scripts/cargas_bd/requirements.txt \
+  && pip3 install --break-system-packages --no-cache-dir -r ./scripts/cargas_bd/requirements.production.txt \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 

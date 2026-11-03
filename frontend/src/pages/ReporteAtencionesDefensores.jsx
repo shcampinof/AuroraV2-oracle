@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getReporteAtencionesDefensores, getReporteAtencionesOpciones } from '../services/api.js';
 import { downloadReporteAtencionesPdf, formatReportDate } from '../utils/reporteAtencionesPdf.js';
-import { calculateTotalActuaciones } from '../utils/reporteAtencionesSummary.js';
+import { calculateTotalActuaciones, getReporteAtencionesScopeNote, isReporteSinRegional } from '../utils/reporteAtencionesSummary.js';
 
 function currentMonthRange() {
   const now = new Date();
@@ -29,7 +29,7 @@ function ReporteAtencionesDefensores({ user }) {
     defensorBusqueda: '',
     tipo: 'all',
     lugar: '',
-    incluirFueraPrision: false,
+    incluirFueraPrision: true,
   }));
   const [defensores, setDefensores] = useState([]);
   const [regionales, setRegionales] = useState([]);
@@ -52,11 +52,12 @@ function ReporteAtencionesDefensores({ user }) {
             label: String(item?.label || item?.nombre || '').trim(),
             regional: String(item?.regional || '').trim(),
             correo: String(item?.correo || '').trim(),
+            regionalesCasos: Array.isArray(item?.regionalesCasos) ? item.regionalesCasos : [],
           }))
           .filter((item) => item.id && item.nombre && item.label)
           .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
         setDefensores(options);
-        setEstablecimientos(Array.isArray(data?.establecimientos) ? data.establecimientos : []);
+        setEstablecimientos(Array.isArray(data?.establecimientosRegionales) ? data.establecimientosRegionales : []);
         setRegionales(
           (Array.isArray(data?.regionales) ? data.regionales : [])
             .map((item) => String(item || '').trim())
@@ -70,10 +71,13 @@ function ReporteAtencionesDefensores({ user }) {
           (userEmail && normalizeText(item.correo) === userEmail) ||
           (userName && normalizeText(item.nombre) === userName)
         );
-        if (match) {
+        const matchRegional = match && (match.regionalesCasos.find((item) => normalizeText(item) === normalizeText(match.regional))
+          || match.regionalesCasos[0]);
+        const initialRegional = matchRegional && (data.regionales || []).find((item) => normalizeText(item) === normalizeText(matchRegional));
+        if (initialRegional) {
           setFilters((current) => ({
             ...current,
-            regional: match.regional,
+            regional: initialRegional,
             defensorId: match.id,
             defensorNombre: match.nombre,
             defensorBusqueda: match.label,
@@ -91,16 +95,28 @@ function ReporteAtencionesDefensores({ user }) {
     };
   }, [user]);
 
-  const filteredDefensores = defensores;
+  const filteredDefensores = filters.regional
+    ? defensores.filter((item) =>
+      item.regionalesCasos.some((regional) => normalizeText(regional) === normalizeText(filters.regional)))
+    : [];
+  const filteredEstablecimientos = [...new Set(establecimientos
+    .filter((item) => normalizeText(item.regional) === normalizeText(filters.regional))
+    .map((item) => item.nombre))];
 
   const updateFilter = (key, value) => {
     setReport(null);
     setError('');
-    setFilters((current) => ({
-      ...current,
-      [key]: value,
-      ...(key === 'tipo' && value !== 'all' ? { incluirFueraPrision: false } : {}),
-    }));
+    setFilters((current) => {
+      const selected = defensores.find((item) => item.id === current.defensorId);
+      const resetDefensor = key === 'regional' || (key === 'lugar' && value.trim() && selected
+        && !selected.regionalesCasos.some((regional) => normalizeText(regional) === normalizeText(current.regional)));
+      return {
+        ...current,
+        [key]: value,
+        ...(key === 'regional' ? { lugar: '' } : {}),
+        ...(resetDefensor ? { defensorId: '', defensorNombre: '', defensorBusqueda: '' } : {}),
+      };
+    });
   };
 
   const updateDefensorSearch = (value) => {
@@ -129,6 +145,10 @@ function ReporteAtencionesDefensores({ user }) {
     }
     if (filters.fechaInicio > filters.fechaFin) {
       setError('La fecha inicial no puede ser posterior a la fecha final.');
+      return;
+    }
+    if (filters.lugar && !filteredEstablecimientos.some((item) => normalizeText(item) === normalizeText(filters.lugar))) {
+      setError('Seleccione un ERON de las sugerencias de esta regional.');
       return;
     }
     setLoadingReport(true);
@@ -163,12 +183,17 @@ function ReporteAtencionesDefensores({ user }) {
         ['Recursos', report.resumen.recursosPresentados],
         ['Casos cerrados', report.resumen.casosCerrados],
         ['Total actuaciones', calculateTotalActuaciones(report.resumen)],
-        ['Personas asignadas actualmente', report.resumen.personasAsignadas],
-        ['Personas con caso activo', report.resumen.personasActivas],
-        ['Personas activas con gestión', report.resumen.personasActivasConGestion],
+        ['Personas activas con gestión en el periodo', report.resumen.personasActivasConGestion],
+      ]
+    : [];
+
+  const globalCards = report
+    ? [
+        ['Total personas con caso activo', report.resumen.personasActivas],
         ['Total personas con casos cerrados', report.resumen.totalPersonasConCasosCerrados],
       ]
     : [];
+  const scopeNote = report ? getReporteAtencionesScopeNote(report.metadata) : '';
 
   return (
     <section className="report-attentions-page">
@@ -181,7 +206,7 @@ function ReporteAtencionesDefensores({ user }) {
 
       <form className="report-attentions-form" onSubmit={submit}>
         <label>
-          <span>Defensoría Regional (encabezado)</span>
+          <span>Defensoría Regional <span className="report-attentions-requirement">(obligatoria)</span></span>
           <select
             value={filters.regional}
             onChange={(event) => updateFilter('regional', event.target.value)}
@@ -193,24 +218,17 @@ function ReporteAtencionesDefensores({ user }) {
           </select>
         </label>
         <label>
-          <span>Tipo de caso</span>
-          <select value={filters.tipo} onChange={(event) => updateFilter('tipo', event.target.value)}>
-            <option value="all">Condenados y sindicados</option>
-            <option value="condenado">Condenados</option>
-            <option value="sindicado">Sindicados</option>
-          </select>
-        </label>
-        <label>
-          <span>Establecimiento (nombre exacto)</span>
+          <span>Establecimiento (ERON) (opcional)</span>
           <input
             type="text"
             list="reporte-establecimientos-list"
             value={filters.lugar}
             onChange={(event) => updateFilter('lugar', event.target.value)}
-            placeholder="Todos los establecimientos"
+            placeholder={isReporteSinRegional(filters) ? 'Establecimientos sin regional identificada' : 'Todos los ERON de la regional'}
+            disabled={!filters.regional || loadingCatalog || isReporteSinRegional(filters)}
           />
           <datalist id="reporte-establecimientos-list">
-            {establecimientos.map((lugar) => <option key={lugar} value={lugar} />)}
+            {filteredEstablecimientos.map((lugar) => <option key={lugar} value={lugar} />)}
           </datalist>
         </label>
         <label>
@@ -219,18 +237,17 @@ function ReporteAtencionesDefensores({ user }) {
             type="checkbox"
             className="report-attentions-checkbox"
             checked={filters.incluirFueraPrision}
-            disabled={filters.tipo !== 'all'}
             onChange={(event) => updateFilter('incluirFueraPrision', event.target.checked)}
           />
         </label>
         <label>
-          <span>Defensor(a) Público(a)</span>
+          <span>Defensor(a) Público(a) <span className="report-attentions-requirement">(obligatorio)</span></span>
           <input
             type="text"
             list="reporte-defensores-list"
             value={filters.defensorBusqueda}
             onChange={(event) => updateDefensorSearch(event.target.value)}
-            disabled={loadingCatalog}
+            disabled={loadingCatalog || !filters.regional}
             placeholder="Escriba parte del nombre"
             autoComplete="off"
             required
@@ -242,7 +259,7 @@ function ReporteAtencionesDefensores({ user }) {
           </datalist>
         </label>
         <label>
-          <span>Fecha inicio reporte</span>
+          <span>Fecha inicio reporte <span className="report-attentions-requirement">(obligatoria)</span></span>
           <input
             type="date"
             value={filters.fechaInicio}
@@ -252,7 +269,7 @@ function ReporteAtencionesDefensores({ user }) {
           />
         </label>
         <label>
-          <span>Fecha final reporte</span>
+          <span>Fecha final reporte <span className="report-attentions-requirement">(obligatoria)</span></span>
           <input
             type="date"
             value={filters.fechaFin}
@@ -267,9 +284,9 @@ function ReporteAtencionesDefensores({ user }) {
       </form>
 
       {error ? <div className="status-banner status-banner--error" role="alert">{error}</div> : null}
-      {!loadingCatalog && defensores.length === 0 ? (
+      {!loadingCatalog && filters.regional && filteredDefensores.length === 0 ? (
         <div className="status-banner status-banner--error" role="alert">
-          No hay defensores con asignaciones o actuaciones registradas.
+          No hay defensores con casos registrados en la regional seleccionada.
         </div>
       ) : null}
 
@@ -286,22 +303,29 @@ function ReporteAtencionesDefensores({ user }) {
               {downloading ? 'Preparando PDF…' : 'Descargar PDF'}
             </button>
           </div>
-          <div className="report-attentions-summary">
-            {summaryCards.map(([label, value]) => (
-              <article key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
-              </article>
-            ))}
-          </div>
-          <p className="report-attentions-note">
-            Las fechas delimitan las actuaciones. Las personas asignadas y sus estados se cuentan al generar el reporte;
-            por defecto se incluyen quienes siguen en prisión. La regional corresponde al encabezado.
-            El histórico de actuaciones conserva al defensor que realizó cada gestión, incluso después de reasignar.
-          </p>
-          <p className="report-attentions-note">
-            Los cierres del periodo usan la fecha disponible de decisión o gestión; no existe una fecha de cierre independiente.
-          </p>
+          {scopeNote ? <p className="report-attentions-scope-note">{scopeNote}</p> : null}
+          <section className="report-attentions-period" aria-label="Indicadores del periodo seleccionado">
+            <h4>Periodo seleccionado</h4>
+            <div className="report-attentions-summary">
+              {summaryCards.map(([label, value]) => (
+                <article key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </article>
+              ))}
+            </div>
+          </section>
+          <section className="report-attentions-global" aria-label="Totales globales actuales">
+            <h4>Totales globales actuales</h4>
+            <div className="report-attentions-summary report-attentions-summary--global">
+              {globalCards.map(([label, value]) => (
+                <article key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </article>
+              ))}
+            </div>
+          </section>
         </section>
       ) : null}
     </section>

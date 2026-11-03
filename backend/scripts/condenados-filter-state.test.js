@@ -1,5 +1,6 @@
 const assert = require('assert');
 const { listAcciones } = require('../domain/catalogosHomologacion');
+const { ESTADOS_CASO } = require('../domain/estadoCaso');
 
 async function captureStateSearch(filters, tipo = 'all') {
   const oraclePoolPath = require.resolve('../db/oraclePool');
@@ -232,8 +233,8 @@ async function testFilterOptionsOnlyUseActivePrisonSituations() {
   try {
     const repository = require(repositoryPath);
     await repository.listDistinctCondenadosFilterOptions({ tipo: 'all' });
-    assert.strictEqual(capturedSql.length, 4);
-    capturedSql.forEach((sql) => {
+    assert.strictEqual(capturedSql.length, 5);
+    capturedSql.filter((sql) => !sql.includes('FROM DNDP.CAT_ERON_REGIONAL')).forEach((sql) => {
       assert.match(sql, /WHERE\s+s\.RN\s*=\s*1\s+AND\s+NVL\(s\.ACTIVO,\s*0\)\s*=\s*1/i);
       assert.match(sql, /s\.RN\s*=\s*1/i);
     });
@@ -488,7 +489,9 @@ async function testEverySupportedFilterBuildsAnEffectivePredicate() {
   assert.strictEqual(captured.binds.lugarFilter, 'CENTRO EJEMPLO%');
   assert.strictEqual(captured.binds.departamentoFilter, 'BOYACA%');
   assert.strictEqual(captured.binds.municipioFilter, 'TUNJA%');
-  assert.strictEqual(captured.binds.estadoAccionFilter, '%ANALIZAR_CASO%');
+  assert.strictEqual(captured.binds.estadoAccionCodigo, 'ANALIZAR_CASO');
+  assert.strictEqual(captured.binds.estadoAccionFilter, undefined);
+  assert.match(captured.sql, /ESTADO_CODIGO = :estadoAccionCodigo/);
   assert.strictEqual(captured.binds.potencialSubrogado, 'potenciales_beneficiarios');
 }
 
@@ -502,6 +505,34 @@ async function testInvalidIdentityFiltersFailClosed() {
     const captured = await captureStateSearch(filters);
     assert.match(captured.sql, /\b1=0\b/);
   }
+}
+
+async function testLegacyStateIdentityAcrossEveryState() {
+  const { matchesFilters } = require('../routes/ppl').condenadosContract;
+  for (const state of ESTADOS_CASO) {
+    for (const value of [state.codigo, state.etiqueta]) {
+      const captured = await capturePagedSearch({ estadoAccion: value }, { offset: 50 });
+      assert.equal(captured.binds.estadoAccionCodigo, state.codigo);
+      assert.equal(captured.binds.estadoAccionFilter, undefined);
+      assert.match(captured.sql, /ESTADO_CODIGO = :estadoAccionCodigo/);
+      assert(captured.sql.indexOf('ESTADO_CODIGO = :estadoAccionCodigo') < captured.sql.indexOf('WHERE ROWNUM <= :endRow'), 'Filtrar antes de paginar');
+      assert.equal(captured.binds.offsetRows, 50);
+      for (const actual of ESTADOS_CASO) {
+        // Aunque el texto histórico coincida, debe prevalecer el estado actual.
+        const row = { situacionActiva: true, estadoCodigo: actual.codigo, estadoEtiqueta: actual.etiqueta,
+          estadoSource: { 'Estado del trámite': state.etiqueta, 'Acción a realizar': state.codigo } };
+        assert.equal(matchesFilters(row, { estadoAccion: value }), actual.codigo === state.codigo, `${actual.codigo} vs ${value}`);
+      }
+    }
+  }
+  const free = await captureStateSearch({ estadoAccion: 'entrevistar' });
+  assert.equal(free.binds.estadoAccionFilter, '%ENTREVISTAR%');
+  assert.equal(free.binds.estadoAccionCodigo, undefined);
+  assert(matchesFilters({ situacionActiva: true, estadoCodigo: 'ENTREVISTAR_USUARIO', estadoSource: { 'Estado del caso': 'Entrevistar al usuario' } }, { estadoAccion: 'entrevistar' }));
+  const combined = await captureStateSearch({ estadoAccion: 'PENDIENTE_DECISION', estadoCodigo: 'PENDIENTE_DECISION_AUDIENCIA' });
+  assert.equal(combined.binds.estadoAccionCodigo, 'PENDIENTE_DECISION');
+  assert.equal(combined.binds.estadoCodigo, 'PENDIENTE_DECISION_AUDIENCIA');
+  assert.match(combined.sql, /ESTADO_CODIGO = :estadoAccionCodigo AND ESTADO_CODIGO = :estadoCodigo/);
 }
 
 async function testPagFiltersActiveAndAssignmentStateBeforePagination() {
@@ -560,7 +591,26 @@ async function testReportWithoutDefenderIdentityFailsClosed() {
   assert.deepStrictEqual(captured.binds, {});
 }
 
+async function testRegionalPriorityAndUnassignedBeforePagination() {
+  const captured = await capturePagedSearch({
+    regional: '  BOYACÁ ', prioridadGestion: 'rojo', estadoCodigo: 'ANALIZAR_CASO',
+  }, { tipo: 'all', offset: 50 });
+  assert.equal(captured.binds.regional, 'BOYACA');
+  assert.equal(captured.binds.prioridadGestion, 'rojo');
+  assert.match(captured.sql, /report_erones/);
+  assert.match(captured.sql, /eron_nombre.ALIAS/);
+  assert.match(captured.sql, /a\.CEDULA_DEFENSOR IS NULL AND TRIM\(a\.NOMBRE_DEFENSOR\) IS NULL THEN 'SIN_ASIGNACION'/);
+  assert.match(captured.sql, /WHERE PRIORIDAD_GESTION = :prioridadGestion AND ESTADO_CODIGO = :estadoCodigo/);
+  assert.match(captured.sql, /COUNT\(\*\) OVER\(\) AS TOTAL_MATCHED/);
+  const unassigned = await captureStateSearch({ estadoCodigo: 'SIN_ASIGNACION' });
+  assert.equal(unassigned.binds.estadoCodigo, 'SIN_ASIGNACION');
+  const invalid = await captureStateSearch({ prioridadGestion: 'invalido' });
+  assert.match(invalid.sql, /WHERE 1=0/);
+}
+
 (async () => {
+  await testLegacyStateIdentityAcrossEveryState();
+  await testRegionalPriorityAndUnassignedBeforePagination();
   await testEstadoUsesDerivedWorkflowMilestones();
   await testLugarKeepsPrefixFilterAlongsideEstado();
   await testCanonicalDefenderIdKeepsHistoricalNameFallback();

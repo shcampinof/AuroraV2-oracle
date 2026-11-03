@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aurora-shell-v8';
+const CACHE_NAME = 'aurora-shell-v9';
 const QUEUE_DB_NAME = 'aurora-pwa-v1';
 const QUEUE_STORE_NAME = 'offlineRequests';
 const QUEUE_SYNC_TAG = 'aurora-offline-sync';
@@ -16,6 +16,7 @@ const APP_SHELL = Array.from(new Set([
   ...BUILD_ASSETS,
 ]));
 let replayInProgress = false;
+let replayRequested = false;
 let authHeader = '';
 let authSubject = '';
 
@@ -71,6 +72,10 @@ function runQueueStore(mode, callback) {
           db.close();
           reject(tx.error);
         };
+        tx.onabort = () => {
+          db.close();
+          reject(tx.error || new Error('La cola sin conexión está llena.'));
+        };
 
         result = callback(store);
       })
@@ -96,28 +101,6 @@ async function getQueuedRequests() {
   }
 }
 
-async function getQueueSize() {
-  const db = await openQueueDb();
-  try {
-    const tx = db.transaction(QUEUE_STORE_NAME, 'readonly');
-    const store = tx.objectStore(QUEUE_STORE_NAME);
-    return await requestToPromise(store.count());
-  } finally {
-    db.close();
-  }
-}
-
-async function trimQueue() {
-  const rows = await getQueuedRequests();
-  const overflow = rows.length - QUEUE_MAX_ITEMS;
-  if (overflow <= 0) return;
-
-  const idsToDelete = rows.slice(0, overflow).map((row) => row.id);
-  await runQueueStore('readwrite', (store) => {
-    idsToDelete.forEach((id) => store.delete(id));
-  });
-}
-
 function subjectFromAuthorization(value) {
   try {
     const token = String(value || '').replace(/^Bearer\s+/i, '').trim();
@@ -130,19 +113,6 @@ function subjectFromAuthorization(value) {
   } catch {
     return '';
   }
-}
-
-async function discardAuthenticatedQueueExcept(subjectToKeep = '') {
-  const rows = await getQueuedRequests();
-  const discardedIds = rows
-    .filter((row) => row.requiresAuth && (!subjectToKeep || row.authSubject !== subjectToKeep))
-    .map((row) => row.id);
-  if (!discardedIds.length) return 0;
-
-  await runQueueStore('readwrite', (store) => {
-    discardedIds.forEach((id) => store.delete(id));
-  });
-  return discardedIds.length;
 }
 
 function isQueueableWrite(request, url) {
@@ -202,18 +172,21 @@ async function queueRequest(request) {
   };
 
   await runQueueStore('readwrite', (store) => {
-    if (!coalesceKey) {
-      store.put(entry);
-      return;
-    }
+    let retained = 0;
     const cursorRequest = store.openCursor();
     cursorRequest.onsuccess = () => {
       const cursor = cursorRequest.result;
       if (!cursor) {
+        // El límite nunca debe borrar un pendiente anterior. La transacción
+        // serializa también dos envíos que llegan con la cola casi llena.
+        if (retained >= QUEUE_MAX_ITEMS) {
+          store.transaction.abort();
+          return;
+        }
         store.put(entry);
         return;
       }
-      if (cursor.value?.coalesceKey === coalesceKey) {
+      if (coalesceKey && cursor.value?.coalesceKey === coalesceKey) {
         try {
           const previousBody = JSON.parse(cursor.value?.body || '{}');
           const nextBody = JSON.parse(entry.body || '{}');
@@ -229,11 +202,10 @@ async function queueRequest(request) {
           // Si un cuerpo legado no es JSON, prevalece el snapshot más reciente.
         }
         cursor.delete();
-      }
+      } else retained += 1;
       cursor.continue();
     };
   });
-  await trimQueue();
   await registerQueueSync();
   await notifyQueueUpdated({ queued: true });
   return entry;
@@ -250,18 +222,26 @@ async function registerQueueSync() {
 
 async function notifyQueueUpdated(extra = {}) {
   const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
-  const pending = await getQueueSize().catch(() => 0);
+  // La cuenta activa solo recibe el estado de sus propios pendientes.
+  const rows = (await getQueuedRequests().catch(() => []))
+    .filter((row) => !row.requiresAuth || (authSubject && row.authSubject === authSubject));
+  const blocked = rows.find((row) => [401, 403].includes(row.lastErrorStatus));
   clientsList.forEach((client) => {
     client.postMessage({
       type: 'AURORA_OFFLINE_QUEUE_UPDATED',
-      pending,
+      pending: rows.length,
+      waitingForAuth: Boolean(blocked),
+      authStatus: blocked?.lastErrorStatus || 0,
       ...extra,
     });
   });
 }
 
 async function replayQueuedRequests() {
-  if (replayInProgress) return;
+  if (replayInProgress) {
+    replayRequested = true;
+    return;
+  }
   replayInProgress = true;
 
   try {
@@ -275,8 +255,7 @@ async function replayQueuedRequests() {
         break;
       }
       if (row.requiresAuth && (!row.authSubject || row.authSubject !== authSubject)) {
-        await runQueueStore('readwrite', (store) => store.delete(row.id));
-        failed += 1;
+        // Cambiar de cuenta no envía ni elimina pendientes de otra identidad.
         continue;
       }
 
@@ -295,6 +274,17 @@ async function replayQueuedRequests() {
           await runQueueStore('readwrite', (store) => store.delete(row.id));
           replayed += 1;
           continue;
+        }
+
+        if (response.status === 401 || response.status === 403) {
+          await runQueueStore('readwrite', (store) => store.put({
+            ...row,
+            attempts: Number(row.attempts || 0) + 1,
+            lastAttemptAt: Date.now(),
+            lastErrorStatus: response.status,
+          }));
+          await notifyQueueUpdated();
+          break;
         }
 
         if (response.status >= 400 && response.status < 500) {
@@ -323,11 +313,15 @@ async function replayQueuedRequests() {
       }
     }
 
-    if (replayed || failed) {
-      await notifyQueueUpdated({ replayed, failed });
-    }
+    await notifyQueueUpdated({ replayed, failed });
   } finally {
     replayInProgress = false;
+    // Una reconexión o credencial renovada durante el envío anterior debe
+    // ejecutarse cuando este termine, sin lanzar escrituras simultáneas.
+    if (replayRequested) {
+      replayRequested = false;
+      await replayQueuedRequests();
+    }
   }
 }
 
@@ -410,14 +404,12 @@ self.addEventListener('message', (event) => {
     const token = String(data.token || '').trim();
     authHeader = token ? `Bearer ${token}` : '';
     authSubject = subjectFromAuthorization(authHeader);
-    event.waitUntil(
-      discardAuthenticatedQueueExcept(authSubject).then(async (discarded) => {
-        if (discarded) await notifyQueueUpdated({ discarded });
-        if (authHeader && authSubject) await replayQueuedRequests();
-      })
-    );
+    event.waitUntil(authHeader && authSubject ? replayQueuedRequests() : notifyQueueUpdated());
   }
   if (data.type === 'AURORA_REPLAY_QUEUE') {
     event.waitUntil(replayQueuedRequests());
+  }
+  if (data.type === 'AURORA_QUEUE_STATUS') {
+    event.waitUntil(notifyQueueUpdated());
   }
 });

@@ -1,8 +1,12 @@
 const { execute } = require('../../db/oraclePool');
+const { buildPrioridadGestionSelect } = require('./prioridadGestionSql');
 const {
   buildActiveSituacionCte,
   buildStrictActiveSituacionCte,
   buildScopeWhereClause,
+  buildReportRegionalClause,
+  buildReportEronCtes,
+  REPORT_REGIONAL_SIN_IDENTIFICAR,
   DEFAULT_SCOPE_DEPARTAMENTOS,
   normalizedSqlExpr,
   normalizedMojibakeSqlExpr,
@@ -154,6 +158,7 @@ const BASE_SELECT_COLUMNS = [
   'g.FECHA_DECISION_RECURSO AS G_FECHA_DECISION_RECURSO',
   'g.SENTIDO_DECISION_RESUELVE_RECURSO AS G_SENTIDO_DECISION_RESUELVE_RECURSO',
   'g.CIERRE_CASO AS G_CIERRE_CASO',
+  'g.RAZON_CIERRE_CASO AS G_RAZON_CIERRE_CASO',
   'g.FECHA_REGISTRO AS G_FECHA_REGISTRO',
 ].join(',\n      ');
 
@@ -264,8 +269,11 @@ const RECURSO_NORMALIZADO_EXPR = normalizedStateSqlExpr('g.SE_PRESENTA_RECURSO')
 const DECISION_USUARIO_NORMALIZADA_EXPR = normalizedStateSqlExpr('g.DECISION_USUARIO');
 const CIERRE_CASO_NORMALIZADO_EXPR = normalizedStateSqlExpr('g.CIERRE_CASO');
 const HAS_EXPLICIT_CIERRE_CASO_EXPR = `(${CIERRE_CASO_NORMALIZADO_EXPR} IN (
+  'SE CIERRA PORQUE LA PERSONA FUE TRASLADADA A UN ERON DE COMPETENCIA DE OTRA REGIONAL DE LA DEFENSORIA DEL PUEBLO',
+  'SE CIERRA PORQUE LA PERSONA SE ENCUENTRA EN LIBERTAD',
   'SE CIERRA PORQUE LA PERSONA YA NO ESTA EN EL ERON POR RAZON AJENA A ESTE TRAMITE.',
   'CIERRE AUTOMATICO POR CAMBIO DE ERON O REGIONAL.',
+  'CIERRE AUTOMATICO POR CAMBIO DE REGIONAL.',
   'CIERRE AUTOMATICO POR ACTUALIZACION RELEVANTE DE SISIPEC.',
   'OTRO MOTIVO.'
 ))`;
@@ -487,6 +495,12 @@ const DERIVED_ESTADO_CODIGO_EXPR = `
 `;
 
 const ESTADO_CODIGO_EXPR = DERIVED_ESTADO_CODIGO_EXPR;
+// La bandeja describe la asignación actual; las actuaciones históricas conservan su estado.
+const CURRENT_ESTADO_CODIGO_EXPR = `CASE
+  WHEN NVL(s.ACTIVO, 0) <> 1 THEN 'CASO_CERRADO'
+  WHEN a.CEDULA_DEFENSOR IS NULL AND TRIM(a.NOMBRE_DEFENSOR) IS NULL THEN 'SIN_ASIGNACION'
+  ELSE (${ESTADO_CODIGO_EXPR})
+END`;
 
 function sqlLiteral(value) {
   return `'${String(value ?? '').replace(/'/g, "''")}'`;
@@ -510,7 +524,7 @@ const ACCION_REALIZAR_CALCULADA_EXPR = buildAccionRealizarCalculadaExpr();
 
 const ESTADO_ACCION_EXPR = `
   TRIM(
-    NVL(${ESTADO_CODIGO_EXPR}, '') || ' ' ||
+    NVL(${CURRENT_ESTADO_CODIGO_EXPR}, '') || ' ' ||
     NVL(g.ACCION_REALIZAR, '') || ' ' ||
     NVL(g.ACTUACION_ADELANTAR, '')
   )
@@ -567,6 +581,10 @@ function buildCondenadosSummaryWhereClause({
   if (!includeUserFilters) {
     return { clause: clauses.join('\n      AND '), binds };
   }
+
+  const regionalScope = buildReportRegionalClause({ regional: filters?.regional });
+  clauses.push(regionalScope.clause);
+  Object.assign(binds, regionalScope.binds);
 
   const rawDocumento = String(filters?.documento || '').trim();
   const documento = rawDocumento.replace(/\D+/g, '');
@@ -750,6 +768,7 @@ async function listCondenadosSummary({
   const safeOffset = Math.max(0, Number.parseInt(String(offset || '0'), 10) || 0);
   const fetchLimit = includeExactCounts ? safeLimit : safeLimit + 1;
   const rawEstadoCodigo = String(filters?.estadoCodigo || '').trim();
+  const estadoAccionCodigo = resolveEstadoCodigo(filters?.estadoAccion);
   const rawEstadoLegado = String(filters?.estado || '').trim();
   const estadoCodigo = resolveEstadoCodigo(rawEstadoCodigo) || resolveEstadoCodigo(rawEstadoLegado);
   const hasEstadoFilter = Boolean(rawEstadoCodigo || rawEstadoLegado);
@@ -764,6 +783,7 @@ async function listCondenadosSummary({
       ['1', 'true', 'si', 'sí'].includes(String(filters?.incluirFueraPrision || '').trim().toLowerCase()));
   const repositoryFilters = {
     ...(filters && typeof filters === 'object' ? filters : {}),
+    estadoAccion: estadoAccionCodigo ? '' : filters?.estadoAccion,
     estadoCodigo: '',
     estado: '',
     accionCodigo: '',
@@ -774,6 +794,7 @@ async function listCondenadosSummary({
     : 's.ESTABLECIMIENTO';
   const activeSituacionCte = buildActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
   const cte = `
+    ${filters?.regional ? `${buildReportEronCtes()},` : ''}
     ${activeSituacionCte},
     latest_gestion AS (
       SELECT
@@ -890,22 +911,36 @@ async function listCondenadosSummary({
         g.SENTIDO_DECISION_RESUELVE_RECURSO AS "SENTIDO DE LA DECISION QUE RESUELVE RECURSO",
         g.FECHA_DECISION_RECURSO AS "Fecha de la decision del recurso",
         g.CIERRE_CASO AS "Cierre del caso por imposibilidad de avanzar (si aplica)",
+        g.RAZON_CIERRE_CASO AS "Razon o explicacion del cierre del caso",
         g.SENTIDO_DECISION_RESUELVE_RECURSO AS "Sentido de la decision que resuelve la solicitud",
         g.FECHA_PRESENTACION_SOLICITUD_AUTORIDAD AS "Fecha de presentacion de la solicitud a la autoridad",
         g.FECHA_RADICACION_UTILIDAD AS "Fecha de radicacion de solicitud de utilidad publica",
         g.FECHA_DECISION_AUTORIDAD AS "Fecha de decision de la autoridad",
         a.FECHA_ASIGNACION AS "Fecha de asignacion del PAG",
+        g.FECHA_REGISTRO AS FECHA_INICIO_ATENCION,
         CAST(NULL AS VARCHAR2(4000)) AS "Estado del caso",
         CAST(NULL AS VARCHAR2(4000)) AS "Estado del tramite",
         g.ACCION_REALIZAR AS "Accion a realizar",
         CAST(NULL AS VARCHAR2(4000)) AS "posibleActuacionJudicial",
         ${POTENCIAL_SUBROGADO_EXPR} AS CATEGORIA_POTENCIAL_SUBROGADO,
-        ${ESTADO_CODIGO_EXPR} AS ESTADO_CODIGO
+        ${CURRENT_ESTADO_CODIGO_EXPR} AS ESTADO_CODIGO
       ${fromAndWhere}
   `;
 
+  const prioritizedSelectSql = buildPrioridadGestionSelect(baseSelectSql);
   const outerPredicates = [];
+  const prioridadGestion = String(filters?.prioridadGestion || '').trim().toLowerCase();
+  if (['verde', 'amarillo', 'rojo', 'azul', 'gris', 'sin_fecha'].includes(prioridadGestion)) {
+    outerPredicates.push('PRIORIDAD_GESTION = :prioridadGestion');
+  } else if (prioridadGestion) {
+    outerPredicates.push('1=0');
+  }
   const outerBinds = {};
+  if (estadoAccionCodigo) {
+    outerPredicates.push('ESTADO_CODIGO = :estadoAccionCodigo');
+    outerBinds.estadoAccionCodigo = estadoAccionCodigo;
+  }
+  if (outerPredicates.includes('PRIORIDAD_GESTION = :prioridadGestion')) outerBinds.prioridadGestion = prioridadGestion;
   if (estadoCodigo) {
     outerPredicates.push('ESTADO_CODIGO = :estadoCodigo');
     outerBinds.estadoCodigo = estadoCodigo;
@@ -928,7 +963,7 @@ async function listCondenadosSummary({
       filtered_rows.*
       ${includeExactCounts ? ', COUNT(*) OVER() AS TOTAL_MATCHED' : ''}
     FROM (
-      ${baseSelectSql}
+      ${prioritizedSelectSql}
     ) filtered_rows
     WHERE ${estadoPredicate}
   `;
@@ -939,7 +974,7 @@ async function listCondenadosSummary({
       ${cte}
       SELECT COUNT(*) AS TOTAL_MATCHED
       FROM (
-        ${baseSelectSql}
+        ${prioritizedSelectSql}
       ) filtered_rows
       WHERE ${estadoPredicate}
     `;
@@ -1296,10 +1331,22 @@ async function listDistinctCondenadosFilterOptions({
       .filter((item) => item.label);
   }
 
+  async function queryRegionales() {
+    const sql = `SELECT REGIONAL FROM (
+      SELECT DISTINCT TRIM(TO_CHAR(REGIONAL)) AS REGIONAL
+      FROM DNDP.CAT_ERON_REGIONAL
+      WHERE NVL(ACTIVO, 1) = 1 AND TRIM(TO_CHAR(REGIONAL)) IS NOT NULL
+      UNION
+      SELECT '${REPORT_REGIONAL_SIN_IDENTIFICAR}' AS REGIONAL FROM dual
+    ) ORDER BY REGIONAL`;
+    const result = await execute(sql, {}, { operation: 'persona.listFilterOptions.REGIONAL' });
+    return (result?.rows || []).map((row) => String(row.REGIONAL || '').trim()).filter(Boolean);
+  }
+
   const departamento = String(filters?.departamento || '').trim();
   const municipio = String(filters?.municipio || '').trim();
 
-  const [departamentos, municipios, lugares, defensorOptions] = await Promise.all([
+  const [departamentos, municipios, lugares, defensorOptions, regionales] = await Promise.all([
     queryDistinct({
       columnRef: 's.DEPARTAMENTO',
       alias: 'DEPARTAMENTO',
@@ -1316,6 +1363,7 @@ async function listDistinctCondenadosFilterOptions({
       fieldFilters: { departamento, municipio },
     }),
     queryDefensorOptions(),
+    queryRegionales(),
   ]);
 
   const defensores = defensorOptions.map((item) => item.label);
@@ -1326,6 +1374,7 @@ async function listDistinctCondenadosFilterOptions({
     lugares,
     defensores,
     defensorOptions,
+    regionales,
   };
 }
 
@@ -1427,7 +1476,11 @@ async function listRowsWithActiveSituacionAndGestiones({
     ${buildActiveSituacionCte()}
     SELECT
       ${BASE_SELECT_COLUMNS},
-      ${ESTADO_CODIGO_EXPR.replaceAll(DEFENSOR_ACTIVO_EXPR, 'TO_NCHAR(g.DEFENSOR_GESTION)')} AS ESTADO_CODIGO
+      CASE WHEN NVL(s.ACTIVO, 0) = 1 AND g.ID_GESTION IS NULL
+        AND a.CEDULA_DEFENSOR IS NULL AND TRIM(a.NOMBRE_DEFENSOR) IS NULL
+        THEN 'SIN_ASIGNACION'
+        ELSE (${ESTADO_CODIGO_EXPR.replaceAll(DEFENSOR_ACTIVO_EXPR, 'TO_NCHAR(g.DEFENSOR_GESTION)')})
+      END AS ESTADO_CODIGO
     FROM DNDP.PERSONA p
     JOIN ranked_situacion s
       ON s.ID_PERSONA = p.ID_PERSONA
@@ -1495,6 +1548,7 @@ async function listAutomaticClosuresByDocumento(documento, { scopeDepartamentos 
     WHERE TO_CHAR(p.NUMERO) = :documento AND ${clause}
       AND TRIM(TO_CHAR(g.CIERRE_CASO)) IN (
         'Cierre automático por cambio de ERON o regional.',
+        'Cierre automático por cambio de regional.',
         'Cierre automático por actualización relevante de SISIPEC.'
       )
     ORDER BY a.FECHA_FIN DESC NULLS LAST, g.FECHA_REGISTRO DESC NULLS LAST, g.ID_GESTION DESC
@@ -1548,6 +1602,7 @@ async function listAssignedCasesForReport({
   centroId = '',
   incluirFueraPrision = false,
   scopeDepartamentos = DEFAULT_SCOPE_DEPARTAMENTOS,
+  regional = '',
 } = {}) {
   const rawDefensorCedula = String(defensorCedula || '').trim();
   const normalizedDefensorCedula = rawDefensorCedula.replace(/\D+/g, '');
@@ -1581,16 +1636,19 @@ async function listAssignedCasesForReport({
   // establecimiento y exclusión explícita de situaciones inactivas por defecto.
   const { clause: universeClause, binds: universeBinds } = buildCondenadosSummaryWhereClause({
     tipo,
-    filters: { lugar, centroId, incluirFueraPrision, lugarExacto: true },
+    filters: { lugar: regional ? '' : lugar, centroId: regional ? '' : centroId, incluirFueraPrision, lugarExacto: true },
     scopeDepartamentos,
     includeInactiveSituations: tipo === 'all' && (
       incluirFueraPrision === true || ['1', 'true', 'si', 'sí'].includes(String(incluirFueraPrision).toLowerCase())
     ),
   });
   Object.assign(binds, universeBinds);
+  const regionalScope = buildReportRegionalClause({ regional, lugar, tipo });
+  Object.assign(binds, regionalScope.binds);
   const activeSituacionCte = buildActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
   const sql = `
     WITH
+    ${regional ? `${buildReportEronCtes()},` : ''}
     ${activeSituacionCte},
     latest_gestion AS (
       SELECT
@@ -1638,6 +1696,7 @@ async function listAssignedCasesForReport({
        AND g.RN = 1
       WHERE ${defensorClause}
         AND ${universeClause}
+        AND ${regionalScope.clause}
     )
     SELECT
       assigned_rows.*,

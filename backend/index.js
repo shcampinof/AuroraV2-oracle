@@ -6,6 +6,7 @@ const https = require('https');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const { getTrustProxy, requestOrigin } = require('./config/http');
 
 const authRoutes = require('./routes/auth');
 const formatosRoutes = require('./routes/formatos');
@@ -47,12 +48,6 @@ function normalizeOrigin(origin) {
   } catch {
     return '';
   }
-}
-
-function requestOrigin(req) {
-  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
-  const host = String(req.headers['x-forwarded-host'] || req.get('host') || '').split(',')[0].trim();
-  return host ? `${proto}://${host}` : '';
 }
 
 function getHttpsOptions() {
@@ -102,7 +97,7 @@ function corsOptionsDelegate(req, callback) {
   return callback(new Error('Origen CORS no autorizado.'));
 }
 
-app.set('trust proxy', 1);
+app.set('trust proxy', getTrustProxy());
 app.disable('x-powered-by');
 app.use(
   helmet({

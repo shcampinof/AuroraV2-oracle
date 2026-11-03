@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   PPL_DATA_UPDATED_EVENT,
   getCachedCondenados,
@@ -36,6 +36,13 @@ function prettifyHeader(key) {
 const EXTRA_COLUMNS = ['actuacionJudicial'];
 const PAGE_SIZE = 50;
 const INITIAL_FILTER_OPTIONS_QUERY = { tipo: 'all' };
+const PRIORIDADES_GESTION = [
+  { value: 'verde', label: 'Verde (1 a 15 días)' },
+  { value: 'amarillo', label: 'Amarillo (16 a 45 días)' },
+  { value: 'rojo', label: 'Rojo (46 días o más)' },
+  { value: 'azul', label: 'Azul · En espera' },
+  { value: 'gris', label: 'Gris · Sin asignación o cerrado' },
+];
 const HEADER_LABELS = {
   Title: 'N\u00famero de identificaci\u00f3n',
   TITLE: 'N\u00famero de identificaci\u00f3n',
@@ -198,7 +205,9 @@ function normalizeRowsPayload(data) {
   return { columns, rows, meta: data?.meta || null };
 }
 
-function DropdownField({ label, value, onChange, options, searchable = false, listId }) {
+function DropdownField({ label, value, onChange, options, searchable = false, listId, description }) {
+  const fieldId = useId();
+  const descriptionId = description ? `${fieldId}-description` : undefined;
   const normalizedOptions = useMemo(
     () =>
       (Array.isArray(options) ? options : []).map((opt) => {
@@ -219,10 +228,11 @@ function DropdownField({ label, value, onChange, options, searchable = false, li
 
   return (
     <div className="form-field">
-      <label>{label}</label>
+      <label htmlFor={fieldId}>{label}</label>
       {searchable ? (
         <>
           <input
+            id={fieldId}
             list={listId}
             className="input-text"
             placeholder="Escriba para filtrar"
@@ -239,7 +249,9 @@ function DropdownField({ label, value, onChange, options, searchable = false, li
         </>
       ) : (
         <select
+          id={fieldId}
           value={value}
+          aria-describedby={descriptionId}
           onChange={(e) => onChange(e.target.value)}
           title={selectedLabel || undefined}
         >
@@ -251,6 +263,7 @@ function DropdownField({ label, value, onChange, options, searchable = false, li
           ))}
         </select>
       )}
+      {description && <p id={descriptionId} className="asignados-filter-hint">{description}</p>}
     </div>
   );
 }
@@ -266,6 +279,7 @@ function InputField({
   inputMode,
   pattern,
 }) {
+  const fieldId = useId();
   const normalizedOptions = (Array.isArray(options) ? options : [])
     .map((opt) => {
       if (opt && typeof opt === 'object') {
@@ -281,8 +295,9 @@ function InputField({
     .filter((opt) => opt.value);
   return (
     <div className="form-field">
-      <label>{label}</label>
+      <label htmlFor={fieldId}>{label}</label>
       <input
+        id={fieldId}
         list={listId}
         className="input-text"
         type={type}
@@ -305,16 +320,18 @@ function InputField({
 
 function getColumnWidth(col) {
   const widths = {
-    __situacionJuridica__: 110,
-    __numeroIdentificacion__: 130,
-    __nombreUsuario__: 145,
-    __defensor__: 120,
-    __lugarPrivacion__: 155,
-    __accionPendiente__: 165,
-    __fuenteInformacion__: 120,
+    __situacionJuridica__: 105,
+    __numeroIdentificacion__: 145,
+    __nombreUsuario__: 175,
+    __defensor__: 165,
+    __lugarPrivacion__: 190,
+    __accionPendiente__: 185,
     __fechaCorte__: 115,
-    __departamentoReclusion__: 140,
-    __municipioReclusion__: 130,
+    __departamentoReclusion__: 120,
+    __municipioReclusion__: 125,
+    autoridadCargo: 220,
+    numeroProceso: 185,
+    actuacionJudicial: 220,
   };
   return widths[col] || 145;
 }
@@ -342,6 +359,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     centroId: '',
     departamento: '',
     municipio: '',
+    regional: '',
+    prioridadGestion: '',
     estadoCodigo: '',
     accionCodigo: '',
     incluirFueraPrision: false,
@@ -355,6 +374,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     centroId: '',
     departamento: '',
     municipio: '',
+    regional: '',
+    prioridadGestion: '',
     estadoCodigo: '',
     accionCodigo: '',
     incluirFueraPrision: false,
@@ -366,11 +387,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   const [defensores, setDefensores] = useState(() => initialOptions.defensores);
   const [opcionesFiltro, setOpcionesFiltro] = useState(() => initialOptions);
   const isDev = typeof import.meta !== 'undefined' && import.meta?.env?.DEV;
-  const tableScrollRef = useRef(null);
-  const stickyScrollRef = useRef(null);
-  const syncingHorizontalScrollRef = useRef(false);
-  const [stickyScrollWidth, setStickyScrollWidth] = useState(0);
-  const [showStickyScroll, setShowStickyScroll] = useState(false);
 
   function getNumeroIdentificacionValue(obj) {
     const data = pickActiveCaseData(obj);
@@ -646,79 +662,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     if (!isDev) return;
   }, [isDev, rowsFiltradas.length, rowsPaginaActual.length]);
 
-  const syncStickyMetrics = useCallback(() => {
-    const container = tableScrollRef.current;
-    const sticky = stickyScrollRef.current;
-    if (!container || !sticky) return;
-
-    const nextWidth = Math.max(0, Number(container.scrollWidth || 0));
-    const hasOverflow = nextWidth > Number(container.clientWidth || 0) + 1;
-    setStickyScrollWidth(nextWidth);
-    setShowStickyScroll(hasOverflow);
-
-    if (!syncingHorizontalScrollRef.current) {
-      syncingHorizontalScrollRef.current = true;
-      sticky.scrollLeft = container.scrollLeft;
-      syncingHorizontalScrollRef.current = false;
-    }
-  }, [setShowStickyScroll, setStickyScrollWidth]);
-
-  useEffect(() => {
-    const container = tableScrollRef.current;
-    if (!container) return undefined;
-
-    let resizeObserver = null;
-    const scheduleSync = () => {
-      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-        window.requestAnimationFrame(syncStickyMetrics);
-        return;
-      }
-      syncStickyMetrics();
-    };
-
-    scheduleSync();
-
-    if (typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(() => {
-        scheduleSync();
-      });
-      resizeObserver.observe(container);
-      const table = container.querySelector('table');
-      if (table) resizeObserver.observe(table);
-    }
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('resize', scheduleSync);
-    }
-
-    return () => {
-      if (resizeObserver) resizeObserver.disconnect();
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('resize', scheduleSync);
-      }
-    };
-  }, [rowsFiltradas.length, columns.length, paginaActual, syncStickyMetrics]);
-
-  function handleTableHorizontalScroll() {
-    if (syncingHorizontalScrollRef.current) return;
-    const container = tableScrollRef.current;
-    const sticky = stickyScrollRef.current;
-    if (!container || !sticky) return;
-    syncingHorizontalScrollRef.current = true;
-    sticky.scrollLeft = container.scrollLeft;
-    syncingHorizontalScrollRef.current = false;
-  }
-
-  function handleStickyHorizontalScroll() {
-    if (syncingHorizontalScrollRef.current) return;
-    const container = tableScrollRef.current;
-    const sticky = stickyScrollRef.current;
-    if (!container || !sticky) return;
-    syncingHorizontalScrollRef.current = true;
-    container.scrollLeft = sticky.scrollLeft;
-    syncingHorizontalScrollRef.current = false;
-  }
-
   async function aplicarFiltros() {
     const defensor = String(filtrosDraft.defensor || '').trim();
     const lugar = String(filtrosDraft.lugar || '').trim();
@@ -732,6 +675,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       centroId: centro?.id || '',
       departamento: String(filtrosDraft.departamento || '').trim(),
       municipio: String(filtrosDraft.municipio || '').trim(),
+      regional: String(filtrosDraft.regional || '').trim(),
+      prioridadGestion: String(filtrosDraft.prioridadGestion || '').trim(),
       estadoCodigo: String(filtrosDraft.estadoCodigo || '').trim(),
       accionCodigo: String(filtrosDraft.accionCodigo || '').trim(),
       incluirFueraPrision: filtrosDraft.incluirFueraPrision === true,
@@ -778,6 +723,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       centroId: '',
       departamento: '',
       municipio: '',
+      regional: '',
+      prioridadGestion: '',
       estadoCodigo: '',
       accionCodigo: '',
       incluirFueraPrision: false,
@@ -801,7 +748,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       '__defensor__',
       '__lugarPrivacion__',
       '__accionPendiente__',
-      '__fuenteInformacion__',
       '__fechaCorte__',
       '__departamentoReclusion__',
       '__municipioReclusion__',
@@ -867,6 +813,10 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       'accionPendiente',
       'estadoCodigo',
       'estadoEtiqueta',
+      'prioridadGestion',
+      'fechaReferenciaGestion',
+      'diasPrioridadGestion',
+      'fechaInicioAtencion',
       'centroId',
       'centroHomologado',
       'centroReclusion',
@@ -881,12 +831,11 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
   function renderHeader(col) {
     if (col === '__situacionJuridica__') return 'SITUACIÓN JURÍDICA';
-    if (col === '__numeroIdentificacion__') return 'NÚMERO DE IDENTIFICACIÓN';
+    if (col === '__numeroIdentificacion__') return 'IDENTIFICACIÓN';
     if (col === '__nombreUsuario__') return 'NOMBRE USUARIO';
     if (col === '__defensor__') return 'DEFENSOR';
-    if (col === '__lugarPrivacion__') return 'NOMBRE DEL LUGAR DE PRIVACIÓN DE LA LIBERTAD';
+    if (col === '__lugarPrivacion__') return 'LUGAR DE RECLUSIÓN';
     if (col === '__accionPendiente__') return 'ESTADO / ACCIÓN A IMPULSAR';
-    if (col === '__fuenteInformacion__') return 'FUENTE DE INFORMACIÓN';
     if (col === '__fechaCorte__') return 'FECHA DE CORTE';
     if (col === '__departamentoReclusion__') return 'DEPARTAMENTO';
     if (col === '__municipioReclusion__') return 'MUNICIPIO';
@@ -907,34 +856,21 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       const situacionActiva = isSituacionActiva(pickActiveCaseData(row));
       const estadoCanonico = etiqueta;
       const estadoClass = situacionActiva
-        ? String(getEstadoClassForRecord(row, estadoCanonico)).trim()
+        ? row?.prioridadGestion
+          ? `estado--${row.prioridadGestion === 'sin_fecha' ? 'gris' : row.prioridadGestion}`
+          : String(getEstadoClassForRecord(row, estadoCanonico)).trim()
         : 'estado--fuera-prision';
       return (
         <div>
-          <span className={`estadoBadge${estadoClass ? ` ${estadoClass}` : ''}`}>{etiqueta}</span>
+          <span
+            className={`estadoBadge${estadoClass ? ` ${estadoClass}` : ''}`}
+            title={[
+              PRIORIDADES_GESTION.find((item) => item.value === row?.prioridadGestion)?.label,
+              row?.fechaReferenciaGestion ? `${row.diasPrioridadGestion} días desde ${row.fechaReferenciaGestion}` : '',
+            ].filter(Boolean).join('. ')}
+          >{etiqueta}</span>
           {accionEtiqueta && normalize(accionEtiqueta) !== normalize(etiqueta) && (
             <small style={{ display: 'block', marginTop: '0.25rem' }}>Acción: {accionEtiqueta}</small>
-          )}
-        </div>
-      );
-    }
-    if (col === '__fuenteInformacion__') {
-      const fuente = displayOrDash(row?.fuenteInformacion);
-      return (
-        <div>
-          <span>{fuente}</span>
-          {row?.tieneHistorialActivoInactivo && (
-            <small
-              title="La persona tiene más de una situación carcelaria y el historial contiene registros ACTIVO=1 y ACTIVO=0. Se muestra la situación con la fecha efectiva más reciente."
-              style={{ display: 'block', color: '#6b4f00', marginTop: '0.25rem' }}
-            >
-              Cambio de situación registrado
-              {row?.fechaCorte && (
-                <span style={{ marginLeft: '0.35rem', fontSize: '0.85em', whiteSpace: 'nowrap' }}>
-                  · {row.fechaCorte}
-                </span>
-              )}
-            </small>
           )}
         </div>
       );
@@ -985,98 +921,118 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
             <div className="filter-panel">
               <h3 className="filter-title">Búsqueda</h3>
 
-              <DropdownField
-                label="Defensor"
-                value={filtrosDraft.defensor}
-                onChange={setDefensorDraft}
-                options={defensoresOrdenados}
-                searchable
-                listId="filtro-defensor"
-              />
-
-              <InputField
-                label="Número de identificación"
-                value={filtrosDraft.documento}
-                onChange={(value) => setFiltroDraft('documento', String(value || '').replace(/\D+/g, ''))}
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="Ingrese cédula"
-              />
-
-              <DropdownField
-                label="Acción a Impulsar / estado"
-                value={filtrosDraft.estadoCodigo}
-                onChange={(value) => {
-                  setFiltrosDraft((prev) => ({
-                    ...prev,
-                    estadoCodigo: value,
-                    accionCodigo: '',
-                  }));
-                }}
-                options={estadosDisponibles}
-              />
-
-              <DropdownField
-                label="Filtrar"
-                value={filtroAdicionalSeleccionado}
-                onChange={seleccionarFiltroAdicional}
-                options={[
-                  { value: 'nombre', label: 'Nombre' },
-                  { value: 'lugar', label: 'Nombre del lugar de privación de la libertad' },
-                  { value: 'departamento', label: 'Departamento del lugar de privación de la libertad' },
-                  { value: 'municipio', label: 'Distrito/municipio del lugar de privación de la libertad' },
-                ]}
-              />
-
-              {filtroAdicionalSeleccionado === 'nombre' && (
-                <InputField
-                  label="Nombre"
-                  value={filtrosDraft.nombre}
-                  onChange={(value) => setFiltroDraft('nombre', value)}
-                  placeholder="Ingrese nombre"
+              <div className="asignados-filter-grid">
+                <DropdownField
+                  label="Defensor"
+                  value={filtrosDraft.defensor}
+                  onChange={setDefensorDraft}
+                  options={defensoresOrdenados}
+                  searchable
+                  listId="filtro-defensor"
                 />
-              )}
 
-              {filtroAdicionalSeleccionado === 'lugar' && (
                 <InputField
-                  label="Nombre del lugar de privación de la libertad"
-                  value={filtrosDraft.lugar}
-                  onChange={setCentroDraft}
-                  options={lugaresDisponibles}
-                  listId="filtro-lugar"
-                  placeholder="Ingrese lugar"
+                  label="Número de identificación"
+                  value={filtrosDraft.documento}
+                  onChange={(value) => setFiltroDraft('documento', String(value || '').replace(/\D+/g, ''))}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="Ingrese cédula"
                 />
-              )}
-              {filtroAdicionalSeleccionado === 'departamento' && (
-                <InputField
-                  label="Departamento del lugar de privación de la libertad"
-                  value={filtrosDraft.departamento}
-                  onChange={(value) =>
+
+                <DropdownField
+                  label="Acción a Impulsar / estado"
+                  value={filtrosDraft.estadoCodigo}
+                  onChange={(value) => {
                     setFiltrosDraft((prev) => ({
                       ...prev,
-                      departamento: value,
-                      municipio: '',
-                    }))
-                  }
-                  options={departamentosDisponibles}
-                  listId="filtro-departamento"
-                  placeholder="Ingrese departamento"
+                      estadoCodigo: value,
+                      accionCodigo: '',
+                    }));
+                  }}
+                  options={estadosDisponibles}
                 />
-              )}
 
-              {filtroAdicionalSeleccionado === 'municipio' && (
-                <InputField
-                  label="Distrito/municipio del lugar de privación de la libertad"
-                  value={filtrosDraft.municipio}
-                  onChange={(value) => setFiltroDraft('municipio', value)}
-                  options={municipiosDisponiblesDraft}
-                  listId="filtro-municipio"
-                  placeholder="Ingrese distrito/municipio"
+                <DropdownField
+                  label="Regional"
+                  value={filtrosDraft.regional}
+                  onChange={(value) => setFiltroDraft('regional', value)}
+                  options={opcionesFiltro.regionales}
                 />
-              )}
 
-              <div className="search-row asignados-filter-actions" style={{ marginTop: '0.75rem' }}>
+                <DropdownField
+                  label="Tiempo del estado"
+                  value={filtrosDraft.prioridadGestion}
+                  onChange={(value) => setFiltroDraft('prioridadGestion', value)}
+                  options={PRIORIDADES_GESTION}
+                />
+                <DropdownField
+                  label="Filtrar"
+                  description="Por nombre, lugar de privación, departamento o municipio."
+                  value={filtroAdicionalSeleccionado}
+                  onChange={seleccionarFiltroAdicional}
+                  options={[
+                    { value: 'nombre', label: 'Nombre' },
+                    { value: 'lugar', label: 'Nombre del lugar de privación de la libertad' },
+                    { value: 'departamento', label: 'Departamento del lugar de privación de la libertad' },
+                    { value: 'municipio', label: 'Distrito/municipio del lugar de privación de la libertad' },
+                  ]}
+                />
+
+                {filtroAdicionalSeleccionado && (
+                  <div className="asignados-extra-filter">
+                    {filtroAdicionalSeleccionado === 'nombre' && (
+                      <InputField
+                        label="Nombre"
+                        value={filtrosDraft.nombre}
+                        onChange={(value) => setFiltroDraft('nombre', value)}
+                        placeholder="Ingrese nombre"
+                      />
+                    )}
+
+                    {filtroAdicionalSeleccionado === 'lugar' && (
+                      <InputField
+                        label="Nombre del lugar de privación de la libertad"
+                        value={filtrosDraft.lugar}
+                        onChange={setCentroDraft}
+                        options={lugaresDisponibles}
+                        listId="filtro-lugar"
+                        placeholder="Ingrese lugar"
+                      />
+                    )}
+                    {filtroAdicionalSeleccionado === 'departamento' && (
+                      <InputField
+                        label="Departamento del lugar de privación de la libertad"
+                        value={filtrosDraft.departamento}
+                        onChange={(value) =>
+                          setFiltrosDraft((prev) => ({
+                            ...prev,
+                            departamento: value,
+                            municipio: '',
+                          }))
+                        }
+                        options={departamentosDisponibles}
+                        listId="filtro-departamento"
+                        placeholder="Ingrese departamento"
+                      />
+                    )}
+
+                    {filtroAdicionalSeleccionado === 'municipio' && (
+                      <InputField
+                        label="Distrito/municipio del lugar de privación de la libertad"
+                        value={filtrosDraft.municipio}
+                        onChange={(value) => setFiltroDraft('municipio', value)}
+                        options={municipiosDisponiblesDraft}
+                        listId="filtro-municipio"
+                        placeholder="Ingrese distrito/municipio"
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="search-row asignados-filter-actions">
                 <button className="primary-button primary-button--search" type="button" onClick={aplicarFiltros}>
                   Buscar
                 </button>
@@ -1100,11 +1056,12 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
           <div className="asignados-table-shell">
             <div
-              ref={tableScrollRef}
               className="table-container tall asignados-table-container"
-              onScroll={handleTableHorizontalScroll}
             >
-              <table className="data-table aurora-table asignados-table">
+              <table
+                className="data-table aurora-table asignados-table"
+                style={{ width: `${orderedColumns.reduce((total, col) => total + getColumnWidth(col), 0)}px` }}
+              >
                 <colgroup>
                   {orderedColumns.map((c) => (
                     <col key={`col-${c}`} style={{ width: `${getColumnWidth(c)}px` }} />
@@ -1137,11 +1094,18 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                         className={`clickable-row${situacionActiva ? '' : ' row-fuera-prision'}`}
                         title={situacionActiva ? undefined : 'Fuera de prisión. Registro histórico disponible solo para consulta.'}
                       >
-                        {orderedColumns.map((c) => (
-                          <td key={c}>
-                            {renderCell(r, c)}
-                          </td>
-                        ))}
+                        {orderedColumns.map((c) => {
+                          const content = renderCell(r, c);
+                          return (
+                            <td key={c}>
+                              {c === '__accionPendiente__' ? content : (
+                                <span className="asignados-cell-text" title={String(content)}>
+                                  {content}
+                                </span>
+                              )}
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   })}
@@ -1157,14 +1121,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                   )}
                 </tbody>
               </table>
-            </div>
-            <div
-              ref={stickyScrollRef}
-              className={`asignados-scrollbar-sticky${showStickyScroll ? '' : ' is-hidden'}`}
-              onScroll={handleStickyHorizontalScroll}
-              aria-hidden={!showStickyScroll}
-            >
-              <div style={{ width: `${stickyScrollWidth}px` }} />
             </div>
 
             {busquedaRealizada && rowsFiltradas.length > 0 && (

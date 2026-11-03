@@ -64,6 +64,12 @@ function AdminCargasBD() {
   const [cleanupLoading, setCleanupLoading] = useState(false);
   const [cleanupDeleting, setCleanupDeleting] = useState(false);
   const [cleanupError, setCleanupError] = useState('');
+  const [cleanupMode, setCleanupMode] = useState('all');
+  const [cleanupSelected, setCleanupSelected] = useState(new Set());
+
+  const selectedCleanup = cleanupMode === 'selected';
+  const cleanupCount = selectedCleanup ? cleanupSelected.size : Number(cleanupPreview?.totalActuaciones || 0);
+  const cleanupPhrase = selectedCleanup ? `ELIMINAR ${cleanupCount} ACTUACIONES` : cleanupPreview?.confirmation;
 
   const hasRunningCarga = useMemo(
     () => cargas.some((carga) => RUNNING_STATUSES.has(carga.status)),
@@ -165,12 +171,13 @@ function AdminCargasBD() {
     }
   }
 
-  async function loadCleanupPreview({ preserveError = false } = {}) {
+  async function loadCleanupPreview({ preserveError = false, offset = 0, preserveSelection = false } = {}) {
     setCleanupLoading(true);
     setCleanupConfirmation('');
+    if (!preserveSelection) setCleanupSelected(new Set());
     if (!preserveError) setCleanupError('');
     try {
-      const data = await getActuacionesCleanupPreview();
+      const data = await getActuacionesCleanupPreview('', { offset });
       setCleanupPreview(data?.preview || null);
     } catch (err) {
       setCleanupPreview(null);
@@ -183,20 +190,24 @@ function AdminCargasBD() {
   function handleOpenCleanup() {
     setCleanupOpen(true);
     setCleanupError('');
+    setCleanupMode('all');
     loadCleanupPreview();
   }
 
   async function handleDeleteActuaciones() {
-    if (!cleanupPreview?.totalAsignaciones) return;
+    if (!cleanupPreview || (selectedCleanup ? !cleanupSelected.size : !cleanupPreview.totalAsignaciones)
+        || cleanupConfirmation !== cleanupPhrase) return;
     setCleanupDeleting(true);
     setMessage('');
     setError('');
     try {
       const data = await deleteActuacionesCleanup({
         defensor: cleanupPreview.defensor,
-        expectedCount: cleanupPreview.totalActuaciones,
-        expectedAssignments: cleanupPreview.totalAsignaciones,
+        expectedCount: cleanupCount,
+        expectedAssignments: selectedCleanup ? 0 : cleanupPreview.totalAsignaciones,
         confirmation: cleanupConfirmation,
+        mode: cleanupMode,
+        ...(selectedCleanup ? { gestionIds: [...cleanupSelected] } : {}),
       });
       setMessage(data?.message || 'Actuaciones de prueba eliminadas.');
       setCleanupOpen(false);
@@ -338,7 +349,7 @@ function AdminCargasBD() {
             <div className="admin-cleanup-toolbar">
               <div>
                 <h3 id="cleanup-title">Depuración de actuaciones ficticias</h3>
-                <p>Esta operación elimina las actuaciones ficticias y las asignaciones activas del defensor de prueba. No elimina personas ni situaciones.</p>
+                <p>Elija entre depurar todo o eliminar actuaciones seleccionadas de PRUEBA PILOTO. No elimina personas ni situaciones.</p>
               </div>
               <button type="button" onClick={() => setCleanupOpen(false)} disabled={cleanupDeleting}>
                 Cerrar
@@ -353,8 +364,17 @@ function AdminCargasBD() {
                   <div className="admin-cleanup-summary">
                     <div><span>Defensor activo</span><strong>{cleanupPreview.defensor}</strong></div>
                     <div><span>Actuaciones</span><strong>{cleanupPreview.totalActuaciones}</strong></div>
-                    <div><span>Asignaciones a retirar</span><strong>{cleanupPreview.totalAsignaciones}</strong></div>
+                    <div><span>Asignaciones a retirar</span><strong>{selectedCleanup ? 0 : cleanupPreview.totalAsignaciones}</strong></div>
                   </div>
+
+                  <fieldset className="admin-cleanup-modes" disabled={cleanupDeleting}>
+                    <legend>Qué desea eliminar</legend>
+                    <label><input type="radio" name="cleanup-mode" checked={!selectedCleanup}
+                      onChange={() => { setCleanupMode('all'); setCleanupConfirmation(''); }} /> Todas las actuaciones y asignaciones de prueba</label>
+                    <label><input type="radio" name="cleanup-mode" checked={selectedCleanup}
+                      onChange={() => { setCleanupMode('selected'); setCleanupConfirmation(''); }} /> Solo actuaciones seleccionadas (conserva las asignaciones)</label>
+                  </fieldset>
+                  {selectedCleanup ? <p>{cleanupSelected.size} actuaciones seleccionadas. Puede seleccionar hasta 1000 entre las distintas páginas.</p> : null}
 
                   {cleanupPreview.totalAsignaciones ? (
                     <>
@@ -362,6 +382,18 @@ function AdminCargasBD() {
                         <table className="admin-loads-table admin-cleanup-table">
                           <thead>
                             <tr>
+                              {selectedCleanup ? <th>
+                                <input type="checkbox" aria-label="Seleccionar actuaciones de esta página" disabled={cleanupDeleting || !cleanupPreview.actuaciones.length}
+                                  checked={cleanupPreview.actuaciones.length > 0 && cleanupPreview.actuaciones.every((item) => cleanupSelected.has(Number(item.ID_GESTION)))}
+                                  onChange={(event) => {
+                                    const checked = event.target.checked;
+                                    const next = new Set(cleanupSelected);
+                                    cleanupPreview.actuaciones.forEach((item) => checked ? next.add(Number(item.ID_GESTION)) : next.delete(Number(item.ID_GESTION)));
+                                    if (next.size > 1000) { setCleanupError('Puede seleccionar hasta 1000 actuaciones por operación.'); return; }
+                                    setCleanupSelected(next);
+                                    setCleanupConfirmation('');
+                                  }} />
+                              </th> : null}
                               <th>ID</th>
                               <th>Documento</th>
                               <th>Nombre</th>
@@ -372,6 +404,16 @@ function AdminCargasBD() {
                           <tbody>
                             {cleanupPreview.actuaciones.map((item) => (
                               <tr key={item.ID_GESTION}>
+                                {selectedCleanup ? <td><input type="checkbox" aria-label={`Seleccionar actuación ${item.ID_GESTION}`}
+                                  checked={cleanupSelected.has(Number(item.ID_GESTION))}
+                                  disabled={cleanupDeleting || (!cleanupSelected.has(Number(item.ID_GESTION)) && cleanupSelected.size >= 1000)}
+                                  onChange={(event) => {
+                                    const next = new Set(cleanupSelected);
+                                    if (event.target.checked) next.add(Number(item.ID_GESTION));
+                                    else next.delete(Number(item.ID_GESTION));
+                                    setCleanupSelected(next);
+                                    setCleanupConfirmation('');
+                                  }} /></td> : null}
                                 <td>{item.ID_GESTION}</td>
                                 <td>{item.DOCUMENTO || '-'}</td>
                                 <td>{item.NOMBRE || '-'}</td>
@@ -382,12 +424,21 @@ function AdminCargasBD() {
                           </tbody>
                         </table>
                       </div>
-                      {cleanupPreview.truncated ? <p className="admin-cleanup-note">La vista previa muestra los primeros 500 registros.</p> : null}
+                      {(cleanupPreview.truncated || cleanupPreview.offset > 0) ? (
+                        <div className="admin-cleanup-actions">
+                          <button type="button" disabled={cleanupDeleting || !cleanupPreview.offset}
+                            onClick={() => loadCleanupPreview({ offset: Math.max(0, cleanupPreview.offset - 500), preserveSelection: true })}>Página anterior</button>
+                          <span>Mostrando {cleanupPreview.offset + 1}–{cleanupPreview.offset + cleanupPreview.actuaciones.length} de {cleanupPreview.totalActuaciones}</span>
+                          <button type="button" disabled={cleanupDeleting || !cleanupPreview.truncated}
+                            onClick={() => loadCleanupPreview({ offset: cleanupPreview.offset + 500, preserveSelection: true })}>Página siguiente</button>
+                        </div>
+                      ) : null}
                       <label className="admin-cleanup-confirmation">
-                        Para confirmar, escriba <strong>{cleanupPreview.confirmation}</strong>
+                        Para confirmar, escriba <strong>{cleanupPhrase}</strong>
                         <input
                           type="text"
                           value={cleanupConfirmation}
+                          disabled={cleanupDeleting || (selectedCleanup && !cleanupSelected.size)}
                           onChange={(event) => setCleanupConfirmation(event.target.value)}
                           autoComplete="off"
                         />
@@ -400,9 +451,9 @@ function AdminCargasBD() {
                           type="button"
                           className="danger-button"
                           onClick={handleDeleteActuaciones}
-                          disabled={cleanupDeleting || cleanupConfirmation !== cleanupPreview.confirmation}
+                          disabled={cleanupDeleting || cleanupConfirmation !== cleanupPhrase || (selectedCleanup && !cleanupSelected.size)}
                         >
-                          {cleanupDeleting ? 'Eliminando...' : `Depurar ${cleanupPreview.totalAsignaciones} usuarios`}
+                          {cleanupDeleting ? 'Eliminando...' : selectedCleanup ? `Eliminar ${cleanupCount} actuaciones seleccionadas` : `Depurar ${cleanupPreview.totalAsignaciones} usuarios`}
                         </button>
                       </div>
                     </>

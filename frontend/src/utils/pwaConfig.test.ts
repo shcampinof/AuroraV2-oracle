@@ -47,7 +47,7 @@ describe('PWA configuration', () => {
     expect(serviceWorker).toContain('...(previousBody?.data || {})');
     expect(serviceWorker).toContain('...(nextBody?.data || {})');
     expect(serviceWorker).toContain('authSubject: entrySubject');
-    expect(serviceWorker).toContain('discardAuthenticatedQueueExcept(authSubject)');
+    expect(serviceWorker).not.toContain('discardAuthenticatedQueueExcept');
     expect(serviceWorker).toContain('row.authSubject !== authSubject');
   });
 

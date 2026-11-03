@@ -10,6 +10,8 @@ const {
   upsertManagedUser,
 } = require('../services/userDirectoryService');
 const { analyzeUserCsv } = require('../services/userCsvImportService');
+const { prepareManagedPag } = require('../services/managedPagService');
+const pagRepo = require('../repositories/oracle/pagRepository');
 
 const router = express.Router();
 
@@ -30,6 +32,8 @@ function cleanUserPayload(body) {
   return {
     email: String(body?.email || '').trim().toLowerCase(),
     name: String(body?.name || '').trim(),
+    ...(body?.pagCedula != null ? { pagCedula: String(body.pagCedula).trim() } : {}),
+    ...(body?.pagRegional != null ? { pagRegional: String(body.pagRegional).trim() } : {}),
     roles: Array.isArray(body?.roles) ? body.roles : String(body?.roles || '').split(','),
     enabled: body?.enabled == null ? true : Boolean(body.enabled),
   };
@@ -37,6 +41,9 @@ function cleanUserPayload(body) {
 
 function cleanPatchPayload(body) {
   const patch = {};
+  for (const key of ['pagCedula', 'pagRegional']) {
+    if (Object.prototype.hasOwnProperty.call(body || {}, key)) patch[key] = String(body[key] || '').trim();
+  }
   if (Object.prototype.hasOwnProperty.call(body || {}, 'email')) {
     patch.email = String(body.email || '').trim().toLowerCase();
   }
@@ -84,6 +91,17 @@ router.get('/', (_req, res) => {
   res.json({ users: listUsers() });
 });
 
+router.get('/pag/regionales', async (_req, res) => {
+  try {
+    return res.json({ regionales: await pagRepo.listRegionales() });
+  } catch (err) {
+    return res.status(Number(err?.status) || 500).json({
+      message: 'No fue posible cargar las regionales PAG. Intente actualizar la lista.',
+      code: 'ADMIN_USER_PAG_REGIONALES_FAILED',
+    });
+  }
+});
+
 router.post('/import/preview', receiveCsv, (req, res) => {
   try {
     const analysis = analyzeUserCsv(req.file.buffer, listUsers());
@@ -113,9 +131,11 @@ router.post('/import', receiveCsv, (req, res) => {
   }
 });
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
-    const user = upsertManagedUser(cleanUserPayload(req.body));
+    const payload = cleanUserPayload(req.body);
+    const existing = listUsers().find((user) => user.email === payload.email);
+    const user = upsertManagedUser(await prepareManagedPag(payload, existing));
     return res.status(201).json({ user });
   } catch (err) {
     return res.status(Number(err?.status) || 500).json({
@@ -125,9 +145,13 @@ router.post('/', (req, res) => {
   }
 });
 
-router.patch('/:id', (req, res) => {
+router.patch('/:id', async (req, res) => {
   try {
-    const user = updateManagedUser(req.params.id, cleanPatchPayload(req.body));
+    const key = String(req.params.id).toLowerCase();
+    const existing = listUsers().find((user) => [user.id, user.azureObjectId, user.email, user.username]
+      .some((value) => String(value || '').toLowerCase() === key));
+    if (!existing) return res.status(404).json({ message: 'Usuario no encontrado.' });
+    const user = updateManagedUser(req.params.id, await prepareManagedPag(cleanPatchPayload(req.body), existing));
     if (!user) return res.status(404).json({ message: 'Usuario no encontrado.' });
     return res.json({ user });
   } catch (err) {

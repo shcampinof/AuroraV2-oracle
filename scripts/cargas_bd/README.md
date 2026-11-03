@@ -26,6 +26,36 @@ pip install -r scripts/cargas_bd/requirements.txt
 - `sisipec`: carga el consolidado SISIPEC y ejecuta el procedimiento configurado en `CARGUEBD_SISIPEC_PROCEDURE`.
 - `aurora_10`: procesa la fuente histórica Aurora 1.0; puede deshabilitarse con `CARGUEBD_AURORA10_ENABLED=false`.
 
+En SISIPEC, `ENFOQUE` se conserva como texto. Si el archivo trae varias columnas
+de enfoque (por ejemplo, `ENFOQUE`, `ENFOQUE_2`, `ENFOQUE.1` o `ENFOQUE DIFERENCIAL`),
+sus valores se concatenan con `; ` en el orden del archivo, omitiendo vacíos y
+repetidos. No se exige coincidencia con el catálogo del formulario: el desplegable
+muestra también el texto importado.
+
+Antes del ETL, el cargador amplía `SITUACION_CARCELARIA.ENFOQUE` a
+`NVARCHAR2(2000)` si su capacidad es menor; el usuario Oracle necesita permiso
+para ese `ALTER TABLE` inicial. Después de un ETL exitoso, copia los enfoques a
+las situaciones activas de fuente SISIPEC por número de identificación, sin
+modificar situaciones históricas ni borrar correcciones cuando el archivo no
+reporta enfoque. Las cargas con `--no-etl` solo actualizan staging. Para recuperar
+enfoques descartados en cargas anteriores se debe volver a cargar el Excel original.
+
+El script SISIPEC compara los datos anteriores al ETL para las asignaciones
+vigentes de `EQUIPO PPL DNDP`. Solo los cambios en fecha de captura, situación
+jurídica, autoridad, proceso, delitos, fase, requerimientos o categorización
+disparan una nueva revisión. Los cambios de pena, privación, redención, tiempo
+efectivo, porcentaje, calificación de conducta y fecha de calificación se cargan
+normalmente y, por sí solos, no cierran ni desasignan. Si además cambia uno de
+los ocho campos de revisión, sí se aplica la regla correspondiente.
+
+Después de un ETL exitoso, el script cierra la gestión anterior del bot sin
+reemplazar un motivo de cierre existente ni cambiar autores, termina únicamente
+la asignación que estaba vigente al iniciar el ETL y crea una gestión vacía en
+la situación activa que dejó el procedimiento. Si durante el ETL ya se terminó
+esa asignación o PAG registró otra, el script la respeta. No se modifican ni se
+recompilan procedimientos Oracle; la regla de traslado regional del procedimiento
+existente continúa operando. `--no-etl` no ejecuta estas reglas.
+
 El backend inicia `loader_service.py` como proceso hijo con argumentos explícitos, sin intérprete de comandos. La conexión usa las variables `ORACLE_*` del ambiente y los nombres de objetos Oracle se validan antes de formar SQL dinámico.
 
 Cuando el ETL termina correctamente, el backend recalcula la acción vigente de
@@ -56,5 +86,11 @@ npm --prefix backend test
 python3 -m unittest discover -s scripts/cargas_bd -p 'test_*.py' -v
 python3 -m py_compile scripts/cargas_bd/*.py
 ```
+
+`test_sisipec_bot_oracle.py` se habilita con `RUN_ORACLE_INTEGRATION=true` y las
+variables `ORACLE_*` del ambiente de pruebas. Ejecuta las consultas y escrituras
+del script sobre personas sintéticas, verifica el rollback y comprueba que el
+código del procedimiento se conserve. No llama al ETL mensual ni modifica
+staging. Las secuencias Oracle consumidas no se revierten con el rollback.
 
 La prueba real contra Oracle requiere un ambiente autorizado y se ejecuta por separado; no debe apuntar a producción cuando pueda modificar staging o disparar ETL.

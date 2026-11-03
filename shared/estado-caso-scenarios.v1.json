@@ -699,6 +699,42 @@
       "expectedLabel": "Presentar recurso"
     },
     {
+      "id": "aurora-cierre-traslado-otra-regional",
+      "flow": "aurora",
+      "answers": {
+        "Cierre del caso por imposibilidad de avanzar (si aplica)": "Se cierra porque la persona fue trasladada a un eron de competencia de otra regional de la defensoria del pueblo"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-cierre-persona-en-libertad",
+      "flow": "aurora",
+      "answers": {
+        "Cierre del caso por imposibilidad de avanzar (si aplica)": "Se cierra porque la persona se encuentra en libertad"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "celeste-cierre-traslado-otra-regional",
+      "flow": "celeste",
+      "answers": {
+        "Cierre del caso por imposibilidad de avanzar (si aplica)": "Se cierra porque la persona fue trasladada a un eron de competencia de otra regional de la defensoria del pueblo"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "celeste-cierre-persona-en-libertad",
+      "flow": "celeste",
+      "answers": {
+        "Cierre del caso por imposibilidad de avanzar (si aplica)": "Se cierra porque la persona se encuentra en libertad"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
       "id": "celeste-cierre-explicito-1",
       "flow": "celeste",
       "answers": {
@@ -711,7 +747,7 @@
       "id": "celeste-cierre-explicito-2",
       "flow": "celeste",
       "answers": {
-        "Cierre del caso por imposibilidad de avanzar (si aplica)": "Cierre automático por cambio de ERON o regional."
+        "Cierre del caso por imposibilidad de avanzar (si aplica)": "Cierre automático por cambio de regional."
       },
       "expectedCode": "CASO_CERRADO",
       "expectedLabel": "Caso cerrado"

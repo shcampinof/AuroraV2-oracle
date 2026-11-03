@@ -1,0 +1,1064 @@
+{
+  "date": "2026-10-30",
+  "timezone": "America/Bogota",
+  "verdict": "CONDICIONADO",
+  "scope": {
+    "block1And2ChangesExcluded": true,
+    "newProductionInfrastructure": true,
+    "validatedDatabase": "DNDPDEV.defensoria.gov.co",
+    "productionDatabaseValidated": false,
+    "finalDockerImageBuilt": false,
+    "published": false
+  },
+  "runtime": "24.22.2",
+  "frontend": {
+    "files": 28,
+    "passed": 391,
+    "lint": true,
+    "build": true
+  },
+  "backend": {
+    "suites": 21,
+    "passed": true,
+    "httpProxySpoofingRegression": true,
+    "sessionRevocationRegression": true
+  },
+  "npmAudit": {
+    "backend": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "frontend": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    }
+  },
+  "oracleStates": {
+    "readOnly": true,
+    "scenarios": 65,
+    "checks": 459,
+    "failures": []
+  },
+  "oracleFilters": {
+    "ok": true,
+    "readOnly": true,
+    "sampleSize": 200,
+    "fieldValidationSampleSize": 232,
+    "rawContractFields": 54,
+    "filtersExecuted": 48,
+    "filtersWithRows": 38,
+    "filtersWithoutRepresentativeData": [
+      "estado opción PENDIENTE_AUDIENCIA",
+      "estado opción PENDIENTE_DECISION_AUDIENCIA",
+      "acción opción PENDIENTE_AUDIENCIA",
+      "acción opción PENDIENTE_DECISION_AUDIENCIA"
+    ],
+    "negativeCases": 6,
+    "optionCounts": {
+      "defensores": 327,
+      "departamentos": 38,
+      "municipios": 284,
+      "centrosRaw": 440,
+      "centrosIdentidad": 433
+    },
+    "fieldPopulation": {
+      "numeroIdentificacion": 232,
+      "nombreUsuario": 232,
+      "lugarReclusion": 232,
+      "departamentoLugarReclusion": 232,
+      "municipioLugarReclusion": 232,
+      "autoridadCargo": 232,
+      "numeroProceso": 232,
+      "situacionJuridica": 232,
+      "defensorAsignado": 65,
+      "accionImpulsar": 232,
+      "fuenteInformacion": 232,
+      "fechaCorte": 232,
+      "situacionActiva": 232,
+      "lugarReclusionOriginal": 232,
+      "centroId": 232,
+      "centroHomologado": 232,
+      "centroReclusion": 232,
+      "defensorId": 10,
+      "estadoCodigo": 232,
+      "estadoEtiqueta": 232,
+      "accionPendiente": 232,
+      "categoriaPotencialSubrogado": 232,
+      "esPotencialSubrogado": 232,
+      "estadoSource": 232,
+      "Estado del caso": 232
+    },
+    "timings": [
+      {
+        "name": "documento",
+        "rows": 1,
+        "ms": 7797
+      },
+      {
+        "name": "nombre",
+        "rows": 1,
+        "ms": 9348
+      },
+      {
+        "name": "defensorId",
+        "rows": 25,
+        "ms": 8129
+      },
+      {
+        "name": "defensor texto",
+        "rows": 25,
+        "ms": 8308
+      },
+      {
+        "name": "lugar texto",
+        "rows": 25,
+        "ms": 9433
+      },
+      {
+        "name": "centroId",
+        "rows": 25,
+        "ms": 9361
+      },
+      {
+        "name": "departamento",
+        "rows": 25,
+        "ms": 9533
+      },
+      {
+        "name": "municipio",
+        "rows": 25,
+        "ms": 9301
+      },
+      {
+        "name": "estadoCodigo",
+        "rows": 25,
+        "ms": 10063
+      },
+      {
+        "name": "estado legado",
+        "rows": 25,
+        "ms": 9378
+      },
+      {
+        "name": "accionCodigo",
+        "rows": 25,
+        "ms": 9828
+      },
+      {
+        "name": "accion legado",
+        "rows": 25,
+        "ms": 9487
+      },
+      {
+        "name": "estadoAccion legado",
+        "rows": 25,
+        "ms": 10132
+      },
+      {
+        "name": "potencialSubrogado",
+        "rows": 25,
+        "ms": 9295
+      },
+      {
+        "name": "combinado identidad+ubicacion+flujo",
+        "rows": 1,
+        "ms": 8867
+      },
+      {
+        "name": "estado opción SIN_ASIGNACION",
+        "rows": 25,
+        "ms": 9788
+      },
+      {
+        "name": "estado opción ANALIZAR_CASO",
+        "rows": 25,
+        "ms": 9766
+      },
+      {
+        "name": "estado opción ENTREVISTAR_USUARIO",
+        "rows": 25,
+        "ms": 9365
+      },
+      {
+        "name": "estado opción PRESENTAR_SOLICITUD",
+        "rows": 25,
+        "ms": 9342
+      },
+      {
+        "name": "estado opción PENDIENTE_AUDIENCIA",
+        "rows": 0,
+        "ms": 9494
+      },
+      {
+        "name": "estado opción PENDIENTE_DECISION_AUDIENCIA",
+        "rows": 0,
+        "ms": 9589
+      },
+      {
+        "name": "estado opción PENDIENTE_DECISION",
+        "rows": 25,
+        "ms": 9710
+      },
+      {
+        "name": "estado opción PRESENTAR_RECURSO",
+        "rows": 24,
+        "ms": 9659
+      },
+      {
+        "name": "estado opción CASO_CERRADO",
+        "rows": 25,
+        "ms": 9537
+      },
+      {
+        "name": "acción opción SIN_ASIGNACION",
+        "rows": 25,
+        "ms": 10092
+      },
+      {
+        "name": "acción opción ANALIZAR_CASO",
+        "rows": 25,
+        "ms": 9767
+      },
+      {
+        "name": "acción opción ENTREVISTAR_USUARIO",
+        "rows": 25,
+        "ms": 10031
+      },
+      {
+        "name": "acción opción PRESENTAR_SOLICITUD",
+        "rows": 25,
+        "ms": 9813
+      },
+      {
+        "name": "acción opción PENDIENTE_AUDIENCIA",
+        "rows": 0,
+        "ms": 9825
+      },
+      {
+        "name": "acción opción PENDIENTE_DECISION_AUDIENCIA",
+        "rows": 0,
+        "ms": 9801
+      },
+      {
+        "name": "acción opción PENDIENTE_DECISION",
+        "rows": 25,
+        "ms": 9671
+      },
+      {
+        "name": "acción opción PRESENTAR_RECURSO",
+        "rows": 24,
+        "ms": 9829
+      },
+      {
+        "name": "acción opción CASO_CERRADO",
+        "rows": 25,
+        "ms": 9587
+      },
+      {
+        "name": "categoría potenciales_beneficiarios",
+        "rows": 25,
+        "ms": 10001
+      },
+      {
+        "name": "categoría mujeres_potenciales_utilidad_publica",
+        "rows": 25,
+        "ms": 9602
+      },
+      {
+        "name": "categoría proximos_requisito_temporal",
+        "rows": 25,
+        "ms": 9006
+      },
+      {
+        "name": "categoría no_reunen_requisitos",
+        "rows": 25,
+        "ms": 12893
+      },
+      {
+        "name": "categoría booleana positiva",
+        "rows": 25,
+        "ms": 10122
+      },
+      {
+        "name": "categoría booleana negativa",
+        "rows": 25,
+        "ms": 13460
+      },
+      {
+        "name": "tipo all",
+        "rows": 25,
+        "ms": 9600
+      },
+      {
+        "name": "tipo condenado",
+        "rows": 25,
+        "ms": 9068
+      },
+      {
+        "name": "tipo sindicado",
+        "rows": 25,
+        "ms": 8498
+      },
+      {
+        "name": "estado desconocido",
+        "rows": 0,
+        "ms": 240
+      },
+      {
+        "name": "acción desconocida",
+        "rows": 0,
+        "ms": 239
+      },
+      {
+        "name": "centro desconocido sin texto",
+        "rows": 0,
+        "ms": 283
+      },
+      {
+        "name": "documento inválido",
+        "rows": 0,
+        "ms": 280
+      },
+      {
+        "name": "defensorId inválido",
+        "rows": 0,
+        "ms": 241
+      },
+      {
+        "name": "categoría inválida",
+        "rows": 0,
+        "ms": 240
+      }
+    ]
+  },
+  "oracleIntegrity": {
+    "readOnly": true,
+    "activeAssignmentDuplicates": 0,
+    "documentDuplicates": 0,
+    "gestionAssignmentOtherPerson": 0,
+    "orphanGestionSituacion": 0,
+    "orphanAssignmentPersona": 0
+  },
+  "oracleObjects": {
+    "objects": [
+      {
+        "OBJECT_NAME": "CAT_ERON_REGIONAL",
+        "OBJECT_TYPE": "TABLE",
+        "STATUS": "VALID",
+        "LAST_DDL": "2026-10-18 20:20:30"
+      },
+      {
+        "OBJECT_NAME": "PRC_CARGA_AURORA10",
+        "OBJECT_TYPE": "PROCEDURE",
+        "STATUS": "VALID",
+        "LAST_DDL": "2026-10-28 10:22:46"
+      },
+      {
+        "OBJECT_NAME": "PRC_CARGA_PONAL",
+        "OBJECT_TYPE": "PROCEDURE",
+        "STATUS": "VALID",
+        "LAST_DDL": "2026-10-28 10:22:45"
+      },
+      {
+        "OBJECT_NAME": "PRC_CARGA_SISIPEC",
+        "OBJECT_TYPE": "PROCEDURE",
+        "STATUS": "VALID",
+        "LAST_DDL": "2026-10-28 11:02:01"
+      },
+      {
+        "OBJECT_NAME": "VW_SITUACION_REGIONAL",
+        "OBJECT_TYPE": "VIEW",
+        "STATUS": "VALID",
+        "LAST_DDL": "2026-10-18 20:43:32"
+      }
+    ],
+    "sisipecSha256": "4835d42244e06e413fa97f26212e79dfe6e904f00c9305761d7715d0416cc427"
+  },
+  "priorityScenarios": 20,
+  "python": {
+    "ordinaryDiscovered": 28,
+    "ordinaryPassed": 23,
+    "ordinarySkipped": 5,
+    "oracleBotPassed": 5,
+    "rollbackVerified": true,
+    "containerPipCheck": true
+  },
+  "browserNode20": {
+    "ok": true,
+    "baseUrl": "http://127.0.0.1:18460",
+    "service": "DNDPDEV.defensoria.gov.co",
+    "schema": "DNDP",
+    "passed": 62,
+    "failed": 0,
+    "cleanupVerified": true,
+    "checks": [
+      {
+        "name": "Permisos: usuario común no administra usuarios ni asignaciones",
+        "ok": true,
+        "ms": 42
+      },
+      {
+        "name": "PAG: cancelar el modal no crea usuario ni registro Oracle",
+        "ok": true,
+        "ms": 55
+      },
+      {
+        "name": "PAG: regional inexistente bloqueada en modal",
+        "ok": true,
+        "ms": 178
+      },
+      {
+        "name": "PAG: alta real por navegador persiste nombre, cédula, correo y regional",
+        "ok": true,
+        "ms": 64
+      },
+      {
+        "name": "PAG: cédula duplicada para otro correo rechazada sin modificar original",
+        "ok": true,
+        "ms": 19
+      },
+      {
+        "name": "PAG: cédula vacía, ceros iniciales y regional inventada rechazadas por API",
+        "ok": true,
+        "ms": 23
+      },
+      {
+        "name": "PAG: cambiar regional y nombre actualiza Oracle y listado",
+        "ok": true,
+        "ms": 20
+      },
+      {
+        "name": "PAG: roles del usuario autorizado prevalecen sobre el token previo",
+        "ok": true,
+        "ms": 30
+      },
+      {
+        "name": "PAG: API rechaza un correo sin formato de correo",
+        "ok": true,
+        "ms": 6
+      },
+      {
+        "name": "DNDP: módulo accesible sin solicitar cédula ni regional PAG",
+        "ok": true,
+        "ms": 52
+      },
+      {
+        "name": "Defensor: creación real desde navegador y duplicado rechazado",
+        "ok": true,
+        "ms": 3468
+      },
+      {
+        "name": "DNDP: asignación desde navegador conserva identidad y una sola asignación activa",
+        "ok": true,
+        "ms": 2
+      },
+      {
+        "name": "Asignación: documentos repetidos no crean vínculos ni gestiones adicionales",
+        "ok": true,
+        "ms": 48
+      },
+      {
+        "name": "Asignación: PAG requiere cédula válida, DNDP requiere documentos y defensor válidos",
+        "ok": true,
+        "ms": 10
+      },
+      {
+        "name": "Condenado: enfoque concatenado y autor de la gestión conservados",
+        "ok": true,
+        "ms": 12
+      },
+      {
+        "name": "Condenado: guardar análisis persiste en Oracle y al volver a consultar",
+        "ok": true,
+        "ms": 11443
+      },
+      {
+        "name": "Condenado: cierre Otro motivo sin explicación devuelve validación 400 y no escribe",
+        "ok": true,
+        "ms": 81
+      },
+      {
+        "name": "Condenado: crear actuación con cierre sin explicación devuelve validación 400",
+        "ok": true,
+        "ms": 78
+      },
+      {
+        "name": "Condenado: cierre incompleto protege borrador y bloquea autoguardado durante 32 segundos",
+        "ok": true,
+        "ms": 36705
+      },
+      {
+        "name": "Condenado: explicar el cierre permite guardarlo y la respuesta conserva CASO_CERRADO",
+        "ok": true,
+        "ms": 7608
+      },
+      {
+        "name": "Condenado: quitar cierre limpia la razón y el autoguardado persiste el siguiente cambio",
+        "ok": true,
+        "ms": 46530
+      },
+      {
+        "name": "Sindicado: enfoque concatenado y autor de la gestión conservados",
+        "ok": true,
+        "ms": 19
+      },
+      {
+        "name": "Sindicado: guardar análisis persiste en Oracle y al volver a consultar",
+        "ok": true,
+        "ms": 6228
+      },
+      {
+        "name": "Sindicado: cierre Otro motivo sin explicación devuelve validación 400 y no escribe",
+        "ok": true,
+        "ms": 78
+      },
+      {
+        "name": "Sindicado: crear actuación con cierre sin explicación devuelve validación 400",
+        "ok": true,
+        "ms": 74
+      },
+      {
+        "name": "Sindicado: cierre incompleto protege borrador y bloquea autoguardado durante 32 segundos",
+        "ok": true,
+        "ms": 35752
+      },
+      {
+        "name": "Sindicado: explicar el cierre permite guardarlo y la respuesta conserva CASO_CERRADO",
+        "ok": true,
+        "ms": 4823
+      },
+      {
+        "name": "Sindicado: quitar cierre limpia la razón y el autoguardado persiste el siguiente cambio",
+        "ok": true,
+        "ms": 37367
+      },
+      {
+        "name": "Fuera de prisión: bloquear escritura sin bloque 5, incluso con permiso en payload",
+        "ok": true,
+        "ms": 80
+      },
+      {
+        "name": "Reportes: catálogo relaciona defensor y establecimiento con regional del caso",
+        "ok": true,
+        "ms": 4761
+      },
+      {
+        "name": "Reportes: regional seleccionada aísla casos, incluidos sindicados",
+        "ok": true,
+        "ms": 9596
+      },
+      {
+        "name": "Reportes: fechas cambian actuaciones y conservan los totales globales actuales",
+        "ok": true,
+        "ms": 8492
+      },
+      {
+        "name": "Reportes: establecimiento limita también sindicados y excluye los de fuera o sin regional",
+        "ok": true,
+        "ms": 9463
+      },
+      {
+        "name": "Reportes: incluir fuera de prisión agrega solo el fixture inactivo y conserva histórico",
+        "ok": true,
+        "ms": 8449
+      },
+      {
+        "name": "Reportes: cambio de regional mantiene solo condenados y sindicados propios",
+        "ok": true,
+        "ms": 8385
+      },
+      {
+        "name": "Reportes: filtros inválidos y establecimiento ajeno rechazados por API",
+        "ok": true,
+        "ms": 9602
+      },
+      {
+        "name": "Reportes navegador: cascada regional, ausencia del filtro de tipo y rechazo de establecimiento ajeno",
+        "ok": true,
+        "ms": 83
+      },
+      {
+        "name": "Reportes navegador: generación real, totales globales y PDF descargable",
+        "ok": true,
+        "ms": 10476,
+        "detail": {
+          "pdfBytes": 212379
+        }
+      },
+      {
+        "name": "Reportes navegador: cambiar regional limpia defensor y establecimiento",
+        "ok": true,
+        "ms": 31
+      },
+      {
+        "name": "Ciclo persistido aurora-analisis-positivo-sin-entrevista: ENTREVISTAR_USUARIO",
+        "ok": true,
+        "ms": 210
+      },
+      {
+        "name": "Ciclo persistido aurora-entrevista-completa-sin-radicacion: PRESENTAR_SOLICITUD",
+        "ok": true,
+        "ms": 197
+      },
+      {
+        "name": "Ciclo persistido aurora-tramite-normal-radicado-sin-decision: PENDIENTE_DECISION",
+        "ok": true,
+        "ms": 192
+      },
+      {
+        "name": "Ciclo persistido aurora-decision-negativa-sin-definir-recurso: PRESENTAR_RECURSO",
+        "ok": true,
+        "ms": 189
+      },
+      {
+        "name": "Ciclo persistido aurora-recurso-presentado-sin-resultado: PENDIENTE_DECISION",
+        "ok": true,
+        "ms": 188
+      },
+      {
+        "name": "Ciclo persistido aurora-resultado-recurso-diligenciado: CASO_CERRADO",
+        "ok": true,
+        "ms": 190
+      },
+      {
+        "name": "Histórico Condenado: el ciclo nuevo conserva la actuación previa",
+        "ok": true,
+        "ms": 0
+      },
+      {
+        "name": "Ciclo persistido aurora-cierre-automatico-residual-con-utilidad-positiva: ENTREVISTAR_USUARIO",
+        "ok": true,
+        "ms": 190
+      },
+      {
+        "name": "Ciclo persistido aurora-utilidad-avance-parcial-sin-radicacion: PRESENTAR_SOLICITUD",
+        "ok": true,
+        "ms": 189
+      },
+      {
+        "name": "Ciclo persistido aurora-utilidad-radicada-sin-decision: PENDIENTE_DECISION",
+        "ok": true,
+        "ms": 199
+      },
+      {
+        "name": "Ciclo persistido aurora-utilidad-recurso-vacio: PRESENTAR_RECURSO",
+        "ok": true,
+        "ms": 188
+      },
+      {
+        "name": "Ciclo persistido aurora-utilidad-recurso-si: PENDIENTE_DECISION",
+        "ok": true,
+        "ms": 189
+      },
+      {
+        "name": "Ciclo persistido aurora-utilidad-recurso-resuelto: CASO_CERRADO",
+        "ok": true,
+        "ms": 190
+      },
+      {
+        "name": "Histórico Condenado: el ciclo nuevo conserva la actuación previa",
+        "ok": true,
+        "ms": 0
+      },
+      {
+        "name": "Ciclo persistido celeste-analisis-positivo-sin-entrevista: ENTREVISTAR_USUARIO",
+        "ok": true,
+        "ms": 188
+      },
+      {
+        "name": "Ciclo persistido celeste-entrevista-completa: PRESENTAR_SOLICITUD",
+        "ok": true,
+        "ms": 188
+      },
+      {
+        "name": "Ciclo persistido celeste-audiencia-solicitada: PENDIENTE_AUDIENCIA",
+        "ok": true,
+        "ms": 183
+      },
+      {
+        "name": "Ciclo persistido celeste-audiencia-realizada-sin-decision: PENDIENTE_DECISION_AUDIENCIA",
+        "ok": true,
+        "ms": 187
+      },
+      {
+        "name": "Ciclo persistido celeste-decision-negativa-sin-recurso: PRESENTAR_RECURSO",
+        "ok": true,
+        "ms": 183
+      },
+      {
+        "name": "Ciclo persistido celeste-recurso-presentado-sin-resultado: PENDIENTE_DECISION",
+        "ok": true,
+        "ms": 189
+      },
+      {
+        "name": "Ciclo persistido celeste-resultado-recurso-diligenciado: CASO_CERRADO",
+        "ok": true,
+        "ms": 187
+      },
+      {
+        "name": "Histórico Sindicado: el ciclo nuevo conserva la actuación previa",
+        "ok": true,
+        "ms": 1
+      },
+      {
+        "name": "Navegador: ausencia de errores JavaScript durante todos los flujos",
+        "ok": true,
+        "ms": 0
+      }
+    ]
+  },
+  "browserNode24": {
+    "ok": true,
+    "baseUrl": "http://127.0.0.1:18460",
+    "service": "DNDPDEV.defensoria.gov.co",
+    "schema": "DNDP",
+    "passed": 62,
+    "failed": 0,
+    "cleanupVerified": true,
+    "checks": [
+      {
+        "name": "Permisos: usuario común no administra usuarios ni asignaciones",
+        "ok": true,
+        "ms": 16
+      },
+      {
+        "name": "PAG: cancelar el modal no crea usuario ni registro Oracle",
+        "ok": true,
+        "ms": 55
+      },
+      {
+        "name": "PAG: regional inexistente bloqueada en modal",
+        "ok": true,
+        "ms": 190
+      },
+      {
+        "name": "PAG: alta real por navegador persiste nombre, cédula, correo y regional",
+        "ok": true,
+        "ms": 76
+      },
+      {
+        "name": "PAG: cédula duplicada para otro correo rechazada sin modificar original",
+        "ok": true,
+        "ms": 13
+      },
+      {
+        "name": "PAG: cédula vacía, ceros iniciales y regional inventada rechazadas por API",
+        "ok": true,
+        "ms": 27
+      },
+      {
+        "name": "PAG: cambiar regional y nombre actualiza Oracle y listado",
+        "ok": true,
+        "ms": 14
+      },
+      {
+        "name": "PAG: roles del usuario autorizado prevalecen sobre el token previo",
+        "ok": true,
+        "ms": 22
+      },
+      {
+        "name": "PAG: API rechaza un correo sin formato de correo",
+        "ok": true,
+        "ms": 3
+      },
+      {
+        "name": "DNDP: módulo accesible sin solicitar cédula ni regional PAG",
+        "ok": true,
+        "ms": 75
+      },
+      {
+        "name": "Defensor: creación real desde navegador y duplicado rechazado",
+        "ok": true,
+        "ms": 3446
+      },
+      {
+        "name": "DNDP: asignación desde navegador conserva identidad y una sola asignación activa",
+        "ok": true,
+        "ms": 4
+      },
+      {
+        "name": "Asignación: documentos repetidos no crean vínculos ni gestiones adicionales",
+        "ok": true,
+        "ms": 48
+      },
+      {
+        "name": "Asignación: PAG requiere cédula válida, DNDP requiere documentos y defensor válidos",
+        "ok": true,
+        "ms": 9
+      },
+      {
+        "name": "Condenado: enfoque concatenado y autor de la gestión conservados",
+        "ok": true,
+        "ms": 26
+      },
+      {
+        "name": "Condenado: guardar análisis persiste en Oracle y al volver a consultar",
+        "ok": true,
+        "ms": 11362
+      },
+      {
+        "name": "Condenado: cierre Otro motivo sin explicación devuelve validación 400 y no escribe",
+        "ok": true,
+        "ms": 77
+      },
+      {
+        "name": "Condenado: crear actuación con cierre sin explicación devuelve validación 400",
+        "ok": true,
+        "ms": 74
+      },
+      {
+        "name": "Condenado: cierre incompleto protege borrador y bloquea autoguardado durante 32 segundos",
+        "ok": true,
+        "ms": 36629
+      },
+      {
+        "name": "Condenado: explicar el cierre permite guardarlo y la respuesta conserva CASO_CERRADO",
+        "ok": true,
+        "ms": 7639
+      },
+      {
+        "name": "Condenado: quitar cierre limpia la razón y el autoguardado persiste el siguiente cambio",
+        "ok": true,
+        "ms": 46568
+      },
+      {
+        "name": "Sindicado: enfoque concatenado y autor de la gestión conservados",
+        "ok": true,
+        "ms": 24
+      },
+      {
+        "name": "Sindicado: guardar análisis persiste en Oracle y al volver a consultar",
+        "ok": true,
+        "ms": 6213
+      },
+      {
+        "name": "Sindicado: cierre Otro motivo sin explicación devuelve validación 400 y no escribe",
+        "ok": true,
+        "ms": 83
+      },
+      {
+        "name": "Sindicado: crear actuación con cierre sin explicación devuelve validación 400",
+        "ok": true,
+        "ms": 73
+      },
+      {
+        "name": "Sindicado: cierre incompleto protege borrador y bloquea autoguardado durante 32 segundos",
+        "ok": true,
+        "ms": 35735
+      },
+      {
+        "name": "Sindicado: explicar el cierre permite guardarlo y la respuesta conserva CASO_CERRADO",
+        "ok": true,
+        "ms": 4845
+      },
+      {
+        "name": "Sindicado: quitar cierre limpia la razón y el autoguardado persiste el siguiente cambio",
+        "ok": true,
+        "ms": 37403
+      },
+      {
+        "name": "Fuera de prisión: bloquear escritura sin bloque 5, incluso con permiso en payload",
+        "ok": true,
+        "ms": 74
+      },
+      {
+        "name": "Reportes: catálogo relaciona defensor y establecimiento con regional del caso",
+        "ok": true,
+        "ms": 4742
+      },
+      {
+        "name": "Reportes: regional seleccionada aísla casos, incluidos sindicados",
+        "ok": true,
+        "ms": 9522
+      },
+      {
+        "name": "Reportes: fechas cambian actuaciones y conservan los totales globales actuales",
+        "ok": true,
+        "ms": 8303
+      },
+      {
+        "name": "Reportes: establecimiento limita también sindicados y excluye los de fuera o sin regional",
+        "ok": true,
+        "ms": 9402
+      },
+      {
+        "name": "Reportes: incluir fuera de prisión agrega solo el fixture inactivo y conserva histórico",
+        "ok": true,
+        "ms": 8411
+      },
+      {
+        "name": "Reportes: cambio de regional mantiene solo condenados y sindicados propios",
+        "ok": true,
+        "ms": 8234
+      },
+      {
+        "name": "Reportes: filtros inválidos y establecimiento ajeno rechazados por API",
+        "ok": true,
+        "ms": 9546
+      },
+      {
+        "name": "Reportes navegador: cascada regional, ausencia del filtro de tipo y rechazo de establecimiento ajeno",
+        "ok": true,
+        "ms": 80
+      },
+      {
+        "name": "Reportes navegador: generación real, totales globales y PDF descargable",
+        "ok": true,
+        "ms": 9145,
+        "detail": {
+          "pdfBytes": 212383
+        }
+      },
+      {
+        "name": "Reportes navegador: cambiar regional limpia defensor y establecimiento",
+        "ok": true,
+        "ms": 18
+      },
+      {
+        "name": "Ciclo persistido aurora-analisis-positivo-sin-entrevista: ENTREVISTAR_USUARIO",
+        "ok": true,
+        "ms": 191
+      },
+      {
+        "name": "Ciclo persistido aurora-entrevista-completa-sin-radicacion: PRESENTAR_SOLICITUD",
+        "ok": true,
+        "ms": 187
+      },
+      {
+        "name": "Ciclo persistido aurora-tramite-normal-radicado-sin-decision: PENDIENTE_DECISION",
+        "ok": true,
+        "ms": 186
+      },
+      {
+        "name": "Ciclo persistido aurora-decision-negativa-sin-definir-recurso: PRESENTAR_RECURSO",
+        "ok": true,
+        "ms": 189
+      },
+      {
+        "name": "Ciclo persistido aurora-recurso-presentado-sin-resultado: PENDIENTE_DECISION",
+        "ok": true,
+        "ms": 185
+      },
+      {
+        "name": "Ciclo persistido aurora-resultado-recurso-diligenciado: CASO_CERRADO",
+        "ok": true,
+        "ms": 186
+      },
+      {
+        "name": "Histórico Condenado: el ciclo nuevo conserva la actuación previa",
+        "ok": true,
+        "ms": 0
+      },
+      {
+        "name": "Ciclo persistido aurora-cierre-automatico-residual-con-utilidad-positiva: ENTREVISTAR_USUARIO",
+        "ok": true,
+        "ms": 197
+      },
+      {
+        "name": "Ciclo persistido aurora-utilidad-avance-parcial-sin-radicacion: PRESENTAR_SOLICITUD",
+        "ok": true,
+        "ms": 187
+      },
+      {
+        "name": "Ciclo persistido aurora-utilidad-radicada-sin-decision: PENDIENTE_DECISION",
+        "ok": true,
+        "ms": 189
+      },
+      {
+        "name": "Ciclo persistido aurora-utilidad-recurso-vacio: PRESENTAR_RECURSO",
+        "ok": true,
+        "ms": 186
+      },
+      {
+        "name": "Ciclo persistido aurora-utilidad-recurso-si: PENDIENTE_DECISION",
+        "ok": true,
+        "ms": 186
+      },
+      {
+        "name": "Ciclo persistido aurora-utilidad-recurso-resuelto: CASO_CERRADO",
+        "ok": true,
+        "ms": 189
+      },
+      {
+        "name": "Histórico Condenado: el ciclo nuevo conserva la actuación previa",
+        "ok": true,
+        "ms": 0
+      },
+      {
+        "name": "Ciclo persistido celeste-analisis-positivo-sin-entrevista: ENTREVISTAR_USUARIO",
+        "ok": true,
+        "ms": 181
+      },
+      {
+        "name": "Ciclo persistido celeste-entrevista-completa: PRESENTAR_SOLICITUD",
+        "ok": true,
+        "ms": 186
+      },
+      {
+        "name": "Ciclo persistido celeste-audiencia-solicitada: PENDIENTE_AUDIENCIA",
+        "ok": true,
+        "ms": 182
+      },
+      {
+        "name": "Ciclo persistido celeste-audiencia-realizada-sin-decision: PENDIENTE_DECISION_AUDIENCIA",
+        "ok": true,
+        "ms": 181
+      },
+      {
+        "name": "Ciclo persistido celeste-decision-negativa-sin-recurso: PRESENTAR_RECURSO",
+        "ok": true,
+        "ms": 183
+      },
+      {
+        "name": "Ciclo persistido celeste-recurso-presentado-sin-resultado: PENDIENTE_DECISION",
+        "ok": true,
+        "ms": 183
+      },
+      {
+        "name": "Ciclo persistido celeste-resultado-recurso-diligenciado: CASO_CERRADO",
+        "ok": true,
+        "ms": 182
+      },
+      {
+        "name": "Histórico Sindicado: el ciclo nuevo conserva la actuación previa",
+        "ok": true,
+        "ms": 1
+      },
+      {
+        "name": "Navegador: ausencia de errores JavaScript durante todos los flujos",
+        "ok": true,
+        "ms": 0
+      }
+    ],
+    "runtime": "24.22.2"
+  },
+  "sisipec": {
+    "compatibility": "BLOCKED",
+    "procedureStatus": "VALID",
+    "integrationError": "No se encontró el bloque regional instalado.",
+    "migrationDryRunError": "No se encontro el ancla deteccion de cambios.",
+    "monthlyEtlExecuted": false,
+    "ddlExecuted": false
+  },
+  "limitations": [
+    "Validar infraestructura y Oracle del destino",
+    "Conciliar versión de procedimiento y migración SISIPEC",
+    "Construir y verificar imagen final con Node 24",
+    "Validar SSO y certificado reales",
+    "Medir capacidad y restauración de respaldos en el destino"
+  ],
+  "temporaryCandidateRemoved": true,
+  "existingService": {
+    "healthy": true,
+    "httpHealth": 200,
+    "republished": false
+  }
+}

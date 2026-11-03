@@ -1,4 +1,5 @@
 export const ESTADOS_TRAMITE_OPTIONS = [
+  { value: 'SIN_ASIGNACION', label: 'Sin asignación' },
   { value: 'ANALIZAR_CASO', label: 'Analizar el caso' },
   { value: 'ENTREVISTAR_USUARIO', label: 'Entrevistar al usuario' },
   { value: 'PRESENTAR_SOLICITUD', label: 'Presentar solicitud' },
@@ -33,6 +34,8 @@ export const ASSIGNED_USERS_FILTER_KEYS = Object.freeze([
   'centroId',
   'departamento',
   'municipio',
+  'regional',
+  'prioridadGestion',
   'estadoCodigo',
   'accionCodigo',
   'incluirFueraPrision',
@@ -97,6 +100,7 @@ export function normalizeFilterOptions(data) {
 
   return {
     defensores,
+    regionales: Array.isArray(data?.regionales) ? data.regionales : [],
     defensorOptions,
     estados,
     acciones,

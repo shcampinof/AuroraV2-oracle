@@ -1,5 +1,7 @@
 const assert = require('assert');
-const { buildDefensorOptions, buildReport, validateFilters, validateScope } = require('../services/reporteAtencionesService');
+const { buildDefensorOptions, buildReport, validateFilters, validateScope, attachCaseRegionales, generateReport, getReportOptions } = require('../services/reporteAtencionesService');
+const reporteRepo = require('../repositories/oracle/reporteAtencionesRepository');
+const { REPORT_REGIONAL_SIN_IDENTIFICAR } = require('../repositories/oracle/sqlFragments');
 const {
   EVENT_UNIONS,
   EVENT_ASSIGNMENT_SCOPE_SQL,
@@ -20,7 +22,7 @@ function rawEvent(tipo, overrides = {}) {
   };
 }
 
-function run() {
+async function run() {
   assert.deepStrictEqual(validateFilters({
     fechaInicio: '2026-08-01',
     fechaFin: '2026-08-31',
@@ -124,7 +126,7 @@ function run() {
   assert.strictEqual(report.resumen.totalActuaciones, 6, 'los casos cerrados no hacen parte del total de actuaciones');
   assert.strictEqual(report.resumen.personasAsignadas, 2);
   assert.strictEqual(report.resumen.personasActivas, 1);
-  assert.strictEqual(report.resumen.personasActivasConGestion, 0);
+  assert.strictEqual(report.resumen.personasActivasConGestion, 0, 'las personas activas sin actuaciones no cuentan en el indicador de gestión del periodo');
   assert.strictEqual(report.resumen.totalPersonasConCasosCerrados, 1);
   assert.strictEqual(report.detalles.casosAnalizados[0].fecha, '2026-08-05');
   assert.deepStrictEqual(
@@ -155,12 +157,94 @@ function run() {
   });
   assert.strictEqual(repeatedReport.resumen.personasAsignadas, 2, 'se cuentan personas, no filas de gestiones');
   assert.strictEqual(repeatedReport.resumen.personasActivas, 1);
+  assert.strictEqual(repeatedReport.resumen.personasActivasConGestion, 0, 'tener una asignación activa no acredita gestión durante el periodo');
   assert.strictEqual(repeatedReport.resumen.totalPersonasConCasosCerrados, 1);
+  const otherPeriodReport = buildReport({
+    fechaInicio: '2026-10-01',
+    fechaFin: '2026-10-27',
+    assignedRows,
+    eventRows: [],
+  });
+  assert.strictEqual(otherPeriodReport.resumen.totalActuaciones, 0);
+  for (const key of ['personasActivas', 'totalPersonasConCasosCerrados']) {
+    assert.strictEqual(otherPeriodReport.resumen[key], report.resumen[key], `${key} no depende del periodo ni de sus actuaciones`);
+  }
+  assert.strictEqual(
+    otherPeriodReport.resumen.personasActivas + otherPeriodReport.resumen.totalPersonasConCasosCerrados,
+    otherPeriodReport.resumen.personasAsignadas,
+    'los totales globales dividen toda la carga actual en personas con caso activo o cerrado'
+  );
+  const managedAssignments = [...assignedRows, { ID_PERSONA: 32, ESTADO: 'Analizar el caso', ACTIVO: 1 }];
+  const managedReport = buildReport({
+    assignedRows: managedAssignments,
+    eventRows: [
+      rawEvent('analisis', { ID_PERSONA: 31 }),
+      rawEvent('entrevista', { ID_PERSONA: 31 }),
+      rawEvent('analisis', { ID_PERSONA: 99 }),
+      rawEvent('cierre'),
+    ],
+  });
+  const noManagementReport = buildReport({ assignedRows: managedAssignments });
+  assert.strictEqual(managedReport.resumen.personasActivas, 2);
+  assert.strictEqual(managedReport.resumen.personasActivasConGestion, 1, 'solo cuenta una vez a la persona actualmente activa con gestión; excluye cerradas y no asignadas');
+  assert.strictEqual(noManagementReport.resumen.personasActivas, 2);
+  assert.strictEqual(noManagementReport.resumen.personasActivasConGestion, 0, 'el campo 2.3 depende de las actuaciones del periodo; el 2.2 no');
   const transferredReport = buildReport({ eventRows: [rawEvent('analisis')], assignedRows: [] });
   assert.strictEqual(transferredReport.resumen.casosAnalizados, 1, 'la actuación se conserva sin asignación actual');
   assert.strictEqual(transferredReport.resumen.personasAsignadas, 0);
 
+  const scopedOptions = attachCaseRegionales(consolidatedDefensorOptions, [
+    { CEDULA: '7001', NOMBRE: 'NOMBRE ANTERIOR', REGIONAL_CASO: 'QUINDIO' },
+    { NOMBRE: 'GERMAN ARTURO PUENTES CUELLAR', REGIONAL_CASO: 'BOGOTA' },
+    { CEDULA: '7001', REGIONAL_CASO: 'QUINDIO' },
+  ]);
+  assert.deepStrictEqual(scopedOptions[0].regionalesCasos, ['BOGOTA', 'QUINDIO']);
+  assert.strictEqual(scopedOptions[0].regional, 'CUNDINAMARCA', 'la ficha del defensor no determina la regional de sus casos');
+  assert.strictEqual(scopedOptions[0].tieneCasosSindicados, false);
+  const withoutRegional = attachCaseRegionales(consolidatedDefensorOptions, [{ CEDULA: '7001', REGIONAL_CASO: REPORT_REGIONAL_SIN_IDENTIFICAR, ES_SINDICADO: 1 }]);
+  assert.deepStrictEqual(withoutRegional[0].regionalesCasos, [REPORT_REGIONAL_SIN_IDENTIFICAR]);
+  assert.strictEqual(withoutRegional[0].tieneCasosSindicados, true);
+  const savedMethods = { ...reporteRepo };
+  try {
+    reporteRepo.listAvailableDefensores = async () => [{ CEDULA: '7001', NOMBRE: 'DEFENSOR PRUEBA', REGIONAL: 'QUINDIO' }];
+    reporteRepo.listAvailableRegionales = async () => ['CUNDINAMARCA', 'QUINDIO'];
+    reporteRepo.listAvailableEstablecimientos = async () => [
+      { ESTABLECIMIENTO: 'CPMS GIRARDOT', REGIONAL: 'CUNDINAMARCA' },
+      { ESTABLECIMIENTO: 'CPMS ARMENIA', REGIONAL: 'QUINDIO' },
+      { ESTABLECIMIENTO: 'CDT SIN HOMOLOGAR', REGIONAL: 'CUNDINAMARCA' },
+    ];
+    reporteRepo.listDefensorRegionales = async () => [{ CEDULA: '7001', REGIONAL_CASO: 'CUNDINAMARCA' }];
+    const calls = [];
+    reporteRepo.listEvents = async (params) => { calls.push(params); return []; };
+    reporteRepo.listAssignedCases = async (params) => { calls.push(params); return []; };
+    const filters = { defensorId: '7001', regional: 'CUNDINAMARCA', lugar: 'CPMS GIRARDOT', fechaInicio: '2026-10-01', fechaFin: '2026-10-27' };
+    assert.deepStrictEqual((await getReportOptions()).establecimientos, ['CPMS GIRARDOT', 'CPMS ARMENIA'], 'el selector solo ofrece ERON homologados, nunca CDT');
+    await generateReport(filters);
+    assert.strictEqual(calls.length, 2);
+    assert(calls.every((params) => params.regional === 'CUNDINAMARCA'), 'el filtro regional llega al histórico y a los totales globales');
+    await assert.rejects(generateReport({ ...filters, regional: 'QUINDIO', lugar: '' }), /no tiene casos en esta regional/);
+    await assert.rejects(generateReport({ ...filters, lugar: 'CPMS ARMENIA' }), /no pertenece a esta regional/);
+    await assert.rejects(generateReport({ ...filters, lugar: 'CDT SIN HOMOLOGAR' }), /no pertenece a esta regional/);
+    await assert.rejects(generateReport({ ...filters, regional: 'NO EXISTE' }), /regional seleccionada no es válida/);
+    assert.strictEqual(calls.length, 2, 'los filtros inválidos se rechazan antes de consultar conteos');
+    reporteRepo.listDefensorRegionales = async () => [{ CEDULA: '7001', REGIONAL_CASO: REPORT_REGIONAL_SIN_IDENTIFICAR, ES_SINDICADO: 1 }];
+    assert((await getReportOptions()).regionales.includes(REPORT_REGIONAL_SIN_IDENTIFICAR));
+    await assert.rejects(generateReport({ ...filters, lugar: '' }), /no tiene casos en esta regional/);
+    await assert.rejects(generateReport(filters), /no tiene casos en esta regional/);
+    const unknownReport = await generateReport({ ...filters, regional: REPORT_REGIONAL_SIN_IDENTIFICAR, lugar: '' });
+    assert.strictEqual(unknownReport.metadata.regional, REPORT_REGIONAL_SIN_IDENTIFICAR);
+    assert.strictEqual(calls.length, 4, 'los casos sin regional se consultan exclusivamente por separado');
+    assert(calls.slice(2).every((params) => params.regional === REPORT_REGIONAL_SIN_IDENTIFICAR));
+    await assert.rejects(generateReport({ ...filters, regional: REPORT_REGIONAL_SIN_IDENTIFICAR }), /no pertenece a esta regional/);
+    reporteRepo.listDefensorRegionales = async () => [{ CEDULA: '7001', REGIONAL_CASO: 'QUINDIO', ES_SINDICADO: 1 }];
+    await assert.rejects(generateReport({ ...filters, lugar: '' }), /no tiene casos en esta regional/);
+    await generateReport({ ...filters, regional: 'QUINDIO', lugar: 'CPMS ARMENIA' });
+    assert.strictEqual(calls.length, 6, 'un sindicado en ERON homologado puede consultarse en su regional y establecimiento');
+  } finally {
+    Object.assign(reporteRepo, savedMethods);
+  }
+
   console.log('OK reporte-atenciones.test');
 }
 
-run();
+run().catch((error) => { console.error(error); process.exitCode = 1; });

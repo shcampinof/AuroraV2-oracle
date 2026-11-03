@@ -8,7 +8,9 @@ require('dotenv').config({
 const db = require('../db/oraclePool');
 const { getOracleSchema } = require('../config/oracle');
 
-const PATCH_MARKER = 'AURORA_REASIGNACION_SISIPEC_V1';
+const PATCH_MARKER = 'AURORA_REASIGNACION_SISIPEC_V3';
+const V2_PATCH_MARKER = 'AURORA_REASIGNACION_SISIPEC_V2';
+const V1_PATCH_MARKER = 'AURORA_REASIGNACION_SISIPEC_V1';
 
 const DECLARATION_ANCHOR = '    v_tiene_situacion     NUMBER;\n';
 const DETECTION_ANCHOR = `            END;
@@ -21,7 +23,9 @@ const BRANCH_END_ANCHOR = `            END IF;
 
 const DECLARATIONS = `    -- ${PATCH_MARKER}
     v_cierre_automatico   NUMBER := 0;
-    v_cambio_eron         NUMBER := 0;
+    v_cambio_regional     NUMBER := 0;
+    v_regional_actual     DNDP.CAT_ERON_REGIONAL.REGIONAL%TYPE;
+    v_regional_nueva      DNDP.CAT_ERON_REGIONAL.REGIONAL%TYPE;
     v_cambio_bloque_2     NUMBER := 0;
     v_defensor_activo     DNDP.ASIGNACION.NOMBRE_DEFENSOR%TYPE;
     v_motivo_cierre       DNDP.GESTION_JURIDICA.CIERRE_CASO%TYPE;
@@ -34,7 +38,9 @@ const DETECTION_AND_TRANSITION = `            END;
             -- actualice la situacion vigente, para conservar el contexto de
             -- las actuaciones anteriores.
             v_cierre_automatico := 0;
-            v_cambio_eron       := 0;
+            v_cambio_regional   := 0;
+            v_regional_actual   := NULL;
+            v_regional_nueva    := NULL;
             v_cambio_bloque_2   := 0;
             v_defensor_activo   := NULL;
             v_motivo_cierre     := NULL;
@@ -52,16 +58,29 @@ const DETECTION_AND_TRANSITION = `            END;
                 END;
 
                 IF v_defensor_activo IS NOT NULL THEN
-                    SELECT COUNT(*)
-                      INTO v_cambio_eron
-                      FROM DNDP.SITUACION_CARCELARIA actual
-                     WHERE actual.ID_SITUACION = v_id_situacion_activa
-                       AND (
-                         NVL(UPPER(TRIM(REGEXP_REPLACE(TO_CHAR(actual.ESTABLECIMIENTO), '\\s+', ' '))), 'X')
-                           <> NVL(UPPER(TRIM(REGEXP_REPLACE(TO_CHAR(r.ESTABLECIMIENTO), '\\s+', ' '))), 'X')
-                         OR NVL(UPPER(TRIM(REGEXP_REPLACE(TO_CHAR(actual.DEPARTAMENTO), '\\s+', ' '))), 'X')
-                           <> NVL(UPPER(TRIM(REGEXP_REPLACE(TO_CHAR(r.DEPARTAMENTO), '\\s+', ' '))), 'X')
-                       );
+                    SELECT MAX(TO_CHAR(REGIONAL))
+                      INTO v_regional_actual
+                      FROM DNDP.VW_SITUACION_REGIONAL
+                     WHERE ID_SITUACION = v_id_situacion_activa;
+
+                    SELECT NVL(
+                             (SELECT MAX(TO_CHAR(c.REGIONAL))
+                                FROM DNDP.CAT_ERON_REGIONAL c
+                               WHERE c.ESTABLECIMIENTO = r.ESTABLECIMIENTO),
+                             (SELECT MAX(TO_CHAR(c.REGIONAL))
+                                FROM DNDP.CAT_ERON_REGIONAL c
+                               WHERE c.DEPARTAMENTO = r.DEPARTAMENTO
+                                 AND c.MUNICIPIO_SISIPEC = r.MUNICIPIO)
+                           )
+                      INTO v_regional_nueva
+                      FROM dual;
+
+                    IF v_regional_actual IS NOT NULL
+                       AND v_regional_nueva IS NOT NULL
+                       AND UPPER(TRIM(REGEXP_REPLACE(v_regional_actual, '\\s+', ' ')))
+                           <> UPPER(TRIM(REGEXP_REPLACE(v_regional_nueva, '\\s+', ' '))) THEN
+                        v_cambio_regional := 1;
+                    END IF;
 
                     SELECT COUNT(*)
                       INTO v_cambio_bloque_2
@@ -97,13 +116,13 @@ const DETECTION_AND_TRANSITION = `            END;
                          ), 'X') <> NVL(TO_CHAR(CAST(r.FECHA_CALIFICACION AS DATE), 'YYYYMMDD'), 'X')
                        );
 
-                    IF v_cambio_eron > 0
+                    IF v_cambio_regional > 0
                        OR (
                          UPPER(TRIM(REGEXP_REPLACE(v_defensor_activo, '\\s+', ' '))) = 'EQUIPO PPL DNDP'
                          AND v_cambio_bloque_2 > 0
                        ) THEN
-                        IF v_cambio_eron > 0 THEN
-                            v_motivo_cierre := 'Cierre automático por cambio de ERON o regional.';
+                        IF v_cambio_regional > 0 THEN
+                            v_motivo_cierre := 'Cierre automático por cambio de regional.';
                         ELSE
                             v_motivo_cierre := 'Cierre automático por actualización relevante de SISIPEC.';
                         END IF;
@@ -209,6 +228,88 @@ function transformSisipecProcedure(rawSource) {
   let source = String(rawSource || '').replace(/\r\n?/g, '\n');
   assert(source.trim(), 'El procedimiento PRC_CARGA_SISIPEC no tiene codigo fuente visible.');
   if (source.includes(PATCH_MARKER)) return { source, changed: false };
+
+  const v2DepartmentComparison = `                    SELECT COUNT(*)
+                      INTO v_cambio_regional
+                      FROM DNDP.SITUACION_CARCELARIA actual
+                     WHERE actual.ID_SITUACION = v_id_situacion_activa
+                       AND NVL(UPPER(TRIM(REGEXP_REPLACE(TO_CHAR(actual.DEPARTAMENTO), '\\s+', ' '))), 'X')
+                           <> NVL(UPPER(TRIM(REGEXP_REPLACE(TO_CHAR(r.DEPARTAMENTO), '\\s+', ' '))), 'X');`;
+  const v3CatalogComparison = `                    SELECT MAX(TO_CHAR(REGIONAL))
+                      INTO v_regional_actual
+                      FROM DNDP.VW_SITUACION_REGIONAL
+                     WHERE ID_SITUACION = v_id_situacion_activa;
+
+                    SELECT NVL(
+                             (SELECT MAX(TO_CHAR(c.REGIONAL))
+                                FROM DNDP.CAT_ERON_REGIONAL c
+                               WHERE c.ESTABLECIMIENTO = r.ESTABLECIMIENTO),
+                             (SELECT MAX(TO_CHAR(c.REGIONAL))
+                                FROM DNDP.CAT_ERON_REGIONAL c
+                               WHERE c.DEPARTAMENTO = r.DEPARTAMENTO
+                                 AND c.MUNICIPIO_SISIPEC = r.MUNICIPIO)
+                           )
+                      INTO v_regional_nueva
+                      FROM dual;
+
+                    IF v_regional_actual IS NOT NULL
+                       AND v_regional_nueva IS NOT NULL
+                       AND UPPER(TRIM(REGEXP_REPLACE(v_regional_actual, '\\s+', ' ')))
+                           <> UPPER(TRIM(REGEXP_REPLACE(v_regional_nueva, '\\s+', ' '))) THEN
+                        v_cambio_regional := 1;
+                    END IF;`;
+
+  if (source.includes(V1_PATCH_MARKER)) {
+    const v1EronAndDepartmentComparison = `                    SELECT COUNT(*)
+                      INTO v_cambio_eron
+                      FROM DNDP.SITUACION_CARCELARIA actual
+                     WHERE actual.ID_SITUACION = v_id_situacion_activa
+                       AND (
+                         NVL(UPPER(TRIM(REGEXP_REPLACE(TO_CHAR(actual.ESTABLECIMIENTO), '\\s+', ' '))), 'X')
+                           <> NVL(UPPER(TRIM(REGEXP_REPLACE(TO_CHAR(r.ESTABLECIMIENTO), '\\s+', ' '))), 'X')
+                         OR NVL(UPPER(TRIM(REGEXP_REPLACE(TO_CHAR(actual.DEPARTAMENTO), '\\s+', ' '))), 'X')
+                           <> NVL(UPPER(TRIM(REGEXP_REPLACE(TO_CHAR(r.DEPARTAMENTO), '\\s+', ' '))), 'X')
+                       );`;
+    assert(
+      source.includes(v1EronAndDepartmentComparison),
+      'La migracion V1 no contiene la comparacion esperada de ERON y departamento.'
+    );
+    source = source
+      .replace(v1EronAndDepartmentComparison, v2DepartmentComparison)
+      .replaceAll(V1_PATCH_MARKER, V2_PATCH_MARKER)
+      .replaceAll('v_cambio_eron', 'v_cambio_regional')
+      .replaceAll(
+        'Cierre automático por cambio de ERON o regional.',
+        'Cierre automático por cambio de regional.'
+      );
+  }
+
+  if (source.includes(V2_PATCH_MARKER)) {
+    assert(
+      source.includes(v2DepartmentComparison),
+      'La migracion V2 no contiene la comparacion esperada por departamento.'
+    );
+    const declarationLine = source.match(/^    v_cambio_regional\s+NUMBER := 0;\n/m)?.[0];
+    const resetLine = source.match(/^            v_cambio_regional\s+:= 0;\n/m)?.[0];
+    assert(declarationLine, 'La migracion V2 no contiene la declaracion de cambio regional.');
+    assert(resetLine, 'La migracion V2 no contiene la inicializacion de cambio regional.');
+    source = source
+      .replace(
+        declarationLine,
+        declarationLine +
+          '    v_regional_actual     DNDP.CAT_ERON_REGIONAL.REGIONAL%TYPE;\n' +
+          '    v_regional_nueva      DNDP.CAT_ERON_REGIONAL.REGIONAL%TYPE;\n'
+      )
+      .replace(
+        resetLine,
+        resetLine +
+          '            v_regional_actual   := NULL;\n' +
+          '            v_regional_nueva    := NULL;\n'
+      )
+      .replace(v2DepartmentComparison, v3CatalogComparison)
+      .replaceAll(V2_PATCH_MARKER, PATCH_MARKER);
+    return { source, changed: true };
+  }
 
   source = replaceOnce(
     source,

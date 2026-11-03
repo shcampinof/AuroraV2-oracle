@@ -65,11 +65,15 @@ const FIELD_COLUMNS = {
   'FECHA DE REALIZACIÓN DE AUDIENCIA': 'g.FECHA_REALIZACION_AUDIENCIA',
 };
 
-function syntheticQuery(expression, scenario, emptyValue) {
+function syntheticQuery(expression, scenario, emptyValue, { assigned = true, active = 1 } = {}) {
   const values = {
-    's.ACTIVO': 1,
+    's.ACTIVO': active,
     's.SITUACION': scenario.flow === 'celeste' ? 'Sindicado' : 'Condenado',
     's.SITUACION_JURIDICA_ACTUALIZADA': null,
+    // El contrato de bloques 3 a 5 describe una atención ya asignada. La
+    // bandeja distingue aparte a las personas sin asignación vigente.
+    'a.CEDULA_DEFENSOR': assigned ? '123' : null,
+    'a.NOMBRE_DEFENSOR': null,
   };
   Object.entries(scenario.answers).forEach(([field, value]) => {
     assert(FIELD_COLUMNS[field], `Falta mapear la pregunta ${field}`);
@@ -99,6 +103,14 @@ async function run() {
         checks += 1;
         const actual = result.rows[0].ESTADO_CODIGO;
         if (actual !== scenario.expectedCode) failures.push({ id: scenario.id, emptyValue, expected: scenario.expectedCode, actual });
+      }
+    }
+    for (const flow of ['aurora', 'celeste']) {
+      for (const active of [0, 1]) {
+        const { sql, binds } = syntheticQuery(expression, { flow, answers: {} }, null, { assigned: false, active });
+        const result = await db.execute(sql, binds, { operation: 'state-null.assignment-context' });
+        checks += 1;
+        assert.equal(result.rows[0].ESTADO_CODIGO, active ? 'SIN_ASIGNACION' : 'CASO_CERRADO');
       }
     }
     console.log(JSON.stringify({ readOnly: true, scenarios: contract.scenarios.length, checks, failures }, null, 2));

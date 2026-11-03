@@ -14,6 +14,14 @@ function requirePag(req, res, next) {
   });
 }
 
+function requireAssignmentAccess(req, res, next) {
+  if (hasRole(req.user, 'pag') || hasRole(req.user, 'dndp')) return next();
+  return res.status(403).json({
+    message: 'No tiene permisos para acceder a la asignación de casos.',
+    code: 'PAG_FORBIDDEN',
+  });
+}
+
 function requireAdmin(req, res, next) {
   if (hasRole(req.user, 'admin')) return next();
   return res.status(403).json({
@@ -26,4 +34,5 @@ module.exports = {
   hasRole,
   requireAdmin,
   requirePag,
+  requireAssignmentAccess,
 };

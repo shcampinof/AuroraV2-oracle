@@ -355,6 +355,8 @@ export function getCondenadosRequest(options = 1000) {
     'centroId',
     'departamento',
     'municipio',
+    'regional',
+    'prioridadGestion',
     'estadoAccion',
     'estadoCodigo',
     'estado',
@@ -474,21 +476,6 @@ export async function getReporteAtencionesOpciones() {
   const data = await readJsonOrThrow(res, 'Error consultando las opciones del reporte');
   if (!res.ok) {
     throw new Error(String(data?.message || 'No fue posible consultar regionales y defensores.'));
-  }
-  return data;
-}
-
-export async function getReporteGeneral() {
-  const res = await fetchJson(`${API_BASE}/reportes/general`, {
-    cache: 'no-store',
-    headers: {
-      'Cache-Control': 'no-cache',
-      Pragma: 'no-cache',
-    },
-  });
-  const data = await readJsonOrThrow(res, 'Error consultando el reporte general');
-  if (!res.ok) {
-    throw new Error(String(data?.message || 'No fue posible consultar el reporte general.'));
   }
   return data;
 }
@@ -673,9 +660,10 @@ export async function getCargaBdLog(id) {
   return res.text();
 }
 
-export async function getActuacionesCleanupPreview(defensor = '') {
+export async function getActuacionesCleanupPreview(defensor = '', { offset = 0 } = {}) {
   const params = new URLSearchParams();
   if (defensor) params.set('defensor', defensor);
+  if (offset) params.set('offset', String(offset));
   const query = params.size ? `?${params}` : '';
   const res = await fetchJson(`${API_BASE}/admin/cargas/actuaciones/preview${query}`, { cache: 'no-store' });
   const data = await readJsonOrThrow(res, 'Error consultando actuaciones de prueba');
@@ -683,11 +671,11 @@ export async function getActuacionesCleanupPreview(defensor = '') {
   return data;
 }
 
-export async function deleteActuacionesCleanup({ defensor, expectedCount, expectedAssignments, confirmation }) {
+export async function deleteActuacionesCleanup({ defensor, expectedCount, expectedAssignments, confirmation, mode = 'all', gestionIds }) {
   const res = await fetchJson(`${API_BASE}/admin/cargas/actuaciones`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ defensor, expectedCount, expectedAssignments, confirmation }),
+    body: JSON.stringify({ defensor, expectedCount, expectedAssignments, confirmation, mode, gestionIds }),
   });
   const data = await readJsonOrThrow(res, 'Error eliminando actuaciones de prueba');
   if (!res.ok) throw new Error(String(data?.message || 'Error eliminando actuaciones de prueba'));
@@ -702,6 +690,13 @@ export async function getAdminUsers() {
   const res = await fetchJson(`${API_BASE}/admin/users`, { cache: 'no-store' });
   const data = await readJsonOrThrow(res, 'Error consultando usuarios');
   if (!res.ok) throw new Error(String(data?.message || 'Error consultando usuarios'));
+  return data;
+}
+
+export async function getPagRegionales() {
+  const res = await fetchJson(`${API_BASE}/admin/users/pag/regionales`, { cache: 'no-store' });
+  const data = await readJsonOrThrow(res, 'Error consultando regionales PAG');
+  if (!res.ok) throw new Error(String(data?.message || 'Error consultando regionales PAG'));
   return data;
 }
 

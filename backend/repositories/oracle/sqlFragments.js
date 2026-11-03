@@ -1,4 +1,8 @@
+const { normalizeSearchText } = require('../../utils/textNormalization');
+const { listCentros, resolveCentro } = require('../../domain/catalogosHomologacion');
+
 const DEFAULT_SCOPE_DEPARTAMENTOS = [];
+const REPORT_REGIONAL_SIN_IDENTIFICAR = 'Sin regional identificada';
 
 const COMMON_MOJIBAKE_SQL_REPLACEMENTS = [
   ['\\00C3\\0081', 'A'],
@@ -48,6 +52,78 @@ function buildScopeWhereClause(columnRef = 's.DEPARTAMENTO', bindPrefix = 'dep',
 
   return {
     clause: `${normalizedSqlExpr(columnRef)} IN (${placeholders.join(', ')})`,
+    binds,
+  };
+}
+
+function buildSituacionRegionalClause(regional, situacionAlias = 's') {
+  const value = normalizeSearchText(regional);
+  if (!value) return { clause: '1=1', binds: {} };
+  return {
+    clause: `EXISTS (
+      SELECT 1 FROM DNDP.VW_SITUACION_REGIONAL report_regional
+      WHERE report_regional.ID_SITUACION = ${situacionAlias}.ID_SITUACION
+        AND ${normalizedMojibakeSqlExpr('report_regional.REGIONAL')} = :regional
+    )`,
+    binds: { regional: value },
+  };
+}
+
+function buildSindicadoClause(situacionAlias = 's') {
+  return `${normalizedMojibakeSqlExpr(`COALESCE(
+    NULLIF(TRIM(TO_CHAR(${situacionAlias}.SITUACION_JURIDICA_ACTUALIZADA)), ''),
+    TO_CHAR(${situacionAlias}.SITUACION)
+  )`)} LIKE '%SINDICAD%'`;
+}
+
+function buildCondenadoClause(situacionAlias = 's') {
+  return `${normalizedMojibakeSqlExpr(`COALESCE(
+    NULLIF(TRIM(TO_CHAR(${situacionAlias}.SITUACION_JURIDICA_ACTUALIZADA)), ''),
+    TO_CHAR(${situacionAlias}.SITUACION)
+  )`)} LIKE '%CONDENAD%'`;
+}
+
+function buildReportEronCtes() {
+  const literal = (value) => `'${String(value).replaceAll("'", "''")}'`;
+  const aliases = listCentros().flatMap((centro) => [...new Set(centro.aliases.map(normalizeSearchText))]
+    .map((alias) => `SELECT ${literal(centro.id)} AS CENTRO_ID, ${literal(alias)} AS ALIAS FROM dual`));
+  return `report_eron_aliases AS (
+    ${aliases.join('\n    UNION ALL\n    ')}
+  ), report_erones AS (
+    SELECT /*+ MATERIALIZE */ DISTINCT eron_alias.CENTRO_ID,
+      TRIM(TO_CHAR(eron_catalog.REGIONAL)) AS REGIONAL,
+      ${normalizedMojibakeSqlExpr('eron_catalog.REGIONAL')} AS REGIONAL_KEY
+    FROM DNDP.CAT_ERON_REGIONAL eron_catalog
+    JOIN report_eron_aliases eron_alias
+      ON eron_alias.ALIAS = ${normalizedMojibakeSqlExpr('eron_catalog.ESTABLECIMIENTO')}
+    WHERE NVL(eron_catalog.ACTIVO, 1) = 1
+      AND TRIM(TO_CHAR(eron_catalog.REGIONAL)) IS NOT NULL
+  )`;
+}
+
+function buildReportEstablecimientoExpr(situacionAlias = 's') {
+  return `COALESCE(NULLIF(TRIM(TO_CHAR(${situacionAlias}.ESTABLECIMIENTO)), ''), TO_CHAR(${situacionAlias}.LUGAR_PRIVACION))`;
+}
+
+function buildReportRegionalClause({ regional = '', lugar = '' } = {}, situacionAlias = 's') {
+  const value = normalizeSearchText(regional);
+  if (!value) return { clause: '1=1', binds: {} };
+  const selected = String(lugar).trim();
+  const sinRegional = value === normalizeSearchText(REPORT_REGIONAL_SIN_IDENTIFICAR);
+  if (sinRegional && selected) return { clause: '1=0', binds: {} };
+  const centro = selected ? resolveCentro(selected) : null;
+  if (selected && !centro?.homologado) return { clause: '1=0', binds: {} };
+  const binds = sinRegional ? {} : { regional: value };
+  if (selected) binds.reportCentroId = centro.id;
+  const eronMatch = `EXISTS (
+    SELECT 1 FROM report_erones eron
+    JOIN report_eron_aliases eron_nombre ON eron_nombre.CENTRO_ID = eron.CENTRO_ID
+    WHERE eron_nombre.ALIAS = ${normalizedMojibakeSqlExpr(buildReportEstablecimientoExpr(situacionAlias))}
+      ${sinRegional ? '' : 'AND eron.REGIONAL_KEY = :regional'}
+      ${selected ? 'AND eron.CENTRO_ID = :reportCentroId' : ''}
+  )`;
+  return {
+    clause: `((${buildCondenadoClause(situacionAlias)} OR ${buildSindicadoClause(situacionAlias)}) AND ${sinRegional ? 'NOT ' : ''}${eronMatch})`,
     binds,
   };
 }
@@ -103,10 +179,17 @@ function buildStrictActiveSituacionCte() {
 
 module.exports = {
   DEFAULT_SCOPE_DEPARTAMENTOS,
+  REPORT_REGIONAL_SIN_IDENTIFICAR,
   repairCommonMojibakeSqlExpr,
   normalizedSqlExpr,
   normalizedMojibakeSqlExpr,
   buildScopeWhereClause,
+  buildSituacionRegionalClause,
+  buildSindicadoClause,
+  buildCondenadoClause,
+  buildReportEronCtes,
+  buildReportEstablecimientoExpr,
+  buildReportRegionalClause,
   buildActiveSituacionCte,
   buildStrictActiveSituacionCte,
 };

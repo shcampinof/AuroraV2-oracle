@@ -48,35 +48,51 @@ function appendAudit(entry) {
   fs.appendFileSync(auditPath(), `${JSON.stringify(entry)}\n`, { encoding: 'utf8', mode: 0o600 });
 }
 
-async function previewCleanup(value) {
+async function previewCleanup(value, { offset = 0 } = {}) {
   const defensor = assertAllowedDefensor(value);
-  const result = await cleanupRepo.previewByActiveDefensor(defensor);
+  const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
+  const result = await cleanupRepo.previewByActiveDefensor(defensor, { offset: safeOffset });
   return {
     defensor,
     ...result,
     confirmation: expectedConfirmation(result.totalActuaciones, result.totalAsignaciones),
-    truncated: result.actuaciones.length < result.totalActuaciones,
+    offset: safeOffset,
+    limit: 500,
+    truncated: safeOffset + result.actuaciones.length < result.totalActuaciones,
   };
 }
 
-async function executeCleanup({ defensor: value, expectedCount, expectedAssignments, confirmation, user }) {
+async function executeCleanup({ defensor: value, expectedCount, expectedAssignments, confirmation, mode = 'all', gestionIds, user }) {
   const defensor = assertAllowedDefensor(value);
+  if (!['all', 'selected'].includes(mode) || (mode === 'all' && gestionIds != null)) {
+    throw Object.assign(new Error('Seleccione una modalidad de depuración válida.'), { status: 400 });
+  }
+  const selected = mode === 'selected';
+  if (selected && (!Array.isArray(gestionIds) || !gestionIds.length || gestionIds.length > 1000
+      || gestionIds.some((id) => !Number.isSafeInteger(id) || id <= 0)
+      || new Set(gestionIds).size !== gestionIds.length)) {
+    throw Object.assign(new Error('Seleccione entre 1 y 1000 actuaciones válidas, sin repetir.'), { status: 400 });
+  }
   const count = Number(expectedCount);
   const assignmentCount = Number(expectedAssignments);
-  if (!Number.isInteger(count) || count < 0 || !Number.isInteger(assignmentCount) || assignmentCount <= 0) {
+  if (!Number.isInteger(count) || count < 0 || !Number.isInteger(assignmentCount)
+      || (selected ? count !== gestionIds.length || assignmentCount !== 0 : assignmentCount <= 0)) {
     const err = new Error('La cantidad esperada de actuaciones no es valida. Actualice la vista previa.');
     err.status = 400;
     err.code = 'ACTUACIONES_CLEANUP_INVALID_COUNT';
     throw err;
   }
-  if (String(confirmation || '').trim() !== expectedConfirmation(count, assignmentCount)) {
-    const err = new Error(`Escriba exactamente: ${expectedConfirmation(count, assignmentCount)}`);
+  const requiredConfirmation = selected ? expectedConfirmation(count) : expectedConfirmation(count, assignmentCount);
+  if (String(confirmation || '').trim() !== requiredConfirmation) {
+    const err = new Error(`Escriba exactamente: ${requiredConfirmation}`);
     err.status = 400;
     err.code = 'ACTUACIONES_CLEANUP_CONFIRMATION_REQUIRED';
     throw err;
   }
 
-  const before = await cleanupRepo.previewByActiveDefensor(defensor, { limit: 1000 });
+  const before = selected
+    ? await cleanupRepo.previewSelected(defensor, gestionIds)
+    : await cleanupRepo.previewByActiveDefensor(defensor, { limit: 1000 });
   if (before.totalActuaciones !== count || before.totalAsignaciones !== assignmentCount) {
     const err = new Error('Las actuaciones cambiaron desde la vista previa. Actualice y confirme nuevamente.');
     err.status = 409;
@@ -86,7 +102,9 @@ async function executeCleanup({ defensor: value, expectedCount, expectedAssignme
 
   let cleanupResult;
   try {
-    cleanupResult = await cleanupRepo.deleteByActiveDefensor(defensor, count, assignmentCount);
+    cleanupResult = selected
+      ? await cleanupRepo.deleteSelected(defensor, gestionIds)
+      : await cleanupRepo.deleteByActiveDefensor(defensor, count, assignmentCount);
   } catch (err) {
     if (/ORA-2000[123]|registros cambiaron|cambio concurrente/i.test(String(err?.message || ''))) {
       const concurrentError = new Error(
@@ -103,7 +121,8 @@ async function executeCleanup({ defensor: value, expectedCount, expectedAssignme
 
   const auditEntry = {
     timestamp: new Date().toISOString(),
-    action: 'delete_actuaciones_by_active_defensor',
+    action: selected ? 'delete_selected_actuaciones_by_active_defensor' : 'delete_actuaciones_by_active_defensor',
+    mode,
     defensor,
     deleted,
     assignmentsDeleted,

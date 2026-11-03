@@ -75,6 +75,8 @@ function publicUser(user) {
     azureObjectId: String(user.azureObjectId || ''),
     tenantId: String(user.tenantId || ''),
     name: String(user.name || ''),
+    pagCedula: String(user.pagCedula || ''),
+    pagRegional: String(user.pagRegional || ''),
     email: String(user.email || ''),
     username: String(user.username || user.email || ''),
     provider: String(user.provider || 'azure-ad'),
@@ -97,7 +99,17 @@ function findUser(profile) {
   const filePath = storePath();
   const data = readStore(filePath);
   const found = data.users.find((user) => userMatches(user, profile));
-  return found ? publicUser(found) : null;
+  if (found) return publicUser(found);
+  // La eliminación del directorio también revoca tokens que aún no vencieron,
+  // incluso si el ingreso institucional está configurado en modo abierto.
+  const revoked = (data.revokedUsers || []).find((user) => userMatches(user, profile));
+  return revoked ? publicUser({ ...revoked, roles: [], enabled: false }) : null;
+}
+
+function clearUserRevocation(data, profile) {
+  if (Array.isArray(data.revokedUsers)) {
+    data.revokedUsers = data.revokedUsers.filter((user) => !userMatches(user, profile));
+  }
 }
 
 function upsertManagedUser(profile) {
@@ -119,6 +131,8 @@ function upsertManagedUser(profile) {
     azureObjectId: String(profile.azureObjectId || existing?.azureObjectId || ''),
     tenantId: String(profile.tenantId || existing?.tenantId || ''),
     name: String(profile.name || existing?.name || '').trim(),
+    pagCedula: String(profile.pagCedula ?? existing?.pagCedula ?? '').trim(),
+    pagRegional: String(profile.pagRegional ?? existing?.pagRegional ?? '').trim(),
     email,
     username: String(profile.username || existing?.username || email),
     provider: 'azure-ad',
@@ -132,6 +146,7 @@ function upsertManagedUser(profile) {
 
   if (existing) data.users[index] = record;
   else data.users.push(record);
+  clearUserRevocation(data, record);
   writeStore(filePath, data);
   return publicUser(record);
 }
@@ -168,6 +183,7 @@ function importManagedUsers(emails) {
       updatedAt: now,
     };
     data.users.push(record);
+    clearUserRevocation(data, record);
     existingEmails.add(email);
     imported.push(publicUser(record));
   }
@@ -202,6 +218,8 @@ function updateManagedUser(id, patch) {
     next.username = email;
   }
   if (patch.roles != null) next.roles = normalizeRoles(patch.roles);
+  if (patch.pagCedula != null) next.pagCedula = String(patch.pagCedula).trim();
+  if (patch.pagRegional != null) next.pagRegional = String(patch.pagRegional).trim();
   if (patch.enabled != null) next.enabled = Boolean(patch.enabled);
 
   data.users[index] = next;
@@ -217,7 +235,14 @@ function deleteManagedUser(id) {
     return ![user.id, user.azureObjectId, user.email, user.username].some((value) => normalizeKey(value) === key);
   });
   if (nextUsers.length === data.users.length) return false;
-  writeStore(filePath, { ...data, users: nextUsers });
+  const removed = data.users.filter((user) => !nextUsers.includes(user));
+  const revokedUsers = [...(data.revokedUsers || []), ...removed.map((user) => ({
+    id: user.id,
+    azureObjectId: user.azureObjectId,
+    email: user.email,
+    username: user.username,
+  }))];
+  writeStore(filePath, { ...data, users: nextUsers, revokedUsers });
   return true;
 }
 
