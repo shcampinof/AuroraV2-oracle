@@ -35,11 +35,10 @@ desktop.ini
 
 documentacion
 docs
-README*.md
-**/*.md
+*.[mM][dD]
+**/*.[mM][dD]
 **/*.docx
 **/*.pdf
-SET_PRUEBAS_AURORA.md
 
 scripts/cargas_bd/*.xlsx
 scripts/cargas_bd/*.xls

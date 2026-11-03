@@ -20,21 +20,20 @@ pnpm-debug.log*
 
 .cleanup-backups/
 
-# La guía operativa y la documentación Markdown acompañan al código. Los
-# entregables Word y demás binarios institucionales permanecen fuera de Git.
+# Markdown local, salvo los tres README presentes en producción el 14/10/2026.
+*.[mM][dD]
+!/backend/catalogs/README.md
+!/frontend/README.md
+!/scripts/cargas_bd/README.md
+
+# Documentación institucional fuera de Git; conservar las evidencias JSON revisadas.
 documentacion/**
 !documentacion/
-!documentacion/documentacion_tecnica/
-!documentacion/documentacion_tecnica/GUIA_DESPLIEGUE_AURORA.md
-!documentacion/REVISION_PRODUCCION_2026-10-30.md
 !documentacion/revision-2026-10-30/
 !documentacion/revision-2026-10-30/resultados.json
 !documentacion/revision-2026-10-30/fuentes.sha256.json
-!documentacion/revision-2026-10-30/regresion-acceso-estados.md
 !documentacion/revision-2026-10-30/regresion-resultados.json
 !documentacion/revision-2026-10-30/regresion-fuentes.sha256.json
-!documentacion/documentación .md/
-!documentacion/documentación .md/**
 
 # Archivos de entrega, pruebas funcionales y cargues operativos.
 *.zip
