@@ -17,10 +17,21 @@ const API_FILTER_KEYS = [
   'accion',
   'potencialSubrogado',
   'asignacionEstado',
+  'incluirSindicados',
+  'incluirNoAsignados',
   'incluirFueraPrision',
 ];
 
 describe('contrato API de filtros de usuarios asignados', () => {
+  it('separa las consultas y cachés de asignación por cédula PAG', () => {
+    for (const buildRequest of [getCondenadosRequest, getCondenadosFilterOptionsRequest]) {
+      const scoped = buildRequest({ tipo: 'condenado', pagCedula: '99' }).key;
+      expect(new URLSearchParams(scoped).get('pagCedula')).toBe('99');
+      expect(scoped).not.toBe(buildRequest({ tipo: 'condenado', pagCedula: '88' }).key);
+      expect(new URLSearchParams(buildRequest({ tipo: 'all' }).key).has('pagCedula')).toBe(false);
+    }
+  });
+
   it('serializa todos los filtros admitidos sin perder IDs ni códigos', () => {
     const filters = Object.fromEntries(API_FILTER_KEYS.map((key) => [key, `  valor-${key}  `]));
     const request = getCondenadosRequest({

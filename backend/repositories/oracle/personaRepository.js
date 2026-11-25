@@ -1,5 +1,7 @@
 const { execute } = require('../../db/oraclePool');
 const { buildPrioridadGestionSelect } = require('./prioridadGestionSql');
+const { buildAutomaticBlock3ClosureSql } = require('./auroraCaseClosuresSql');
+const { buildPotentialCategorySql } = require('./potentialBeneficiarySql');
 const {
   buildActiveSituacionCte,
   buildStrictActiveSituacionCte,
@@ -114,6 +116,8 @@ const BASE_SELECT_COLUMNS = [
   'a.FECHA_ASIGNACION AS G_FECHA_ASIGNACION',
   'g.ACCION_REALIZAR AS G_ACCION_REALIZAR',
   'g.FECHA_ANALISIS AS G_FECHA_ANALISIS',
+  'g.NUEVA_FECHA_ANALISIS AS G_NUEVA_FECHA_ANALISIS',
+  'g.ID_GESTION_ORIGEN AS G_ID_GESTION_ORIGEN',
   'g.VENCIMIENTO_TERMINOS AS G_VENCIMIENTO_TERMINOS',
   'g.UTILIDAD_PUBLICA AS G_UTILIDAD_PUBLICA',
   'g.LIBERTAD_CONDICIONAL AS G_LIBERTAD_CONDICIONAL',
@@ -365,6 +369,7 @@ const HAS_POSITIVE_ANALYSIS_OUTCOME_EXPR = `(
 
 const AURORA_DERIVED_ESTADO_CODIGO_EXPR = `
   CASE
+    WHEN (${buildAutomaticBlock3ClosureSql()}) IS NOT NULL THEN 'CASO_CERRADO'
     WHEN (${ALL_PROCEDENCIAS_NEGATIVAS_EXPR}
       AND ${HAS_EXPLICIT_NINGUNA_OTRAS_SOLICITUDES_EXPR}
       AND ${sqlFilled('g.FECHA_ANALISIS')}
@@ -539,19 +544,7 @@ const PORCENTAJE_NORMALIZADO_EXPR = `
   END
 `;
 
-const POTENCIAL_SUBROGADO_EXPR = `
-  CASE
-    WHEN ${normalizedSqlExpr('s.CATEGORIZACION')} LIKE 'PRELIMINAR %'
-      THEN 'proximos_requisito_temporal'
-    WHEN ${normalizedSqlExpr('s.CATEGORIZACION')} = 'UTILIDAD PUBLICA'
-      THEN 'mujeres_potenciales_utilidad_publica'
-    WHEN ${normalizedSqlExpr('s.CATEGORIZACION')} LIKE '%PRISION DOMICILIARIA%'
-      OR ${normalizedSqlExpr('s.CATEGORIZACION')} LIKE '%LIBERTAD CONDICIONAL%'
-      OR ${normalizedSqlExpr('s.CATEGORIZACION')} LIKE '%REVISAR POR PENA%'
-      THEN 'potenciales_beneficiarios'
-    ELSE 'no_reunen_requisitos'
-  END
-`;
+const POTENCIAL_SUBROGADO_EXPR = buildPotentialCategorySql();
 
 function buildCondenadosSummaryWhereClause({
   tipo = 'condenado',
@@ -562,6 +555,11 @@ function buildCondenadosSummaryWhereClause({
 } = {}) {
   const binds = {};
   const clauses = [];
+  if (Array.isArray(filters.consultaSituacionIds)) {
+    const ids = [...new Set(filters.consultaSituacionIds.filter((id) => /^[1-9]\d*$/.test(String(id))))];
+    ids.forEach((id, index) => { binds[`consultaSituacion${index}`] = String(id); });
+    clauses.push(ids.length ? `s.ID_SITUACION IN (${ids.map((_, index) => `:consultaSituacion${index}`).join(', ')})` : '1=0');
+  }
   const { clause: scopeClause, binds: scopeBinds } = buildScopeWhereClause('s.DEPARTAMENTO', 'dep', scopeDepartamentos);
   Object.assign(binds, scopeBinds);
   clauses.push(scopeClause);
@@ -580,6 +578,17 @@ function buildCondenadosSummaryWhereClause({
 
   if (!includeUserFilters) {
     return { clause: clauses.join('\n      AND '), binds };
+  }
+
+  const inclusionEnabled = (value) => value === true ||
+    ['1', 'true', 'si', 'sí'].includes(String(value ?? '').trim().toLowerCase());
+  if (String(tipo || '').trim().toLowerCase() === 'all' &&
+      filters?.incluirSindicados !== undefined && !inclusionEnabled(filters.incluirSindicados)) {
+    clauses.push(`LOWER(NVL(${SITUACION_JURIDICA_EFECTIVA_EXPR}, ' ')) NOT LIKE '%sindicad%'`);
+  }
+  if (String(tipo || '').trim().toLowerCase() === 'all' &&
+      filters?.incluirNoAsignados !== undefined && !inclusionEnabled(filters.incluirNoAsignados)) {
+    clauses.push('(a.CEDULA_DEFENSOR IS NOT NULL OR TRIM(a.NOMBRE_DEFENSOR) IS NOT NULL)');
   }
 
   const regionalScope = buildReportRegionalClause({ regional: filters?.regional });
@@ -782,6 +791,11 @@ async function listCondenadosSummary({
     (filters?.incluirFueraPrision === true ||
       ['1', 'true', 'si', 'sí'].includes(String(filters?.incluirFueraPrision || '').trim().toLowerCase()));
   const repositoryFilters = {
+    // Estos valores predeterminados pertenecen a Usuarios asignados (tipo all).
+    // Los reportes y los listados PAG conservan su propio universo.
+    ...(String(tipo || '').trim().toLowerCase() === 'all'
+      ? { incluirSindicados: false, incluirNoAsignados: false }
+      : {}),
     ...(filters && typeof filters === 'object' ? filters : {}),
     estadoAccion: estadoAccionCodigo ? '' : filters?.estadoAccion,
     estadoCodigo: '',
@@ -866,6 +880,7 @@ async function listCondenadosSummary({
         s.DIAS_PRISION AS "Dias_Prision",
         s.DIAS_LIBERTAD AS "Dias_libertad",
         g.FECHA_ANALISIS AS "Fecha de analisis juridico del caso",
+        g.NUEVA_FECHA_ANALISIS AS "Nueva fecha de analisis",
         g.RESUMEN_ANALISIS_CASO AS "Resumen del analisis del caso",
         g.RESUMEN_ANALISIS_CASO AS "RESUMEN DEL ANALISIS JURIDICO DEL PRESENTE CASO",
         g.FECHA_ENTREVISTA AS "Fecha de entrevista",
@@ -1248,6 +1263,7 @@ async function listDistinctCondenadosFilterOptions({
   const safeMax = Math.max(1, Math.min(5000, Number.parseInt(String(maxPerField || '1000'), 10) || 1000));
   const activeSituacionCte = buildStrictActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
   const cte = `
+    ${filters?.regional ? `${buildReportEronCtes()},` : ''}
     ${activeSituacionCte},
     latest_gestion AS (
       SELECT
@@ -1273,7 +1289,7 @@ async function listDistinctCondenadosFilterOptions({
   async function queryDistinct({ columnRef, alias, fieldFilters = {} }) {
     const { fromAndWhere, binds } = buildCondenadosSummaryFromAndWhere({
       tipo,
-      filters: fieldFilters,
+      filters: { ...fieldFilters, regional: filters.regional },
       scopeDepartamentos,
       includeUserFilters: true,
     });
@@ -1300,7 +1316,7 @@ async function listDistinctCondenadosFilterOptions({
   async function queryDefensorOptions() {
     const { fromAndWhere, binds } = buildCondenadosSummaryFromAndWhere({
       tipo,
-      filters: {},
+      filters: { regional: filters.regional },
       scopeDepartamentos,
       includeUserFilters: true,
     });
@@ -1332,6 +1348,7 @@ async function listDistinctCondenadosFilterOptions({
   }
 
   async function queryRegionales() {
+    if (String(filters.regional || '').trim()) return [String(filters.regional).trim()];
     const sql = `SELECT REGIONAL FROM (
       SELECT DISTINCT TRIM(TO_CHAR(REGIONAL)) AS REGIONAL
       FROM DNDP.CAT_ERON_REGIONAL
@@ -1713,6 +1730,36 @@ async function listAssignedCasesForReport({
   }));
 }
 
+async function listCondenadosOutsideRegional(documentos, regional = '') {
+  const docs = [...new Set((documentos || []).map((doc) => String(doc ?? '').replace(/\D+/g, '')).filter(Boolean))];
+  if (!docs.length) return [];
+  const hasRegional = Boolean(String(regional || '').trim());
+  const scope = buildReportRegionalClause({ regional });
+  const activeCte = buildActiveSituacionCte().replace(/^\s*WITH\s+/i, '');
+  const forbidden = [];
+  // Oracle limita a 1000 expresiones cada cláusula IN.
+  for (let offset = 0; offset < docs.length; offset += 1000) {
+    const binds = { ...scope.binds };
+    const placeholders = docs.slice(offset, offset + 1000).map((doc, index) => {
+      binds[`documento${index}`] = doc;
+      return `:documento${index}`;
+    });
+    const result = await execute(`
+      WITH ${hasRegional ? `${buildReportEronCtes()},` : ''}
+      ${activeCte}
+      SELECT TO_CHAR(p.NUMERO) AS DOCUMENTO
+      FROM DNDP.PERSONA p
+      JOIN ranked_situacion s ON s.ID_PERSONA = p.ID_PERSONA AND s.RN = 1
+      WHERE TO_CHAR(p.NUMERO) IN (${placeholders.join(', ')})
+        AND NVL(s.ACTIVO, 0) = 1
+        AND ${buildTipoFilter('condenado')}
+        AND ${hasRegional ? `NOT (${scope.clause})` : '1=1'}
+    `, binds, { operation: 'persona.listCondenadosOutsideRegional' });
+    forbidden.push(...(result?.rows || []).map((row) => String(row.DOCUMENTO)));
+  }
+  return forbidden;
+}
+
 async function updatePersonaById(idPersona, fields = {}) {
   const updates = Object.entries(fields || {}).filter(([column]) => PERSONA_COLUMNS.has(String(column || '').toUpperCase()));
   if (!updates.length) return 0;
@@ -1744,6 +1791,7 @@ module.exports = {
   listAutomaticClosuresByDocumento,
   listRowsWithActiveSituacionAndGestiones,
   listCondenadosSummary,
+  listCondenadosOutsideRegional,
   countCondenadosSummary,
   listCondenadosHomologationValues,
   listDistinctCondenadosFilterOptions,

@@ -152,13 +152,21 @@ async function run() {
       const detail = await api(`/ppl/${documento}`);
       assert.equal(detail.registro.defensorAsignado, defensor.nombre);
       const history = (await api(`/ppl/${documento}/actuaciones`)).actuaciones;
-      const expected = [defensores[0], defensores[1], defensores[0], defensores[1]].slice(0, assignments);
+      // Las dos primeras gestiones tienen análisis. La tercera está vacía y
+      // cambia de responsable en la cuarta asignación conservando su ID.
+      const expected = assignments <= 3
+        ? [defensores[0], defensores[1], defensores[0]].slice(0, assignments)
+        : [defensores[0], defensores[1], defensores[1]];
       assert.deepEqual(history.map(item => item.registro.defensorGestion), expected.map(item => item.nombre));
       assert(history.every(item => item.registro.__oracleIdAsignacionGestion > 0));
       if (assignments <= 2) {
         const data = {
           'Fecha de análisis jurídico del caso': '2026-10-01',
           'Resumen del análisis del caso': `Análisis del defensor ${assignments}`,
+          'Procedencia de libertad condicional': 'No',
+          'Procedencia de prisión domiciliaria de mitad de pena': 'No',
+          'Procedencia de pena cumplida': 'Sí', 'Procedencia de acumulación de penas': 'No',
+          'Otras solicitudes a tramitar': 'Ninguna',
           ...(assignments === 1 ? {
             'Procedencia de libertad condicional': 'Sí cumple requisitos objetivos',
             'Procedencia de prisión domiciliaria de mitad de pena': 'No',

@@ -81,6 +81,7 @@ function publicUser(user) {
     username: String(user.username || user.email || ''),
     provider: String(user.provider || 'azure-ad'),
     roles: normalizeRoles(user.roles),
+    consultaCases: Array.isArray(user.consultaCases) ? user.consultaCases : [],
     enabled: user.enabled !== false,
     firstLoginAt: user.firstLoginAt || null,
     lastLoginAt: user.lastLoginAt || null,
@@ -137,6 +138,8 @@ function upsertManagedUser(profile) {
     username: String(profile.username || existing?.username || email),
     provider: 'azure-ad',
     roles: normalizeRoles(profile.roles || existing?.roles),
+    consultaCases: normalizeRoles(profile.roles || existing?.roles).includes('consulta')
+      ? (existing?.consultaCases || []) : [],
     enabled: profile.enabled == null ? existing?.enabled !== false : Boolean(profile.enabled),
     firstLoginAt: existing?.firstLoginAt || null,
     lastLoginAt: existing?.lastLoginAt || null,
@@ -218,6 +221,8 @@ function updateManagedUser(id, patch) {
     next.username = email;
   }
   if (patch.roles != null) next.roles = normalizeRoles(patch.roles);
+  if (patch.roles != null && !normalizeRoles(next.roles).includes('consulta')) next.consultaCases = [];
+  if (patch.consultaCases != null) next.consultaCases = patch.consultaCases;
   if (patch.pagCedula != null) next.pagCedula = String(patch.pagCedula).trim();
   if (patch.pagRegional != null) next.pagRegional = String(patch.pagRegional).trim();
   if (patch.enabled != null) next.enabled = Boolean(patch.enabled);

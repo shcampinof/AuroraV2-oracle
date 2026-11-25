@@ -177,7 +177,7 @@
       "answers": {
         "Fecha de análisis jurídico del caso": "2026-09-10",
         "Procedencia de libertad condicional": "No aplica porque ya se concedió prisión domiciliaria",
-        "Procedencia de prisión domiciliaria de mitad de pena": "No aplica porque ya está en libertad por pena cumplida",
+        "Procedencia de prisión domiciliaria de mitad de pena": "No aplica porque ya se concedió prisión domiciliaria",
         "Procedencia de utilidad pública (solo para mujeres)": "Sí cumple requisitos objetivos",
         "Procedencia de pena cumplida": "No",
         "Procedencia de acumulación de penas": "No",
@@ -760,6 +760,99 @@
       },
       "expectedCode": "CASO_CERRADO",
       "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-pena-cumplida-q30-parcial",
+      "flow": "aurora",
+      "answers": {
+        "Procedencia de libertad condicional": "No aplica porque ya está en libertad por pena cumplida"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-pena-cumplida-q31-prevalece-utilidad",
+      "flow": "aurora",
+      "answers": {
+        "Procedencia de prisión domiciliaria de mitad de pena": "4. No aplica porque ya está en libertad por pena cumplida",
+        "Procedencia de utilidad pública (solo para mujeres)": "Sí cumple requisitos objetivos"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-pena-cumplida-prevalece-recurso",
+      "flow": "aurora",
+      "answers": {
+        "Procedencia de libertad condicional": "No aplica porque ya está en libertad por pena cumplida",
+        "Sentido de la decisión": "No concede la solicitud",
+        "Se presenta recurso": "Sí"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-traslado-formulario-todo-negativo",
+      "flow": "aurora",
+      "answers": {
+        "Procedencia de libertad condicional": "No aplica porque la persona fue trasladada a otro ERON",
+        "Procedencia de prisión domiciliaria de mitad de pena": "No aplica porque la persona fue trasladada a otro ERON",
+        "Procedencia de utilidad pública (solo para mujeres)": "No cumple requisitos objetivos",
+        "Procedencia de pena cumplida": "No",
+        "Procedencia de acumulación de penas": "No",
+        "Otras solicitudes a tramitar": "Ninguna"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-traslado-formulario-numerado",
+      "flow": "aurora",
+      "answers": {
+        "Procedencia de libertad condicional": "16. No aplica porque la persona fue trasladada a otro ERON",
+        "Procedencia de prisión domiciliaria de mitad de pena": "16. No aplica porque la persona fue trasladada a otro ERON",
+        "Procedencia de utilidad pública (solo para mujeres)": "No cumple requisitos objetivos",
+        "Procedencia de pena cumplida": "No",
+        "Procedencia de acumulación de penas": "No",
+        "Otras solicitudes a tramitar": "Ninguna"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-traslado-formulario-recurso-anterior",
+      "flow": "aurora",
+      "answers": {
+        "Procedencia de libertad condicional": "No aplica porque la persona fue trasladada a otro ERON",
+        "Procedencia de prisión domiciliaria de mitad de pena": "No aplica porque la persona fue trasladada a otro ERON",
+        "Procedencia de utilidad pública (solo para mujeres)": "No cumple requisitos objetivos",
+        "Procedencia de pena cumplida": "No",
+        "Procedencia de acumulación de penas": "No",
+        "Otras solicitudes a tramitar": "Ninguna",
+        "Sentido de la decisión": "No concede la solicitud",
+        "Se presenta recurso": "Sí"
+      },
+      "expectedCode": "CASO_CERRADO",
+      "expectedLabel": "Caso cerrado"
+    },
+    {
+      "id": "aurora-traslado-formulario-una-respuesta",
+      "flow": "aurora",
+      "answers": {
+        "Procedencia de libertad condicional": "No aplica porque la persona fue trasladada a otro ERON"
+      },
+      "expectedCode": "ANALIZAR_CASO",
+      "expectedLabel": "Analizar el caso"
+    },
+    {
+      "id": "aurora-traslado-formulario-incompleto",
+      "flow": "aurora",
+      "answers": {
+        "Procedencia de libertad condicional": "No aplica porque la persona fue trasladada a otro ERON",
+        "Procedencia de prisión domiciliaria de mitad de pena": "No aplica porque la persona fue trasladada a otro ERON"
+      },
+      "expectedCode": "ANALIZAR_CASO",
+      "expectedLabel": "Analizar el caso"
     }
   ]
 }

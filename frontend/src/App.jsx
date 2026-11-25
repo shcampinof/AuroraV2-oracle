@@ -24,7 +24,7 @@ import {
 } from './services/api.js';
 import { FEATURE_FLAGS } from './config/featureFlags.js';
 import { startPplDataVersionMonitor } from './utils/pplDataVersionMonitor.js';
-import { canAccessAssignments } from './utils/assignmentAccess.js';
+import { canAccessAssignments, isConsultaUser } from './utils/assignmentAccess.js';
 
 const VISTAS = new Set([
   'inicio',
@@ -60,11 +60,13 @@ function normalizarRoles(roles) {
 }
 
 function tieneAccesoCargas(user) {
+  if (isConsultaUser(user)) return false;
   const roles = normalizarRoles(user?.roles);
   return roles.some((role) => ['admin', 'carguebd', 'cargas_bd'].includes(role));
 }
 
 function esAdmin(user) {
+  if (isConsultaUser(user)) return false;
   return normalizarRoles(user?.roles).includes('admin');
 }
 
@@ -248,11 +250,11 @@ function App() {
   }
 
   if (vistaActual === 'formulario') {
-    contenido = <FormularioAtencion numeroInicial={numeroSeleccionado} />;
+    contenido = <FormularioAtencion numeroInicial={numeroSeleccionado} user={session.user} />;
   }
 
   if (vistaActual === 'registros') {
-    contenido = <RegistrosAsignados onSelectRegistro={manejarSeleccionRegistro} />;
+    contenido = <RegistrosAsignados onSelectRegistro={manejarSeleccionRegistro} user={session.user} />;
   }
 
   if (vistaActual === 'asignacion' && puedeAccederPag) {
@@ -260,7 +262,7 @@ function App() {
   }
 
   if (vistaActual === 'herramientas') {
-    contenido = <CajaHerramientas />;
+    contenido = <CajaHerramientas puedeEditar={esAdmin(session.user)} />;
   }
 
   if (vistaActual === 'reporte-atenciones') {

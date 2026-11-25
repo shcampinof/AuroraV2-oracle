@@ -59,4 +59,52 @@ describe('cierres automáticos en el historial', () => {
     await render('456');
     expect(container.querySelector('.historial-cierre-automatico')).toBeNull();
   });
+  it('Consulta abre el detalle sin habilitar nuevas actuaciones ni mostrar un caso activo como cerrado', async () => {
+    getPplActuacionesByDocumento.mockResolvedValue({ actuaciones: [] });
+    const iniciar = vi.fn();
+    const crear = vi.fn();
+    await act(async () => root.render(<HistorialActuacionesPPL
+      numeroDocumento="123" registro={{ numeroIdentificacion: '123', __situacionActiva: true, estadoCodigo: 'ANALIZAR_CASO' }}
+      soloConsulta onIniciarActuacion={iniciar} onCrearNuevaActuacion={crear}
+    />));
+    const detalle = [...container.querySelectorAll('button')].find((item) => item.textContent === 'Ver detalle');
+    expect(detalle).toBeDefined();
+    await act(async () => detalle.click());
+    expect(iniciar).toHaveBeenCalledWith({ soloConsulta: true });
+    expect(crear).not.toHaveBeenCalled();
+    expect(container.querySelector('.historial-create-button')).toBeNull();
+    expect(container.textContent).not.toContain('Caso cerrado');
+  });
+
+  it('bloquea una nueva actuación mientras la última espera revisión y conserva la fecha al consultar el histórico', async () => {
+    const registro = {
+      numeroIdentificacion: '123', __oracleIdGestion: 10, __situacionActiva: true,
+      'Situación Jurídica': 'Condenado', 'Fecha de análisis jurídico del caso': '2026-05-20',
+      'Procedencia de libertad condicional': 'No cumple requisitos objetivos',
+      'Procedencia de prisión domiciliaria de mitad de pena': 'No aplica',
+      'Procedencia de pena cumplida': 'No', 'Procedencia de acumulación de penas': 'No',
+      'Otras solicitudes a tramitar': 'Ninguna',
+      'Nueva fecha de análisis': '2026-11-20',
+    };
+    const original = { id: '123-10', rowIndex: 10, registro };
+    getPplActuacionesByDocumento.mockResolvedValue({ actuaciones: [original] });
+    const crear = vi.fn();
+    await act(async () => root.render(<HistorialActuacionesPPL numeroDocumento="123" registro={registro} onCrearNuevaActuacion={crear} />));
+    expect(container.querySelector('.historial-create-button').disabled).toBe(true);
+    expect(container.textContent).toContain('Revisión automática programada para el 20/11/2026');
+    await act(async () => container.querySelector('.historial-create-button').click());
+    expect(crear).not.toHaveBeenCalled();
+
+    // Una vez existe la revisión, abrir la actuación antigua no bloquea la nueva.
+    getPplActuacionesByDocumento.mockResolvedValue({ actuaciones: [original, {
+      id: '123-11', rowIndex: 11, registro: {
+        numeroIdentificacion: '123', __oracleIdGestion: 11, __situacionActiva: true,
+        'Situación Jurídica': 'Condenado', defensorGestion: 'DEFENSORA ORIGINAL',
+      },
+    }] });
+    await act(async () => root.render(<HistorialActuacionesPPL numeroDocumento="123" registro={registro}
+      actuacionActivaId="123-10" refreshToken={1} onCrearNuevaActuacion={crear} />));
+    expect(container.querySelector('.historial-create-button').disabled).toBe(false);
+    expect(container.textContent).not.toContain('Revisión automática programada');
+  });
 });

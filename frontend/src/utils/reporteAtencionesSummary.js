@@ -1,16 +1,7 @@
-const ACTUACION_SUMMARY_FIELDS = Object.freeze([
-  'casosAnalizados',
-  'entrevistasRealizadas',
-  'solicitudesPresentadas',
-  'reiteracionesPresentadas',
-  'recursosPresentados',
-]);
-
+// 1.7 cuenta gestiones distintas: una gestión puede aportar varios eventos.
 export function calculateTotalActuaciones(resumen = {}) {
-  return ACTUACION_SUMMARY_FIELDS.reduce((total, field) => {
-    const value = Number(resumen?.[field]);
-    return total + (Number.isFinite(value) ? value : 0);
-  }, 0);
+  const value = Number(resumen?.totalActuaciones);
+  return Number.isFinite(value) ? value : 0;
 }
 
 export function isReporteSinRegional({ regional = '' } = {}) {

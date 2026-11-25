@@ -1,5 +1,6 @@
 const { execute } = require('../../db/oraclePool');
 const personaRepo = require('./personaRepository');
+const { buildReportGestionCtes } = require('./reporteAtencionesGestionSql');
 const {
   normalizedMojibakeSqlExpr, buildActiveSituacionCte, buildReportRegionalClause,
   buildSindicadoClause, buildCondenadoClause, buildReportEronCtes,
@@ -21,8 +22,6 @@ const EVENT_ASSIGNMENT_SCOPE_SQL = `(
   (a.ORDEN = 1 OR e.FECHA >= TRUNC(a.FECHA_ASIGNACION))
   AND (a.FECHA_FIN IS NULL OR e.FECHA < TRUNC(a.FECHA_FIN) + 1)
 )`;
-
-const GESTION_CLOSED_SQL = `(${personaRepo.buildGestionEstadoCodigoExpr('TO_NCHAR(g.DEFENSOR_GESTION)')} = 'CASO_CERRADO')`;
 
 const EVENT_UNIONS = [
   ['analisis', 'g.FECHA_ANALISIS'],
@@ -51,10 +50,19 @@ const EVENT_UNIONS = [
 ];
 
 function buildEventBaseSelect(filtersSql) {
-  const dateColumns = EVENT_UNIONS.map(([tipo, dateExpression], index) => {
-    const value = tipo === 'cierre' ? `CASE WHEN ${GESTION_CLOSED_SQL} THEN ${dateExpression} END` : dateExpression;
-    return `CAST(${value} AS DATE) AS FECHA_EVENTO_${index}`;
-  });
+  const eventDates = [
+    'CASE WHEN g.T_APLICA = 0 OR g.T_ANALISIS_COMPLETO = 1 THEN g.FECHA_ANALISIS END',
+    'CASE WHEN g.T_APLICA = 0 OR (g.T_ELEGIBLE = 1 AND (g.T_ENTREVISTA_COMPLETA = 1 OR g.T_CERRADO_DECISION = 1)) THEN g.FECHA_ENTREVISTA END',
+    'CASE WHEN g.T_APLICA = 0 THEN g.FECHA_SOLICITUD_AUDIENCIA_CONTROL END',
+    'CASE WHEN g.T_APLICA = 0 THEN g.FECHA_PRESENTACION_SOLICITUD_AUTORIDAD WHEN g.T_RADICADA = 1 THEN COALESCE(g.FECHA_PRESENTACION_SOLICITUD_AUTORIDAD, g.FECHA_RADICACION_UTILIDAD) END',
+    'CASE WHEN g.T_APLICA = 0 THEN g.FECHA_RADICACION_UTILIDAD END',
+    ...EVENT_UNIONS.slice(5, 10).map(([, expression]) => expression),
+    'CASE WHEN g.T_APLICA = 0 THEN COALESCE(g.FECHA_PRESENTACION_RECURSO, g.FECHA_RECURSO_DESFAVORABLE) WHEN g.T_RECURSO = 1 THEN g.FECHA_PRESENTACION_RECURSO END',
+    'CASE WHEN g.T_CERRADA = 1 THEN g.T_FECHA_CIERRE END',
+  ];
+  const dateColumns = eventDates.map((expression, index) =>
+    `CAST(${expression} AS DATE) AS FECHA_EVENTO_${index}`
+  );
   return `
     SELECT /*+ MATERIALIZE */
       TO_CHAR(g.DEFENSOR_GESTION) AS DEFENSOR_GESTION,
@@ -72,7 +80,7 @@ function buildEventBaseSelect(filtersSql) {
         'Sin información'
       ) AS LUGAR_PRIVACION,
       ${dateColumns.join(',\n      ')}
-    FROM DNDP.GESTION_JURIDICA g
+    FROM GESTIONES_T g
     JOIN DNDP.SITUACION_CARCELARIA s ON s.ID_SITUACION = g.ID_SITUACION
     JOIN DNDP.PERSONA p ON p.ID_PERSONA = s.ID_PERSONA
     JOIN personas_del_defensor alcance ON alcance.ID_PERSONA = s.ID_PERSONA
@@ -213,6 +221,7 @@ function buildEventsSql({ tipo = 'all', lugar = '', regional = '' } = {}) {
       JOIN DNDP.SITUACION_CARCELARIA s ON s.ID_SITUACION = g.ID_SITUACION
       WHERE ${normalizedMojibakeSqlExpr('g.DEFENSOR_GESTION')} = :defensorNombre
     ),
+    ${buildReportGestionCtes()},
     gestiones_base AS (
       ${buildEventBaseSelect(`${locationClause} ${tipoClause} AND ${regionalClause}`)}
     ),
@@ -308,11 +317,16 @@ function buildEventsSql({ tipo = 'all', lugar = '', regional = '' } = {}) {
   `;
 }
 
-async function listEvents(params) {
+function eventBinds(params) {
   const binds = reportBinds(params);
   Object.assign(binds, buildReportRegionalClause(params).binds);
   if (params.lugar && !params.regional) binds.lugar = normalizeSearchText(params.lugar);
   if (params.tipo && params.tipo !== 'all') binds.tipo = params.tipo === 'condenado' ? '%CONDENAD%' : '%SINDICAD%';
+  return binds;
+}
+
+async function listEvents(params) {
+  const binds = eventBinds(params);
   const result = await execute(buildEventsSql(params), binds, { operation: 'reportes.atenciones.listEvents' });
   return Array.isArray(result?.rows) ? result.rows : [];
 }

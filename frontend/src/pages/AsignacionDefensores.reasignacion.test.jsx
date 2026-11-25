@@ -80,6 +80,147 @@ describe('reasignaciones consecutivas desde PAG', () => {
     });
   }
 
+  it.each(['BOYACÁ', '', null])('consulta casos y filtros con el PAG validado cuya regional es %s', async (regional) => {
+    expect(getCondenadosFilterOptions).not.toHaveBeenCalled();
+    validatePagCedula.mockResolvedValue({ cedula: '99', nombre: 'PAG PRUEBA', regional });
+    await fill('Ingrese cedula de PAG', '99');
+    await click('Validar PAG');
+    expect(getCondenadosFilterOptions.mock.lastCall[0]).toMatchObject({ tipo: 'condenado', pagCedula: '99' });
+    expect(container.textContent).toContain(regional ? 'Regional: BOYACÁ' : 'Sin regional definida: consulta de todas las regionales');
+    expect(container.textContent).toContain(regional
+      ? 'En esta pantalla se muestran únicamente los casos de su regional.'
+      : 'No hay una regional definida para el PAG. Puede consultar casos de todas las regionales.');
+    await fill('Ingrese nombre de la persona privada de la libertad', 'Usuario');
+    await click('Filtrar');
+    expect(getCondenados.mock.lastCall[0]).toMatchObject({ tipo: 'condenado', pagCedula: '99' });
+    await fill('Ingrese cedula de PAG', '88');
+    expect(container.querySelector('tbody')).toBeNull();
+  });
+
+  it.each(['Asignación', 'Reasignación', 'Eliminar asignaciones'])('permite gestionar los casos de la regional devueltos por el servidor en %s', async (tab) => {
+    validatePagCedula.mockResolvedValue({ cedula: '99', nombre: 'PAG BOYACÁ', regional: 'BOYACÁ' });
+    getCondenados.mockResolvedValue({
+      rows: [
+        { numeroIdentificacion: '123', nombreUsuario: 'CASO BOYACÁ', puedeAsignar: true },
+      ],
+      meta: { totalMatched: 1, totalPages: 1 },
+    });
+    await fill('Ingrese cedula de PAG', '99');
+    await click('Validar PAG');
+    await click(tab);
+    await fill('Ingrese nombre de la persona privada de la libertad', 'CASO');
+    await click('Filtrar');
+    const table = container.querySelector('tbody');
+    expect(table.textContent).toContain('CASO BOYACÁ');
+    expect(table.querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
+    const ownCheckbox = table.querySelector('input[type="checkbox"]');
+    await act(async () => ownCheckbox.click());
+    if (tab === 'Eliminar asignaciones') {
+      unassignDefensorPpl.mockResolvedValue({ updated: 1 });
+      await click('ELIMINAR ASIGNACIONES');
+      expect(unassignDefensorPpl).toHaveBeenCalledWith(['123'], { pagCedula: '99' });
+    } else {
+      await fill('Escriba para buscar defensor', 'DEFENSOR SEGUNDO');
+      await click(tab === 'Asignación' ? 'GUARDAR ASIGNACIÓN' : 'GUARDAR REASIGNACIÓN');
+      expect(assignDefensorPpl).toHaveBeenCalledWith(['123'], 'DEFENSOR SEGUNDO', expect.any(Object));
+    }
+  });
+
+  it.each(['', null])('muestra todas las regionales cuando el PAG no tiene regional definida (%s)', async (regional) => {
+    validatePagCedula.mockResolvedValue({ cedula: '99', nombre: 'PAG SIN REGIONAL', regional });
+    getCondenados.mockResolvedValue({
+      rows: [
+        { numeroIdentificacion: '123', nombreUsuario: 'CASO BOYACÁ', puedeAsignar: false },
+        { numeroIdentificacion: '456', nombreUsuario: 'CASO META', puedeAsignar: false },
+      ],
+      meta: { totalMatched: 2, totalPages: 1 },
+    });
+    await fill('Ingrese cedula de PAG', '99');
+    await click('Validar PAG');
+    await fill('Ingrese nombre de la persona privada de la libertad', 'CASO');
+    await click('Filtrar');
+    const table = container.querySelector('tbody');
+    expect(table.textContent).toContain('CASO BOYACÁ');
+    expect(table.textContent).toContain('CASO META');
+    expect(table.querySelector('input[type="checkbox"]')).toBeNull();
+    expect(container.textContent).toContain('Puede consultar casos de todas las regionales.');
+  });
+
+  it.each([
+    ['consulta'], ['Aurora.Consulta'],
+  ])('permite consultar PAG con %s sin cédula ni acciones de modificación', async (role) => {
+    await act(async () => root.render(<AsignacionDefensores user={{ roles: ['user', role, 'dndp', 'pag'] }} />));
+    expect(container.textContent).toContain('Rol Consulta');
+    expect(container.textContent).not.toContain('Validacion de PAG');
+    expect(container.textContent).not.toContain('Crear defensor');
+    expect(container.textContent).not.toContain('Eliminar asignaciones');
+    expect(container.textContent).not.toContain('Nuevo defensor');
+    await fill('Ingrese nombre de la persona privada de la libertad', 'Usuario');
+    await click('Filtrar');
+    expect(getCondenados.mock.lastCall[0].filters).toMatchObject({ nombre: 'Usuario', asignacionEstado: 'sin_defensor' });
+    expect(container.querySelector('tbody').textContent).toContain('USUARIO PRUEBA');
+    expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+    await click('Casos con defensor');
+    await fill('Filtrar defensor actual', 'DEFENSOR INICIAL');
+    await click('Filtrar');
+    expect(getCondenados.mock.lastCall[0].filters).toMatchObject({ defensor: 'DEFENSOR INICIAL', asignacionEstado: 'con_defensor' });
+    expect(container.textContent).not.toContain('GUARDAR');
+    expect(validatePagCedula).not.toHaveBeenCalled();
+    expect(assignDefensorPpl).not.toHaveBeenCalled();
+    expect(unassignDefensorPpl).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['Asignación', 'sin_defensor'],
+    ['Reasignación', 'con_defensor'],
+    ['Eliminar asignaciones', 'con_defensor'],
+  ])('busca solo por nombre de la persona privada de la libertad y lo limpia en %s', async (tab, asignacionEstado) => {
+    await fill('Ingrese cedula de PAG', '99');
+    await click('Validar PAG');
+    await click(tab);
+    const fields = [...container.querySelectorAll('.filter-panel .form-field')];
+    const nameIndex = fields.findIndex((field) => field.querySelector('label')?.textContent === 'Nombre persona privada de la libertad');
+    expect(nameIndex).toBeGreaterThan(-1);
+    expect(fields[nameIndex + 1].querySelector('label').textContent).toBe('Potenciales candidatos de solicitudes');
+
+    await fill('Ingrese nombre de la persona privada de la libertad', '  María Pérez  ');
+    await click('Filtrar');
+    expect(getCondenados).toHaveBeenLastCalledWith(expect.objectContaining({
+      tipo: 'condenado', page: 1,
+      filters: expect.objectContaining({ nombre: 'María Pérez', asignacionEstado }),
+    }));
+    expect(container.textContent).toContain('María Pérez');
+
+    await click('Limpiar filtros');
+    expect(container.querySelector('#pag-nombre-ppl').value).toBe('');
+    expect(container.textContent).not.toContain('Filtros aplicados:');
+    const previousCalls = getCondenados.mock.calls.length;
+    await click('Filtrar');
+    expect(getCondenados).toHaveBeenCalledTimes(previousCalls);
+    expect(container.textContent).toContain('Seleccione al menos un filtro');
+    await fill('Filtrar departamento', 'BOYACA');
+    await click('Filtrar');
+    expect(getCondenados.mock.lastCall[0].filters).toMatchObject({ nombre: '', departamento: 'BOYACA' });
+  });
+
+  it('aplica nombre de la persona privada de la libertad con Enter, lo combina con otros filtros y conserva el nombre consultado al paginar', async () => {
+    getCondenados.mockResolvedValue({ rows: [], meta: { totalMatched: 100, totalPages: 2 } });
+    await fill('Ingrese cedula de PAG', '99');
+    await click('Validar PAG');
+    await fill('Filtrar departamento', 'BOYACA');
+    await fill('Ingrese nombre de la persona privada de la libertad', 'Pérez');
+    await act(async () => container.querySelector('#pag-nombre-ppl')
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+    expect(getCondenados.mock.lastCall[0]).toMatchObject({
+      page: 1, filters: { nombre: 'Pérez', departamento: 'BOYACA' },
+    });
+    await fill('Ingrese nombre de la persona privada de la libertad', 'Otro nombre sin aplicar');
+    await click('Siguiente');
+    expect(getCondenados.mock.lastCall[0]).toMatchObject({
+      page: 2, filters: { nombre: 'Pérez', departamento: 'BOYACA' },
+    });
+  });
+
   it.each(['condenado', 'sindicado'])('permite reasignar tres veces el mismo %s sin salir del módulo', async (tipo) => {
     await act(async () => root.render(<AsignacionDefensores tipo={tipo} />));
     await click('Reasignación');

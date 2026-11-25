@@ -260,10 +260,6 @@ function buildReport({ defensor, fechaInicio, fechaFin, scope = {}, eventRows = 
       .map((item) => [item.idPersona, item])
   ).values()));
   const activeCases = assignedCases.filter((item) => item.activo);
-  const closedAssignedPeopleCount = uniqueCount(
-    assignedCases.filter((item) => !item.activo),
-    'idPersona'
-  );
   const peopleWithEvents = new Set(
     EVENT_KEYS.flatMap((key) => details[key]).map((item) => item.idPersona).filter(Boolean)
   );
@@ -289,17 +285,11 @@ function buildReport({ defensor, fechaInicio, fechaFin, scope = {}, eventRows = 
       reiteracionesPresentadas: details.reiteracion.length,
       recursosPresentados: details.recurso.length,
       casosCerrados: closedCaseCount,
-      totalActuaciones:
-        details.analisis.length +
-        details.entrevista.length +
-        details.solicitud.length +
-        details.reiteracion.length +
-        details.recurso.length,
+      totalActuaciones: uniqueCount(EVENT_KEYS.filter((key) => key !== 'cierre').flatMap((key) => details[key]), 'idGestion'),
       personasAsignadas: assignedCases.length,
       personasActivas: activeCases.length,
       personasActivasConGestion: activeWithEvents.length,
       personasConCasoCerrado: closedPeopleCount,
-      totalPersonasConCasosCerrados: closedAssignedPeopleCount,
       personasFueraPrision: uniqueCount(assignedCases.filter((item) => item.situacionActiva === false), 'idPersona'),
     },
     detalles: {

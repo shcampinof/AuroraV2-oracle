@@ -3,6 +3,7 @@ const { execute, getOracleDriver } = require('../../db/oraclePool');
 const GESTION_COLUMNS = new Set([
   'ACCION_REALIZAR',
   'FECHA_ANALISIS',
+  'NUEVA_FECHA_ANALISIS',
   'VENCIMIENTO_TERMINOS',
   'UTILIDAD_PUBLICA',
   'LIBERTAD_CONDICIONAL',

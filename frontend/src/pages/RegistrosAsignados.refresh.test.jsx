@@ -77,6 +77,19 @@ describe('actualización automática de usuarios asignados', () => {
     await click('Buscar');
   }
 
+  it('Consulta busca sus casos autorizados sin exigir otro filtro y conserva el criterio al paginar', async () => {
+    await act(async () => root.render(<RegistrosAsignados user={{ roles: ['consulta'] }} onSelectRegistro={onSelectRegistro} />));
+    const checkbox = container.querySelector('#mis-casos-autorizados');
+    expect(checkbox).not.toBeNull();
+    await act(async () => checkbox.click());
+    await click('Buscar');
+    expect(getCondenados.mock.lastCall[0].filters.misCasosAutorizados).toBe('1');
+    await click('Siguiente');
+    expect(getCondenados.mock.lastCall[0].filters.misCasosAutorizados).toBe('1');
+    await click('Limpiar');
+    expect(container.querySelector('#mis-casos-autorizados').checked).toBe(false);
+  });
+
   async function notify() {
     await act(async () => window.dispatchEvent(new CustomEvent(PPL_DATA_UPDATED_EVENT)));
   }
@@ -102,6 +115,10 @@ describe('actualización automática de usuarios asignados', () => {
     expect([...additional.options].map((item) => item.textContent).join(' ')).not.toContain('Regional');
     expect([...additional.options].map((item) => item.textContent).join(' ')).not.toContain('Prioridad');
     await selectFilter('Filtrar', 'nombre');
+    expect(additional.selectedOptions[0].textContent).toBe('Nombre persona privada de la libertad');
+    const nameField = [...container.querySelectorAll('label')].find((item) => item.textContent === 'Nombre persona privada de la libertad');
+    expect(nameField).toBeDefined();
+    expect(document.getElementById(nameField.htmlFor).placeholder).toBe('Ingrese nombre de la persona privada de la libertad');
     await click('Buscar');
     expect(getCondenados.mock.lastCall[0].filters).toMatchObject({ regional: 'BOYACÁ', prioridadGestion: 'rojo' });
     await click('Siguiente');
@@ -117,11 +134,54 @@ describe('actualización automática de usuarios asignados', () => {
       estadoEtiqueta: 'Sin asignación', prioridadGestion: 'gris' };
     getCondenados.mockResolvedValue(data);
     await selectFilter('Acción a Impulsar / estado', 'SIN_ASIGNACION');
+    await act(async () => container.querySelector('#incluir-no-asignados').click());
     await click('Buscar');
     expect(getCondenados.mock.lastCall[0].filters.estadoCodigo).toBe('SIN_ASIGNACION');
+    expect(getCondenados.mock.lastCall[0].filters.incluirNoAsignados).toBe('1');
     expect(container.querySelector('.estadoBadge').textContent).toBe('Sin asignación');
     expect(container.querySelector('.estadoBadge').classList.contains('estado--gris')).toBe(true);
     expect(container.querySelector('table').style.width).toMatch(/px$/);
+  });
+
+  it('excluye sindicados y no asignados por defecto y reinicia las tres casillas al limpiar', async () => {
+    const checkboxes = () => [...container.querySelectorAll('input[type="checkbox"]')];
+    expect(checkboxes()).toHaveLength(3);
+    expect(checkboxes().every((input) => !input.checked)).toBe(true);
+    expect(getCondenados).not.toHaveBeenCalled();
+    await click('Buscar');
+    expect(getCondenados).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Ingrese al menos un filtro antes de buscar.');
+    await search();
+    expect(getCondenados.mock.lastCall[0].filters).toMatchObject({
+      incluirSindicados: '', incluirNoAsignados: '', incluirFueraPrision: '',
+    });
+    for (const checkbox of checkboxes()) await act(async () => checkbox.click());
+    await click('Buscar');
+    expect(getCondenados.mock.lastCall[0].filters).toMatchObject({
+      incluirSindicados: '1', incluirNoAsignados: '1', incluirFueraPrision: '1',
+    });
+    await click('Limpiar');
+    expect(checkboxes().every((input) => !input.checked)).toBe(true);
+    await search();
+    expect(getCondenados.mock.lastCall[0].filters).toMatchObject({
+      incluirSindicados: '', incluirNoAsignados: '', incluirFueraPrision: '',
+    });
+  });
+
+  it.each([
+    ['incluir-sindicados', 'incluirSindicados'],
+    ['incluir-no-asignados', 'incluirNoAsignados'],
+    ['incluir-fuera-prision', 'incluirFueraPrision'],
+  ])('permite buscar solo con %s y conserva la casilla aplicada al paginar y actualizar', async (id, key) => {
+    await act(async () => container.querySelector(`#${id}`).click());
+    await click('Buscar');
+    const expected = { incluirSindicados: '', incluirNoAsignados: '', incluirFueraPrision: '', [key]: '1' };
+    expect(getCondenados.mock.lastCall[0].filters).toMatchObject(expected);
+    await act(async () => container.querySelector(`#${id}`).click());
+    await click('Siguiente');
+    expect(getCondenados.mock.lastCall[0]).toMatchObject({ page: 2, filters: expected });
+    await notify();
+    expect(getCondenados.mock.lastCall[0]).toMatchObject({ page: 2, filters: expected });
   });
 
   it('mantiene las filas y permite abrir el formulario mientras actualiza en segundo plano', async () => {

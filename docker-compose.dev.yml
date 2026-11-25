@@ -8,6 +8,7 @@ services:
       - aurora_certs:/app/backend/certs:ro
       - aurora_auth_users:/app/backend/storage/auth
       - aurora_cargas_bd:/app/backend/storage/cargas_bd
+      - aurora_formatos:/app/backend/storage/formatos
 
 volumes:
   aurora_certs:

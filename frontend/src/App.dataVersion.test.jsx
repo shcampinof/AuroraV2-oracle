@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.jsx';
+import { refreshSession } from './services/auth.js';
 import { getPplDataVersion, invalidateCondenadosClientCache, PPL_DATA_UPDATED_EVENT } from './services/api.js';
 
 vi.mock('./services/auth.js', () => ({
@@ -29,6 +30,7 @@ describe('comprobación de cambios integrada en App', () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     vi.spyOn(Math, 'random').mockReturnValue(0);
     getPplDataVersion.mockReset().mockResolvedValue({ version: 1 });
+    refreshSession.mockResolvedValue({ user: { id: 'tester', roles: ['user'] } });
     invalidateCondenadosClientCache.mockReset();
     window.location.hash = '/inicio';
     container = document.createElement('div');
@@ -52,6 +54,28 @@ describe('comprobación de cambios integrada en App', () => {
     const button = [...container.querySelectorAll('button')].find((item) => item.textContent === 'Aceptar y continuar');
     await act(async () => button.click());
   }
+
+  it('Consulta permite la navegación de lectura y bloquea módulos administrativos incluso con otros roles', async () => {
+    await act(async () => root.render(null));
+    refreshSession.mockResolvedValue({ user: { id: 'consulta', roles: ['consulta', 'admin', 'carguebd', 'dndp'] } });
+    await act(async () => root.render(<App />));
+    await accept();
+    const sidebar = container.querySelector('.sidebar');
+    expect(sidebar.textContent).toContain('Usuarios asignados');
+    expect(sidebar.textContent).toContain('Formulario de atención');
+    expect(sidebar.textContent).toContain('PAG - Asignación de casos');
+    expect(sidebar.textContent).toContain('Descargar reporte de atención');
+    expect(sidebar.textContent).not.toContain('Usuarios autorizados');
+    expect(sidebar.textContent).not.toContain('Cargas mensuales');
+    for (const vista of ['admin-usuarios', 'admin-cargas']) {
+      await act(async () => {
+        window.location.hash = `/${vista}`;
+        window.dispatchEvent(new Event('hashchange'));
+      });
+      expect(window.location.hash).toBe('#/inicio');
+      expect(container.querySelector('.admin-users-page, .admin-loads-page')).toBeNull();
+    }
+  });
 
   it('empieza tras aceptar las condiciones, respeta 30 segundos y emite cambios conservando la caché hasta entonces', async () => {
     await act(async () => vi.advanceTimersByTimeAsync(60000));

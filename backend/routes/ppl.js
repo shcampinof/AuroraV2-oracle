@@ -20,6 +20,56 @@ const { buildHomologationAudit } = require('../services/homologationAuditService
 const router = express.Router();
 const { hasRole, requirePag, requireAssignmentAccess } = require('../middleware/roles');
 const { resolveAssignmentActor } = require('../services/assignmentAccessService');
+const { findUser } = require('../services/userDirectoryService');
+const { withConsultaAccess, requireConsultaCaseEdit, auditCaseEdit } = require('../services/consultaCaseService');
+
+async function loadPagAssignmentScope(req, res, next) {
+  // Solo la pantalla PAG de condenados limita la consulta por regional.
+  // Sin regional definida, la consulta abarca todas las regionales.
+  if (String(req.query.tipo || '').trim().toLowerCase() !== 'condenado' ||
+      hasRole(req.user, 'dndp') || hasRole(req.user, 'consulta')) return next();
+  if (!hasRole(req.user, 'pag')) {
+    if (req.query.pagCedula) return res.status(403).json({ message: 'Acceso PAG requerido.' });
+    return next();
+  }
+  try {
+    const cedula = findUser(req.user)?.pagCedula || req.query.pagCedula;
+    if (!cedula) return next();
+    const pag = await pagRepo.findByCedula(cedula);
+    if (!pag) return res.status(400).json({ message: 'Cédula PAG no válida para consultar asignaciones.' });
+    req.pagRegional = String(pag.regional || '').trim();
+    return next();
+  } catch (err) {
+    console.error('[ppl:pag:regional] Error Oracle:', err?.message || err);
+    return res.status(500).json({ message: 'Error consultando la regional del PAG.' });
+  }
+}
+
+async function withPagAssignmentPermissions(payload, req) {
+  if (req.pagRegional === undefined) return payload;
+  const forbidden = new Set(await personaRepo.listCondenadosOutsideRegional(
+    payload.rows.map((row) => row.numeroIdentificacion), req.pagRegional
+  ));
+  return {
+    ...payload,
+    rows: payload.rows.map((row) => ({
+      ...row,
+      puedeAsignar: !forbidden.has(String(row.numeroIdentificacion)),
+    })),
+  };
+}
+
+async function rejectCasesOutsidePagRegional(res, pag, documentos) {
+  if (pag.tipo === 'dndp') return false;
+  const forbidden = await personaRepo.listCondenadosOutsideRegional(documentos, pag.regional);
+  if (!forbidden.length) return false;
+  res.status(403).json({
+    code: 'PAG_REGIONAL_FORBIDDEN',
+    message: 'Solo puede gestionar asignaciones de casos condenados de su regional. Verifique la regional del PAG y de los casos seleccionados.',
+    documentos: forbidden,
+  });
+  return true;
+}
 
 const DEFAULT_LIST_LIMIT = 5000;
 const MAX_LIST_LIMIT = 10000;
@@ -632,8 +682,8 @@ function mapCondenadoRow(row) {
 }
 
 function getCondenadosFiltersFromQuery(query) {
-  const incluirFueraPrision = ['1', 'true', 'si', 'sí']
-    .includes(String(query?.incluirFueraPrision ?? '').trim().toLowerCase())
+  const inclusionFilter = (key) => ['1', 'true', 'si', 'sí']
+    .includes(String(query?.[key] ?? '').trim().toLowerCase())
     ? '1'
     : '';
   return {
@@ -654,7 +704,10 @@ function getCondenadosFiltersFromQuery(query) {
     accion: String(query?.accion ?? '').trim(),
     potencialSubrogado: String(query?.potencialSubrogado ?? '').trim(),
     asignacionEstado: String(query?.asignacionEstado ?? '').trim(),
-    incluirFueraPrision,
+    incluirSindicados: inclusionFilter('incluirSindicados'),
+    incluirNoAsignados: inclusionFilter('incluirNoAsignados'),
+    incluirFueraPrision: inclusionFilter('incluirFueraPrision'),
+    misCasosAutorizados: inclusionFilter('misCasosAutorizados'),
   };
 }
 
@@ -889,13 +942,14 @@ router.get('/', async (req, res) => {
 });
 
 // Listado de condenados (mapeado para tabla de asignacion)
-router.get('/condenados/filter-options', async (req, res) => {
+router.get('/condenados/filter-options', loadPagAssignmentScope, async (req, res) => {
   const requestedTipo = String(req.query.tipo || 'all').trim().toLowerCase();
   const tipo =
     requestedTipo === 'all' || requestedTipo === 'condenado' || requestedTipo === 'sindicado'
       ? requestedTipo
       : 'all';
   const filters = getCondenadosFiltersFromQuery(req.query);
+  if (req.pagRegional !== undefined) filters.regional = req.pagRegional;
   const version = Number(consolidado.getDataVersion?.() || 0);
   const cacheKey = `${version}|${tipo}|${JSON.stringify({
     departamento: filters.departamento,
@@ -903,6 +957,7 @@ router.get('/condenados/filter-options', async (req, res) => {
     defensor: filters.defensor,
     defensorId: filters.defensorId,
     centroId: filters.centroId,
+    regional: filters.regional,
   })}`;
   const cached = getTimedCache(condenadosFilterOptionsCache, cacheKey);
   if (cached) return res.json(cached);
@@ -1003,13 +1058,18 @@ router.get('/condenados/homologation-audit', requireAssignmentAccess, async (req
   }
 });
 
-router.get('/condenados', async (req, res) => {
+router.get('/condenados', loadPagAssignmentScope, async (req, res) => {
   const requestedTipo = String(req.query.tipo || 'condenado').trim().toLowerCase();
   const tipo =
     requestedTipo === 'all' || requestedTipo === 'condenado' || requestedTipo === 'sindicado'
       ? requestedTipo
       : 'condenado';
   const filters = getCondenadosFiltersFromQuery(req.query);
+  if (filters.misCasosAutorizados) {
+    if (!hasRole(req.user, 'consulta')) return res.status(403).json({ message: 'El filtro requiere rol Consulta.' });
+    filters.consultaSituacionIds = (findUser(req.user)?.consultaCases || []).map((grant) => grant.situacionId).sort();
+  }
+  if (req.pagRegional !== undefined) filters.regional = req.pagRegional;
   const hasFilters = hasCondenadosFilters(filters);
   if (tipo === 'all' && !hasFilters) {
     return res.status(400).json({
@@ -1026,9 +1086,15 @@ router.get('/condenados', async (req, res) => {
   const cacheKey = `${version}|${tipo}|${page}|${pageSize}|${filtersKey}`;
   const cachedPayload = getTimedCache(condenadosListCache, cacheKey, CONDENADOS_LIST_CACHE_TTL_MS);
   if (cachedPayload) {
-    res.setHeader('Server-Timing', 'condenados;dur=0;desc="cache-hit"');
-    res.setHeader('X-Aurora-Cache', 'HIT');
-    return res.json(cachedPayload);
+    try {
+      const payload = await withPagAssignmentPermissions(cachedPayload, req);
+      res.setHeader('Server-Timing', 'condenados;dur=0;desc="cache-hit"');
+      res.setHeader('X-Aurora-Cache', 'HIT');
+      return res.json(payload);
+    } catch (err) {
+      console.error('[ppl:condenados:permissions] Error Oracle:', err?.message || err);
+      return res.status(500).json({ message: 'Error consultando permisos de asignación.' });
+    }
   }
 
   const startedAt = Date.now();
@@ -1080,7 +1146,8 @@ router.get('/condenados', async (req, res) => {
       })();
 
     if (!existingRequest) condenadosListInFlight.set(cacheKey, request);
-    const payload = await request;
+    // Los datos se comparten en caché; los permisos se calculan para cada PAG.
+    const payload = await withPagAssignmentPermissions(await request, req);
     const elapsedMs = Date.now() - startedAt;
     res.setHeader('Server-Timing', `condenados;dur=${elapsedMs};desc="${existingRequest ? 'coalesced' : 'oracle'}"`);
     res.setHeader('X-Aurora-Cache', existingRequest ? 'COALESCED' : 'MISS');
@@ -1141,6 +1208,7 @@ router.post('/asignar-defensor', requireAssignmentAccess, async (req, res) => {
     if (!pag) {
       return res.status(400).json({ message: 'Cedula PAG no valida para asignar.' });
     }
+    if (await rejectCasesOutsidePagRegional(res, pag, documentos)) return;
 
     let defensorNombre = defensor;
     if (defensorCedula) {
@@ -1204,6 +1272,7 @@ router.post('/desasignar-defensor', requireAssignmentAccess, async (req, res) =>
     if (!pag) {
       return res.status(400).json({ message: 'Cedula PAG no valida para desasignar.' });
     }
+    if (await rejectCasesOutsidePagRegional(res, pag, documentos)) return;
 
     const updated = await consolidado.unassignDefensor(documentos);
     const requested = new Set(documentos).size;
@@ -1244,7 +1313,7 @@ router.get('/:documento/actuaciones', async (req, res) => {
     ]);
     const actuaciones = actuacionesRaw.map((actuacion) => ({
       ...actuacion,
-      registro: hydrateRegistroDefensor(actuacion?.registro, defensorBase),
+      registro: withConsultaAccess(hydrateRegistroDefensor(actuacion?.registro, defensorBase), req.user),
     }));
     return res.json({ documento: doc, actuaciones, cierresAutomaticos });
   } catch (err) {
@@ -1254,7 +1323,7 @@ router.get('/:documento/actuaciones', async (req, res) => {
 });
 
 // Crear actuacion persistente por documento
-router.post('/:documento/actuaciones', async (req, res) => {
+router.post('/:documento/actuaciones', requireConsultaCaseEdit, async (req, res) => {
   const doc = req.params.documento;
   const body = req.body || {};
 
@@ -1269,7 +1338,8 @@ router.post('/:documento/actuaciones', async (req, res) => {
     }
 
     const defensorBase = resolveDefensorFromRegistro(actuacion?.registro) || (await resolveDefensorByDocumento(doc));
-    const hydratedRegistro = hydrateRegistroDefensor(actuacion?.registro, defensorBase);
+    const hydratedRegistro = withConsultaAccess(hydrateRegistroDefensor(actuacion?.registro, defensorBase), req.user);
+    auditCaseEdit(req, 'create-actuacion', hydratedRegistro);
 
     return res.status(201).json({
       documento: doc,
@@ -1281,10 +1351,10 @@ router.post('/:documento/actuaciones', async (req, res) => {
     });
   } catch (err) {
     console.error('[ppl:actuaciones:create] Error Oracle:', err?.message || err);
-    if (err?.code === 'PPL_SITUACION_INACTIVA' || err?.code === 'PPL_GESTION_MISMATCH' || err?.code === 'PPL_DEFENSOR_GESTION_IMMUTABLE') {
+    if (err?.code === 'PPL_REVISION_PROGRAMADA' || err?.code === 'PPL_SITUACION_INACTIVA' || err?.code === 'PPL_GESTION_MISMATCH' || err?.code === 'PPL_DEFENSOR_GESTION_IMMUTABLE') {
       return res.status(409).json({ code: err.code, message: err.message });
     }
-    if (err?.code === 'DEFENSOR_NOT_IN_CATALOG' || err?.code === 'PPL_RAZON_CIERRE_REQUERIDA') {
+    if (err?.code === 'DEFENSOR_NOT_IN_CATALOG' || err?.code === 'PPL_RAZON_CIERRE_REQUERIDA' || err?.code === 'PPL_FECHA_ANALISIS_REQUERIDA' || err?.code === 'PPL_FECHA_ANALISIS_FUERA_RANGO') {
       return res.status(400).json({ code: err.code, message: err.message });
     }
     return res.status(500).json({ message: 'Error creando actuación.' });
@@ -1302,7 +1372,7 @@ router.get('/:documento', async (req, res) => {
       const fallbackDefensor = await resolveDefensorByDocumento(doc);
       return res.json({
         tipo: consolidado.computeTipo(r),
-        registro: hydrateRegistroDefensor(r, fallbackDefensor),
+        registro: withConsultaAccess(hydrateRegistroDefensor(r, fallbackDefensor), req.user),
       });
     }
     return res.status(404).json({ message: 'No encontrado' });
@@ -1313,7 +1383,7 @@ router.get('/:documento', async (req, res) => {
 });
 
 // Update unificado
-router.put('/:documento', async (req, res) => {
+router.put('/:documento', requireConsultaCaseEdit, async (req, res) => {
   const doc = req.params.documento;
   const body = req.body || {};
 
@@ -1321,7 +1391,8 @@ router.put('/:documento', async (req, res) => {
     if (await consolidado.getByDocumento(doc)) {
       const upd = await consolidado.updateByDocumento(doc, body);
       if (!upd) return res.status(404).json({ message: 'No encontrado' });
-      return res.json({ tipo: consolidado.computeTipo(upd), registro: hydrateRegistroDefensor(upd) });
+      auditCaseEdit(req, 'update', upd);
+      return res.json({ tipo: consolidado.computeTipo(upd), registro: withConsultaAccess(hydrateRegistroDefensor(upd), req.user) });
     }
     return res.status(404).json({ message: 'No encontrado' });
   } catch (err) {
@@ -1329,7 +1400,7 @@ router.put('/:documento', async (req, res) => {
     if (err?.code === 'PPL_SITUACION_INACTIVA' || err?.code === 'PPL_GESTION_MISMATCH' || err?.code === 'PPL_DEFENSOR_GESTION_IMMUTABLE') {
       return res.status(409).json({ code: err.code, message: err.message });
     }
-    if (err?.code === 'DEFENSOR_NOT_IN_CATALOG' || err?.code === 'PPL_RAZON_CIERRE_REQUERIDA') {
+    if (err?.code === 'DEFENSOR_NOT_IN_CATALOG' || err?.code === 'PPL_RAZON_CIERRE_REQUERIDA' || err?.code === 'PPL_FECHA_ANALISIS_REQUERIDA' || err?.code === 'PPL_FECHA_ANALISIS_FUERA_RANGO') {
       return res.status(400).json({ code: err.code, message: err.message });
     }
     return res.status(500).json({ message: 'Error actualizando registro.' });

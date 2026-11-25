@@ -1,0 +1,10 @@
+{
+  "libertad": {
+    "respuesta": "No aplica porque ya está en libertad por pena cumplida",
+    "motivo": "Cierre automático por libertad por pena cumplida (pregunta 30 o 31)."
+  },
+  "traslado": {
+    "respuesta": "No aplica porque la persona fue trasladada a otro ERON",
+    "motivo": "Cierre automático por traslado a otro ERON informado en el formulario."
+  }
+}

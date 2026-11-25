@@ -1,4 +1,5 @@
 import { AURORA_FIELD_IDS } from './auroraFieldIds';
+import caseClosures from '../../../shared/aurora-case-closures.json';
 
 /**
  * Nota de diseño:
@@ -292,16 +293,16 @@ function isAffirmativeProcedencia(value: unknown): boolean {
 
 function areAllNegativeInProcedencias30a34(record: FormRecord): boolean {
   const requiredValues = [
-    get(record, FIELD.q30),
-    get(record, FIELD.q31),
-    get(record, FIELD.q33),
-    get(record, FIELD.q34),
+    getAny(record, [FIELD.q30, AURORA_FIELD_IDS.B3_PROCEDENCIA_LIBERTAD_CONDICIONAL]),
+    getAny(record, [FIELD.q31, AURORA_FIELD_IDS.B3_PROCEDENCIA_PRISION_DOMICILIARIA]),
+    getAny(record, [FIELD.q33, AURORA_FIELD_IDS.B3_PROCEDENCIA_PENA_CUMPLIDA]),
+    getAny(record, [FIELD.q34, AURORA_FIELD_IDS.B3_PROCEDENCIA_ACUMULACION_PENAS]),
   ];
   if (!requiredValues.every((v) => isFilled(v) && isNegativeProcedencia(v))) return false;
 
   // Utilidad pública es opcional: si se diligencia debe ser negativa para esta
   // regla de cierre; si queda vacía no bloquea el cálculo de la acción.
-  const utilidadPublica = get(record, FIELD.q32);
+  const utilidadPublica = getAny(record, [FIELD.q32, AURORA_FIELD_IDS.B3_PROCEDENCIA_UTILIDAD_PUBLICA]);
   return !isFilled(utilidadPublica) || isNegativeProcedencia(utilidadPublica);
 }
 
@@ -361,13 +362,67 @@ export function hasExplicitClosure(record: FormRecord): boolean {
   return allowed.some((option) => equalsInsensitive(value, option));
 }
 
+export function getMotivoCierreBloque3Aurora(record: FormRecord): string {
+  const responses = [
+    getAny(record, [FIELD.q30, AURORA_FIELD_IDS.B3_PROCEDENCIA_LIBERTAD_CONDICIONAL]),
+    getAny(record, [FIELD.q31, AURORA_FIELD_IDS.B3_PROCEDENCIA_PRISION_DOMICILIARIA]),
+  ];
+  if (responses.some((value) => normalizeProcedencia(value) === normalizeProcedencia(caseClosures.libertad.respuesta))) {
+    return caseClosures.libertad.motivo;
+  }
+  if (responses.every((value) => normalizeProcedencia(value) === normalizeProcedencia(caseClosures.traslado.respuesta)) &&
+      areAllNegativeInProcedencias30a34(record) && hasExplicitNingunaInP36(record)) {
+    return caseClosures.traslado.motivo;
+  }
+  return '';
+}
+
 export function isCierreBloque3Aurora(record: FormRecord): boolean {
+  if (getMotivoCierreBloque3Aurora(record)) return true;
   return (
     areAllNegativeInProcedencias30a34(record) &&
     hasExplicitNingunaInP36(record) &&
     isFilled(getAny(record, FECHA_ANALISIS_ALIASES)) &&
     !hasPendingHistoricalResource(record)
   );
+}
+
+export function requiereNuevaFechaAnalisisAurora(record: FormRecord): boolean {
+  return isCierreBloque3Aurora(record) && !getMotivoCierreBloque3Aurora(record) && !hasExplicitClosure(record);
+}
+
+export function getNuevaFechaAnalisisAurora(record: FormRecord): string {
+  if (!requiereNuevaFechaAnalisisAurora(record)) return '';
+  return getAny(record, ['Nueva fecha de análisis', 'Nueva fecha de analisis', 'NUEVA_FECHA_ANALISIS']).slice(0, 10);
+}
+
+export function getLimitesNuevaFechaAnalisis(now = new Date()): { min: string; max: string } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now);
+  const part = (type: string) => parts.find(item => item.type === type)!.value;
+  const min = `${part('year')}-${part('month')}-${part('day')}`;
+  const date = new Date(`${min}T00:00:00.000Z`);
+  const day = date.getUTCDate();
+  date.setUTCDate(1);
+  date.setUTCMonth(date.getUTCMonth() + 6);
+  const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+  date.setUTCDate(Math.min(day, lastDay));
+  return { min, max: date.toISOString().slice(0, 10) };
+}
+
+export function getErrorNuevaFechaAnalisis(record: FormRecord, now = new Date()): string {
+  const situation = getAny(record, ['Situación jurídica actualizada', 'Situación Jurídica']);
+  if (normalize(situation).includes('sindicad') || !requiereNuevaFechaAnalisisAurora(record)) return '';
+  const iso = getNuevaFechaAnalisisAurora(record);
+  if (!iso) return 'Debe seleccionar la nueva fecha de análisis; es obligatoria.';
+  const date = new Date(`${iso}T00:00:00.000Z`);
+  const { min, max } = getLimitesNuevaFechaAnalisis(now);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || Number.isNaN(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== iso || iso < min || iso > max) {
+    return `La nueva fecha de análisis debe estar entre ${min} y ${max} (máximo seis meses desde hoy).`;
+  }
+  return '';
 }
 
 function hasPositiveP36Request(record: FormRecord): boolean {

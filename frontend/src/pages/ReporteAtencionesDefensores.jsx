@@ -190,7 +190,6 @@ function ReporteAtencionesDefensores({ user }) {
   const globalCards = report
     ? [
         ['Total personas con caso activo', report.resumen.personasActivas],
-        ['Total personas con casos cerrados', report.resumen.totalPersonasConCasosCerrados],
       ]
     : [];
   const scopeNote = report ? getReporteAtencionesScopeNote(report.metadata) : '';

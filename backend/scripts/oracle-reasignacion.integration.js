@@ -98,7 +98,12 @@ async function run() {
         assert.equal(legacy[0].ID_ASIGNACION_GESTION, null, 'Un reintento no convierte una autoría legada en un vínculo inferido');
         await execute('UPDATE DNDP.GESTION_JURIDICA SET ID_ASIGNACION_GESTION = :asignacion WHERE ID_SITUACION = :idSituacion', { asignacion: gestiones[0].ID_ASIGNACION_GESTION, idSituacion });
       }
-      if (index < 2) await execute('UPDATE DNDP.GESTION_JURIDICA SET FECHA_ANALISIS = SYSDATE, RESUMEN_ANALISIS_CASO = :resumen WHERE ID_ASIGNACION_GESTION = :asignacion', { resumen: defensorNombre, asignacion: gestiones[index].ID_ASIGNACION_GESTION });
+      if (index < 2) await execute(`UPDATE DNDP.GESTION_JURIDICA SET FECHA_ANALISIS = SYSDATE,
+        RESUMEN_ANALISIS_CASO = :resumen, LIBERTAD_CONDICIONAL='No', PRISION_DOMICILIARIA_MITAD_PENA='No',
+        PROCEDENCIA_PENA_CUMPLIDA='Sí', PROCEDENCIA_ACUMULACION_PENAS='No', OTRAS_SOLICITUDES_TRAMITAR='Ninguna'
+        WHERE ID_ASIGNACION_GESTION = :asignacion`, { resumen: defensorNombre, asignacion: gestiones[index].ID_ASIGNACION_GESTION });
+      // Una respuesta parcial también debe conservar al autor al reasignar.
+      if (index === 2) await execute("UPDATE DNDP.GESTION_JURIDICA SET OTRAS_SOLICITUDES_TRAMITAR='Ninguna' WHERE ID_ASIGNACION_GESTION=:asignacion", { asignacion: gestiones[index].ID_ASIGNACION_GESTION });
       checks.push(index === 0 ? 'asignación inicial' : `reasignación ${index}`);
     }
 
@@ -115,15 +120,15 @@ async function run() {
     await checkAssignments(4, 1, 'PRUEBA C', 4);
     checks.push('repetir el mismo defensor no duplica asignación ni gestión');
 
-    assert.equal(await repository.endActiveAssignmentByPersona(idPersona), 1);
+    assert.equal(await repository.endActiveAssignmentByPersona(idPersona, { idSituacion }), 1);
     await checkAssignments(4, 0, null, 4);
     checks.push('eliminar asignación');
     assert.equal(await repository.replaceActiveAssignmentByPersona(idPersona, {
       defensorNombre: 'PRUEBA B',
       idSituacion,
     }), 1);
-    await checkAssignments(5, 1, 'PRUEBA B', 5);
-    checks.push('asignar después de eliminar');
+    await checkAssignments(5, 1, 'PRUEBA B', 4);
+    checks.push('asignar después de eliminar reutiliza la gestión vacía');
 
     await execute(`
       UPDATE DNDP.GESTION_JURIDICA
@@ -133,7 +138,7 @@ async function run() {
       defensorNombre: 'PRUEBA A',
       idSituacion,
     }), 1);
-    await checkAssignments(6, 1, 'PRUEBA A', 6);
+    await checkAssignments(6, 1, 'PRUEBA A', 5);
     checks.push('gestión nueva después de reasignación y cierre');
 
     await connection.rollback();

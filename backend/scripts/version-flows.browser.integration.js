@@ -140,6 +140,7 @@ async function run() {
     const adminSession = await session(admin, adminToken);
     const page = adminSession.page;
     await page.getByRole('button', { name: 'Usuarios autorizados', exact: true }).click();
+    await page.getByRole('button', { name: 'Crear usuario', exact: true }).click();
     await page.locator('.admin-users-form input[type="email"]').fill(email);
     await page.locator('.admin-users-form input[type="text"]').fill(`PAG QA VERSION ${suffix}`);
     await page.locator('.admin-users-form').getByRole('checkbox', { name: 'PAG', exact: true }).click();
@@ -365,7 +366,7 @@ async function run() {
       assert.deepEqual(r.detalles.casosAsignados.map((x) => x.idPersona).sort(), expected);
       assert.equal(r.resumen.personasAsignadas, 2);
       assert.equal(r.resumen.personasActivas, 1);
-      assert.equal(r.resumen.totalPersonasConCasosCerrados, 1);
+      assert(!Object.hasOwn(r.resumen, 'totalPersonasConCasosCerrados'));
       assert.equal(r.resumen.casosAnalizados, 3);
       fs.writeFileSync(path.join(output, 'reporte-global.json'), JSON.stringify(r, null, 2));
     });
@@ -373,7 +374,7 @@ async function run() {
       const r = await report({ fechaInicio: '2026-10-02' });
       assert.equal(r.resumen.casosAnalizados, 0);
       assert.equal(r.resumen.personasActivas, 1);
-      assert.equal(r.resumen.totalPersonasConCasosCerrados, 1);
+      assert(!Object.hasOwn(r.resumen, 'totalPersonasConCasosCerrados'));
     });
     await test('Reportes: establecimiento limita también sindicados y excluye los de fuera o sin regional', async () => {
       const r = await report({ lugar: 'CPMS GIRARDOT' });

@@ -1,5 +1,6 @@
 const { normalizeRoles } = require('./authService');
 const pagRepo = require('../repositories/oracle/pagRepository');
+const { findUser } = require('./userDirectoryService');
 
 async function resolveAssignmentActor(user, cedula) {
   if (normalizeRoles(user?.roles, []).includes('dndp')) {
@@ -9,7 +10,7 @@ async function resolveAssignmentActor(user, cedula) {
     while (Buffer.byteLength(nombre, 'utf8') > 200) nombre = nombre.slice(0, -1);
     return { tipo: 'dndp', cedula: '', nombre, correo: email, regional: '' };
   }
-  return pagRepo.findByCedula(cedula);
+  return pagRepo.findByCedula(findUser(user)?.pagCedula || cedula);
 }
 
 module.exports = { resolveAssignmentActor };

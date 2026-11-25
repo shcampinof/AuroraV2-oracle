@@ -1,5 +1,6 @@
-const { execute } = require('../../db/oraclePool');
+const { execute, getOracleDriver } = require('../../db/oraclePool');
 const { buildGestionEstadoCodigoExpr } = require('./personaRepository');
+const { buildGestionHasAnswersExpr } = require('./gestionProgressSql');
 
 function normalizeCedula(value) {
   return String(value ?? '').replace(/\D+/g, '');
@@ -36,6 +37,7 @@ async function replaceActiveAssignmentByPersona(
       v_id_gestion DNDP.GESTION_JURIDICA.ID_GESTION%TYPE;
       v_defensor_gestion DNDP.GESTION_JURIDICA.DEFENSOR_GESTION%TYPE;
       v_gestion_cerrada NUMBER := 0;
+      v_fecha_revision DNDP.GESTION_JURIDICA.NUEVA_FECHA_ANALISIS%TYPE;
       v_gestion_con_hitos NUMBER := 0;
       v_id_gestion_nueva DNDP.GESTION_JURIDICA.ID_GESTION%TYPE;
       v_max_gestion DNDP.GESTION_JURIDICA.ID_GESTION%TYPE;
@@ -158,16 +160,13 @@ async function replaceActiveAssignmentByPersona(
         IF SQL%ROWCOUNT <> 1 THEN RAISE_APPLICATION_ERROR(-20001, 'La nueva gestion no corresponde a la asignacion.'); END IF;
       ELSIF :idSituacion IS NOT NULL THEN
         BEGIN
-          SELECT ID_GESTION, DEFENSOR_GESTION, GESTION_CERRADA, TIENE_HITOS
-            INTO v_id_gestion, v_defensor_gestion, v_gestion_cerrada, v_gestion_con_hitos
+          SELECT ID_GESTION, DEFENSOR_GESTION, GESTION_CERRADA, TIENE_HITOS, NUEVA_FECHA_ANALISIS
+            INTO v_id_gestion, v_defensor_gestion, v_gestion_cerrada, v_gestion_con_hitos, v_fecha_revision
             FROM (
               SELECT g.ID_GESTION,
                      g.DEFENSOR_GESTION,
-                     CASE WHEN g.FECHA_ANALISIS IS NOT NULL OR g.RESUMEN_ANALISIS_CASO IS NOT NULL
-                       OR g.FECHA_ENTREVISTA IS NOT NULL OR g.FECHA_SOLICITUD_AUDIENCIA_CONTROL IS NOT NULL
-                       OR g.FECHA_PRESENTACION_SOLICITUD_AUTORIDAD IS NOT NULL OR g.FECHA_RADICACION_UTILIDAD IS NOT NULL
-                       OR g.FECHA_DECISION_AUTORIDAD IS NOT NULL OR g.FECHA_PRESENTACION_RECURSO IS NOT NULL
-                       OR g.FECHA_DECISION_RECURSO IS NOT NULL THEN 1 ELSE 0 END AS TIENE_HITOS,
+                     g.NUEVA_FECHA_ANALISIS,
+                     (${buildGestionHasAnswersExpr()}) AS TIENE_HITOS,
                      CASE WHEN (${buildGestionEstadoCodigoExpr('TO_NCHAR(g.DEFENSOR_GESTION)')}) = 'CASO_CERRADO'
                        THEN 1 ELSE 0 END AS GESTION_CERRADA
                 FROM DNDP.GESTION_JURIDICA g
@@ -177,6 +176,18 @@ async function replaceActiveAssignmentByPersona(
             )
            WHERE ROWNUM = 1;
 
+          IF v_gestion_con_hitos = 0 THEN
+            -- Una gestión sin respuestas se reutiliza incluso al cambiar de
+            -- defensor. El historial de asignaciones conserva la trazabilidad.
+            UPDATE DNDP.GESTION_JURIDICA
+               SET DEFENSOR_GESTION = :nombreDefensor,
+                   ID_ASIGNACION_GESTION = v_id_asignacion,
+                   ACCION_REALIZAR = 'Analizar el caso'
+             WHERE ID_GESTION = v_id_gestion
+               AND (TRIM(v_defensor_gestion) IS NULL OR v_id_anterior IS NULL
+                 OR v_id_anterior <> v_id_asignacion
+                 OR UPPER(TRIM(v_defensor_gestion)) <> UPPER(TRIM(:nombreDefensor)));
+          ELSE
           -- Un autor legado ausente solo se completa con la asignación que
           -- todavía estaba vigente, antes de registrar el nuevo responsable.
           IF TRIM(v_defensor_gestion) IS NULL AND v_defensor_anterior IS NOT NULL THEN
@@ -186,7 +197,7 @@ async function replaceActiveAssignmentByPersona(
              WHERE ID_GESTION = v_id_gestion;
             v_defensor_gestion := v_defensor_anterior;
           END IF;
-          IF v_gestion_cerrada = 1
+          IF (v_gestion_cerrada = 1 AND v_fecha_revision IS NULL)
              OR (TRIM(v_defensor_gestion) IS NULL AND v_gestion_con_hitos = 1)
              OR (TRIM(v_defensor_gestion) IS NOT NULL AND (
                v_id_anterior IS NULL OR v_id_anterior <> v_id_asignacion
@@ -198,6 +209,7 @@ async function replaceActiveAssignmentByPersona(
                SET DEFENSOR_GESTION = NVL(DEFENSOR_GESTION, :nombreDefensor),
                    ID_ASIGNACION_GESTION = NVL(ID_ASIGNACION_GESTION, v_id_asignacion)
              WHERE ID_GESTION = v_id_gestion;
+          END IF;
           END IF;
         EXCEPTION
           WHEN NO_DATA_FOUND THEN
@@ -229,7 +241,8 @@ async function replaceActiveAssignmentByPersona(
   return 1;
 }
 
-async function endActiveAssignmentByPersona(idPersona) {
+async function endActiveAssignmentByPersona(idPersona, { idSituacion = null } = {}) {
+  if (idSituacion !== null) return unassignGestionByPersona(idPersona, idSituacion);
   const sql = `
     UPDATE DNDP.ASIGNACION
        SET FECHA_FIN = SYSDATE
@@ -247,6 +260,65 @@ async function endActiveAssignmentByPersona(idPersona) {
   );
 
   return Number(result?.rowsAffected || 0);
+}
+
+async function unassignGestionByPersona(idPersona, idSituacion) {
+  const driver = getOracleDriver();
+  const result = await execute(`DECLARE
+    v_persona NUMBER;
+    v_situacion NUMBER;
+    v_asignacion NUMBER;
+    v_defensor DNDP.ASIGNACION.NOMBRE_DEFENSOR%TYPE;
+    v_gestion NUMBER;
+    v_con_respuestas NUMBER;
+    v_id NUMBER;
+    v_max NUMBER;
+  BEGIN
+    :updated := 0;
+    SELECT ID_PERSONA INTO v_persona FROM DNDP.PERSONA WHERE ID_PERSONA=:idPersona FOR UPDATE;
+    SELECT ID_SITUACION INTO v_situacion FROM DNDP.SITUACION_CARCELARIA
+      WHERE ID_SITUACION=:idSituacion AND ID_PERSONA=:idPersona AND ACTIVO=1 FOR UPDATE;
+    BEGIN
+      SELECT ID_ASIGNACION, NOMBRE_DEFENSOR INTO v_asignacion, v_defensor FROM DNDP.ASIGNACION
+        WHERE ID_PERSONA=:idPersona AND FECHA_FIN IS NULL FOR UPDATE;
+    EXCEPTION WHEN NO_DATA_FOUND THEN v_asignacion := NULL;
+    END;
+    IF v_asignacion IS NOT NULL THEN
+      BEGIN
+        SELECT ID_GESTION, (${buildGestionHasAnswersExpr()}) INTO v_gestion, v_con_respuestas
+          FROM DNDP.GESTION_JURIDICA g WHERE ID_GESTION=(
+            SELECT latest.ID_GESTION FROM DNDP.GESTION_JURIDICA latest
+              WHERE latest.ID_SITUACION=:idSituacion
+              ORDER BY latest.FECHA_REGISTRO DESC NULLS LAST, latest.ID_GESTION DESC
+              FETCH FIRST 1 ROWS ONLY) FOR UPDATE;
+      EXCEPTION WHEN NO_DATA_FOUND THEN v_gestion := NULL;
+      END;
+      UPDATE DNDP.ASIGNACION SET FECHA_FIN=SYSDATE WHERE ID_ASIGNACION=v_asignacion;
+      IF v_gestion IS NOT NULL AND v_con_respuestas=0 THEN
+        UPDATE DNDP.GESTION_JURIDICA SET DEFENSOR_GESTION=NULL, ID_ASIGNACION_GESTION=NULL,
+          ACCION_REALIZAR='Sin asignación' WHERE ID_GESTION=v_gestion;
+      ELSE
+        -- Conservar la autoría de una gestión avanzada, también si es legada.
+        UPDATE DNDP.GESTION_JURIDICA SET
+          ID_ASIGNACION_GESTION=CASE WHEN TRIM(DEFENSOR_GESTION) IS NULL
+            THEN NVL(ID_ASIGNACION_GESTION, v_asignacion) ELSE ID_ASIGNACION_GESTION END,
+          DEFENSOR_GESTION=NVL(DEFENSOR_GESTION, v_defensor)
+          WHERE ID_GESTION=v_gestion;
+        SELECT NVL(MAX(ID_GESTION),0) INTO v_max FROM DNDP.GESTION_JURIDICA;
+        LOOP
+          SELECT DNDP.SEQ_GESTION.NEXTVAL INTO v_id FROM dual;
+          EXIT WHEN v_id > v_max;
+        END LOOP;
+        INSERT INTO DNDP.GESTION_JURIDICA (ID_GESTION, ID_SITUACION, FECHA_REGISTRO, ACCION_REALIZAR)
+          VALUES (v_id, :idSituacion, SYSTIMESTAMP, 'Sin asignación');
+      END IF;
+      :updated := 1;
+    END IF;
+  END;`, {
+    idPersona: Number(idPersona), idSituacion: Number(idSituacion),
+    updated: { dir: driver.BIND_OUT, type: driver.NUMBER },
+  }, { autoCommit: true, operation: 'asignacion.unassignGestionByPersona' });
+  return Number(result?.outBinds?.updated || 0);
 }
 
 module.exports = {

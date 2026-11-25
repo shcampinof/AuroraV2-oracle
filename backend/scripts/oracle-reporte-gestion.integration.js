@@ -60,7 +60,7 @@ async function run() {
     { ID_GESTION: 220, ID_SITUACION: 12, ID_ASIGNACION_GESTION: 120, DEFENSOR_GESTION: 'HOMONIMO', FECHA_ANALISIS: '2026-01-03 00:00:00' },
   ];
   const personas = Array.from({ length: 13 }, (_, i) => ({ ID_PERSONA: i + 1, NOMBRE: `PERSONA ${i + 1}`, NUMERO: String(i + 1) }));
-  const situaciones = personas.map((p) => ({ ID_SITUACION: p.ID_PERSONA, ID_PERSONA: p.ID_PERSONA, ACTIVO: p.ID_PERSONA === 11 ? 0 : 1, SITUACION: 'Condenado', ESTABLECIMIENTO: 'CENTRO PRUEBA' }));
+  const situaciones = personas.map((p) => ({ ID_SITUACION: p.ID_PERSONA, ID_PERSONA: p.ID_PERSONA, ACTIVO: p.ID_PERSONA === 11 ? 0 : 1, SITUACION: 'Sindicado', ESTABLECIMIENTO: 'CENTRO PRUEBA' }));
   const asignaciones = [];
   function assignment(persona, id, defensor, inicio, fin = null) {
     asignaciones.push({ ID_PERSONA: persona, ID_ASIGNACION: id, NOMBRE_DEFENSOR: `DEFENSOR ${defensor}`, CEDULA_DEFENSOR: { A: '1', B: '2', C: '3' }[defensor], FECHA_ASIGNACION: inicio, FECHA_FIN: fin });
@@ -77,8 +77,8 @@ async function run() {
   assignment(13, 132, 'A', '2026-07-01 10:00:00');
   asignaciones.push({ ID_PERSONA: 12, ID_ASIGNACION: 120, NOMBRE_DEFENSOR: 'HOMONIMO', CEDULA_DEFENSOR: '10', FECHA_ASIGNACION: '2026-01-02 00:00:00', FECHA_FIN: null });
   const defensores = [{ CEDULA: '1', NOMBRE: 'DEFENSOR A' }, { CEDULA: '2', NOMBRE: 'DEFENSOR B' }, { CEDULA: '3', NOMBRE: 'DEFENSOR C' }, { CEDULA: '10', NOMBRE: 'HOMONIMO' }, { CEDULA: '11', NOMBRE: 'HOMONIMO' }];
-  const sql = buildEventsSql({ tipo: 'condenado', lugar: 'CENTRO PRUEBA' });
-  const columns = (alias) => [...new Set([...sql.matchAll(new RegExp(`\\b${alias}\\.([A-Z][A-Z_0-9]+)`, 'g'))].map((match) => match[1]))];
+  const sql = buildEventsSql({ tipo: 'sindicado', lugar: 'CENTRO PRUEBA' });
+  const columns = (alias) => [...new Set([...sql.matchAll(new RegExp(`\\b${alias === 'g' ? '(?:g|t)' : alias}\\.([A-Z][A-Z_0-9]+)`, 'gi'))].map((match) => match[1].toUpperCase()))].filter((name) => !/^(T_|ACTUACION_N$|DECISION_N$|RECURSO_N$|USUARIO_N$|OTRAS_N$|ES_UTILIDAD$|CIERRE_EXPLICITO$|DECISION_NEGATIVA$|CERRADA$)/.test(name));
   const ctes = [
     fixture('gestion_fixture', columns('g'), gestiones),
     fixture('situacion_fixture', columns('s'), situaciones),
@@ -92,7 +92,7 @@ async function run() {
     .replaceAll('DNDP.PERSONA', 'persona_fixture')
     .replaceAll('DNDP.ASIGNACION', 'asignacion_fixture')
     .replaceAll('DNDP.DEFENSORES', 'defensor_fixture');
-  const params = { fechaInicio: '2025-01-01', fechaFin: '2026-10-19', tipo: '%CONDENAD%', lugar: 'CENTRO PRUEBA' };
+  const params = { fechaInicio: '2025-01-01', fechaFin: '2026-10-19', tipo: '%SINDICAD%', lugar: 'CENTRO PRUEBA' };
   const results = {};
   for (const [cedula, nombre] of [['1', 'DEFENSOR A'], ['2', 'DEFENSOR B'], ['3', 'DEFENSOR C'], ['10', 'HOMONIMO'], ['11', 'HOMONIMO']]) {
     results[cedula] = (await db.execute(syntheticSql, { ...params, defensorCedula: cedula, defensorNombre: nombre })).rows;
@@ -119,7 +119,7 @@ async function run() {
   const eronFixture = fixture('eron_fixture', ['ESTABLECIMIENTO', 'REGIONAL', 'ACTIVO'], eronRows);
   const regionalSituations = situaciones.map((s) => ({ ...s, ESTABLECIMIENTO: s.ID_SITUACION === 5 ? 'CPMS CALARCA' : 'EPMSC ARMENIA' }));
   const regionalCtes = [ctes[0], fixture('situacion_fixture', columns('s'), regionalSituations), ...ctes.slice(2), eronFixture];
-  const regionalSql = buildEventsSql({ tipo: 'condenado', regional: 'REGIONAL A' })
+  const regionalSql = buildEventsSql({ tipo: 'sindicado', regional: 'REGIONAL A' })
     .replace(/WITH /, `WITH ${regionalCtes.join(',\n')},\n`)
     .replaceAll('DNDP.GESTION_JURIDICA', 'gestion_fixture')
     .replaceAll('DNDP.SITUACION_CARCELARIA', 'situacion_fixture')
@@ -151,9 +151,10 @@ async function run() {
     { ID_SITUACION: 513, SITUACION: 'Sindicado', ESTABLECIMIENTO: 'CPMS CALARCA' },
     { ID_SITUACION: 514, SITUACION: 'Sindicado', ESTABLECIMIENTO: '  ', LUGAR_PRIVACION: 'EPMSC ARMENIA' },
   ].map((row) => ({ ...row, ID_PERSONA: row.ID_SITUACION, ACTIVO: 1 }));
+  const completeAnalysis = { LIBERTAD_CONDICIONAL: 'Si procede solicitud de libertad condicional', PRISION_DOMICILIARIA_MITAD_PENA: 'No', PROCEDENCIA_PENA_CUMPLIDA: 'No', PROCEDENCIA_ACUMULACION_PENAS: 'No', OTRAS_SOLICITUDES_TRAMITAR: 'Ninguna', RESUMEN_ANALISIS_CASO: 'Análisis completo' };
   const mixedCtes = [
     fixture('gestion_fixture', columns('g'), mixedSituations.map((s) => ({
-      ID_GESTION: s.ID_SITUACION, ID_SITUACION: s.ID_SITUACION,
+      ...completeAnalysis, ID_GESTION: s.ID_SITUACION, ID_SITUACION: s.ID_SITUACION,
       DEFENSOR_GESTION: 'DEFENSOR A', FECHA_ANALISIS: '2026-01-01 00:00:00',
     }))),
     fixture('situacion_fixture', columns('s'), mixedSituations),
@@ -203,4 +204,4 @@ if (require.main === module) {
     run().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => db.closePool());
   }
 }
-module.exports = { run };
+module.exports = { run, fixture };

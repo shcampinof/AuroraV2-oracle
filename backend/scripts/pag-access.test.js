@@ -163,8 +163,11 @@ async function testDndpAssignmentRoutes() {
   const consolidado = require('../db/oracleConsolidado.repo');
   const pagRepo = require('../repositories/oracle/pagRepository');
   const defensoresRepo = require('../repositories/oracle/defensoresRepository');
+  const personaRepo = require('../repositories/oracle/personaRepository');
   const originals = { assign: consolidado.assignDefensor, unassign: consolidado.unassignDefensor,
-    pag: pagRepo.findByCedula, defensor: defensoresRepo.findByCedula };
+    pag: pagRepo.findByCedula, defensor: defensoresRepo.findByCedula,
+    forbidden: personaRepo.listCondenadosOutsideRegional };
+  personaRepo.listCondenadosOutsideRegional = async () => [];
   let assignedOptions;
   let pagLookups = 0;
   let assignments = 0;
@@ -217,6 +220,7 @@ async function testDndpAssignmentRoutes() {
     consolidado.unassignDefensor = originals.unassign;
     pagRepo.findByCedula = originals.pag;
     defensoresRepo.findByCedula = originals.defensor;
+    personaRepo.listCondenadosOutsideRegional = originals.forbidden;
   }
 }
 

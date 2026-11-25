@@ -56,6 +56,24 @@ esa asignación o PAG registró otra, el script la respeta. No se modifican ni s
 recompilan procedimientos Oracle; la regla de traslado regional del procedimiento
 existente continúa operando. `--no-etl` no ejecuta estas reglas.
 
+Si la última gestión de un condenado está cerrada y el archivo SISIPEC cambia
+su categorización, el cargador crea una nueva gestión vacía con el mismo
+defensor asignado. Aplica a cualquier cambio de categoría, incluso entre
+beneficiarios, hacia preliminar o hacia «No reúne requisitos». Diferencias
+solo de espacios, mayúsculas o tildes no cuentan como cambios. El cierre se
+detecta antes del ETL con las mismas reglas del backend mediante un generador
+SQL ejecutado con Node (`CARGUEBD_NODE`, por defecto `node`).
+
+Esta reapertura se aplica desde el cargador, sin instalar ni recompilar
+procedimientos Oracle. Conserva la gestión cerrada y enlaza la nueva mediante
+`ID_GESTION_ORIGEN`, como las revisiones por fecha. Si el procedimiento dejó
+una gestión vacía, la utiliza para evitar duplicados; si terminó la asignación,
+crea otra con el mismo defensor y datos de PAG. Respeta otra asignación o una
+gestión con trabajo posterior, y no reactiva situaciones fuera de prisión.
+En casos cerrados con cambio de categoría esta regla prevalece sobre la
+desasignación del equipo PPL. Requiere las columnas de revisión ya utilizadas
+por el backend (`db:install-analysis-review`).
+
 El backend inicia `loader_service.py` como proceso hijo con argumentos explícitos, sin intérprete de comandos. La conexión usa las variables `ORACLE_*` del ambiente y los nombres de objetos Oracle se validan antes de formar SQL dinámico.
 
 Cuando el ETL termina correctamente, el backend recalcula la acción vigente de

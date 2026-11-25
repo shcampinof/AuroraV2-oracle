@@ -157,8 +157,8 @@ async function testBulkUnassignmentClosesOnlyEligibleActiveAssignments() {
     222: { P_ID_PERSONA: 11, S_ID_SITUACION: 21, S_ACTIVO: 0 },
     333: { P_ID_PERSONA: 12, S_ID_SITUACION: null, S_ACTIVO: 1 },
   }[documento] || null);
-  asignacionRepo.endActiveAssignmentByPersona = async (idPersona) => {
-    endedAssignments.push(idPersona);
+  asignacionRepo.endActiveAssignmentByPersona = async (idPersona, options) => {
+    endedAssignments.push({ idPersona, ...options });
     return 1;
   };
   gestionRepo.getLatestBySituacion = async (idSituacion) => ({
@@ -179,13 +179,13 @@ async function testBulkUnassignmentClosesOnlyEligibleActiveAssignments() {
     assert.strictEqual(updated, 1);
     assert.deepStrictEqual(
       endedAssignments,
-      [10],
+      [{ idPersona: 10, idSituacion: 20 }],
       'Solo debe cerrarse la asignación de una persona con situación activa.'
     );
     assert.deepStrictEqual(
       gestionWrites,
-      [{ idSituacion: 20, fields: { DEFENSOR_GESTION: null } }],
-      'La persona desasignada debe quedar con una gestión nueva disponible para PAG.'
+      [],
+      'El repositorio debe desasignar y preparar la gestión en una sola transacción.'
     );
   } finally {
     personaRepo.findActiveContextByDocumento = originalFindContext;
@@ -442,6 +442,22 @@ async function testClosureReasonValidationReachesHttpClients() {
         assert.equal(response.body.message, failure.message);
       }
     }
+    for (const code of ['PPL_FECHA_ANALISIS_REQUERIDA', 'PPL_FECHA_ANALISIS_FUERA_RANGO']) {
+      failure = Object.assign(new Error('Seleccione una fecha de análisis válida.'), { status: 400, code });
+      for (const [method, suffix] of [['PUT', ''], ['POST', '/actuaciones']]) {
+        const response = await request(method, suffix);
+        assert.equal(response.status, 400);
+        assert.equal(response.body.code, code);
+        assert.equal(response.body.message, failure.message);
+      }
+    }
+    failure = Object.assign(new Error('La revisión está programada y se creará automáticamente.'), {
+      status: 409, code: 'PPL_REVISION_PROGRAMADA',
+    });
+    const scheduled = await request('POST', '/actuaciones');
+    assert.equal(scheduled.status, 409);
+    assert.equal(scheduled.body.code, failure.code);
+    assert.equal(scheduled.body.message, failure.message);
     failure = new Error('Fallo interno simulado');
     for (const [method, suffix] of [['PUT', ''], ['POST', '/actuaciones']]) {
       const response = await request(method, suffix);

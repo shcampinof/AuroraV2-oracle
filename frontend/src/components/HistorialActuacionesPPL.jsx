@@ -5,6 +5,7 @@ import { reportError } from '../utils/reportError.js';
 import { getLabelAccionCaso } from '../utils/actuacionesLabels.js';
 import { shouldShowVirtualPendingActuacion } from '../utils/actuacionesValidation.js';
 import { isGestionEditable } from '../utils/pplStatus.js';
+import { getNuevaFechaAnalisisAurora } from '../config/formRules.aurora.ts';
 import './HistorialActuacionesPPL.css';
 
 function decodeUnicodeEscapes(text) {
@@ -335,6 +336,7 @@ export default function HistorialActuacionesPPL({
   actuacionActivaId,
   creandoActuacion = false,
   soloLectura = false,
+  soloConsulta = false,
   onActionLabelChange,
 }) {
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
@@ -461,6 +463,10 @@ export default function HistorialActuacionesPPL({
     return rows;
   }, [actuacionesRaw, actuacionActivaId, registro]);
 
+  const ultimaActuacion = actuaciones.at(-1)?.registro || registro;
+  const fechaRevisionProgramada = resolveTipoPpl(ultimaActuacion) === 'condenado'
+    ? getNuevaFechaAnalisisAurora(ultimaActuacion) : '';
+
   const nombreCompleto = useMemo(() => {
     return readFirstField(registro, ['Nombre', 'Nombre usuario', 'nombreUsuario', 'nombre']) || '\u2014';
   }, [registro]);
@@ -521,13 +527,14 @@ export default function HistorialActuacionesPPL({
   function handleIniciarDesdeFilaVacia() {
     if (seleccionarActuacionPendienteMasReciente()) return;
     if (onIniciarActuacion) {
-      onIniciarActuacion({ soloConsulta: soloLectura });
+      onIniciarActuacion({ soloConsulta: soloLectura || soloConsulta });
       return;
     }
-    onCrearNuevaActuacion?.({ abrirFormulario: true });
+    if (!soloConsulta) onCrearNuevaActuacion?.({ abrirFormulario: true });
   }
 
   function handleCrearNuevaActuacionClick() {
+    if (soloConsulta || fechaRevisionProgramada) return;
     onCrearNuevaActuacion?.({ abrirFormulario: true });
   }
 
@@ -595,7 +602,7 @@ export default function HistorialActuacionesPPL({
                     String(actuacionActivaId || '').trim() &&
                     String(actuacion?.id || '').trim() === String(actuacionActivaId || '').trim();
                   const textoAccionFila = getLabelAccionCaso(!actuacion?.bloque3Iniciado);
-                  const permiteCompletar = soloLectura && isGestionEditable(actuacion?.registro);
+                  const permiteCompletar = !soloConsulta && soloLectura && isGestionEditable(actuacion?.registro);
 
                   return (
                     <tr key={String(actuacion?.id || '')} className={isActive ? 'historial-row-active' : ''}>
@@ -622,11 +629,11 @@ export default function HistorialActuacionesPPL({
                           className="primary-button historial-action-button"
                           onClick={() =>
                             actuacion?.virtualPendiente
-                              ? onIniciarActuacion?.({ soloConsulta: soloLectura })
+                              ? onIniciarActuacion?.({ soloConsulta: soloLectura || soloConsulta })
                               : onSelectActuacion?.(actuacion)
                           }
                         >
-                          {displayText(permiteCompletar ? 'Completar gestión' : soloLectura ? 'Ver detalle' : textoAccionFila)}
+                          {displayText(permiteCompletar ? 'Completar gestión' : soloLectura || soloConsulta ? 'Ver detalle' : textoAccionFila)}
                         </button>
                       </td>
                     </tr>
@@ -654,7 +661,7 @@ export default function HistorialActuacionesPPL({
                       className="primary-button historial-action-button"
                       onClick={handleIniciarDesdeFilaVacia}
                     >
-                      {displayText(soloLectura ? 'Ver detalle' : textoAccionCaso)}
+                      {displayText(soloLectura || soloConsulta ? 'Ver detalle' : textoAccionCaso)}
                     </button>
                   </td>
                 </tr>
@@ -664,12 +671,12 @@ export default function HistorialActuacionesPPL({
         </div>
       )}
 
-      <div className="historial-create-button-wrap">
+      {!soloConsulta && <div className="historial-create-button-wrap">
         <button
           className="save-button historial-create-button"
           type="button"
           onClick={handleCrearNuevaActuacionClick}
-          disabled={soloLectura || creandoActuacion || !documentoNormalizado}
+          disabled={soloLectura || creandoActuacion || !documentoNormalizado || Boolean(fechaRevisionProgramada)}
         >
           {soloLectura
             ? displayText('Fuera de prisión — solo consulta')
@@ -677,7 +684,26 @@ export default function HistorialActuacionesPPL({
               ? displayText('Creando...')
               : displayText('Crear nueva actuaci\u00f3n')}
         </button>
-      </div>
+        {fechaRevisionProgramada && (
+          <div className="historial-revision-aviso" role="note">
+            <svg className="historial-revision-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="16" rx="2" />
+              <path d="M16 3v4M8 3v4M3 11h18m-13 5 2 2 5-5" />
+            </svg>
+            <div className="historial-revision-contenido">
+              <p className="historial-revision-titulo">
+                Revisión automática programada para el{' '}
+                <time dateTime={fechaRevisionProgramada}>
+                  {fechaRevisionProgramada.split('-').reverse().join('/')}
+                </time>.
+              </p>
+              <p className="historial-revision-descripcion">
+                El nuevo caso se creará con el mismo defensor al cumplirse esa fecha.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>}
     </section>
   );
 }

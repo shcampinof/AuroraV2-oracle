@@ -88,7 +88,7 @@ class SisipecEnfoqueTests(unittest.TestCase):
         df = pd.DataFrame({"NUMERO": ["123"], "ENFOQUE": ["Migrante"]})
         loader_service.call_etl(operations.connection, operations.cursor, self.config, df)
         names = [item[0] for item in operations.mock_calls]
-        self.assertEqual(names, ["cursor.execute", "cursor.fetchall", "cursor.callproc",
+        self.assertEqual(names, ["cursor.execute", "cursor.fetchall", "cursor.execute", "cursor.fetchall", "cursor.callproc",
                                  "cursor.executemany", "connection.commit"])
 
     def test_failed_etl_does_not_synchronize_enfoques(self):

@@ -9,6 +9,8 @@ const defensoresRepo = require('../repositories/oracle/defensoresRepository');
 const { DEFAULT_SCOPE_DEPARTAMENTOS } = require('../repositories/oracle/sqlFragments');
 const { getEstadoEtiqueta, resolveEstadoCodigo } = require('../domain/estadoCaso');
 const { hasReachedBlock5 } = require('../domain/gestionEditability');
+const { closures, applyAutomaticBlock3Closure } = require('../domain/auroraCaseClosures');
+const { applyAnalysisReview, requiresAnalysisReview } = require('../domain/analysisReview');
 
 let dataVersion = 0;
 let dataVersionUpdatedAt = null;
@@ -55,6 +57,7 @@ const LEGACY_COLUMNS = [
   'Acción a impulsar',
   'Acción a realizar',
   'Fecha de análisis jurídico del caso',
+  'Nueva fecha de análisis',
   'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS',
   'Procedencia de utilidad pública (solo para mujeres)',
   'Procedencia de libertad condicional',
@@ -122,6 +125,7 @@ const DATE_FIELDS = new Set([
   'FECHA_CAPTURA',
   'FECHA_CALIFICACION',
   'FECHA_ANALISIS',
+  'NUEVA_FECHA_ANALISIS',
   'FECHA_ENTREVISTA',
   'FECHA_ENTREVISTA_PSICOSOCIAL',
   'FECHA_SOLICITUD_MISION_TRABAJO',
@@ -174,6 +178,7 @@ const NUMERIC_FIELDS = new Set([
 ]);
 
 const EXPLICIT_CIERRE_CASO_VALUES = new Map([
+  ...Object.values(closures).map(({ motivo }) => motivo),
   'Se cierra porque la persona fue trasladada a un eron de competencia de otra regional de la defensoria del pueblo',
   'Se cierra porque la persona se encuentra en libertad',
   'Se cierra porque la persona ya no está en el ERON por razón ajena a este trámite.',
@@ -351,6 +356,12 @@ function toTypedDbValue(column, value) {
   if (value == null) return null;
 
   if (DATE_FIELDS.has(col)) {
+    if (col === 'NUEVA_FECHA_ANALISIS' && !(value instanceof Date)) {
+      const iso = String(value).trim();
+      const date = new Date(`${iso}T00:00:00.000Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== iso) return null;
+      return date;
+    }
     const d = parseLooseDate(value);
     return d || null;
   }
@@ -463,6 +474,7 @@ bind(
   'ACCION_REALIZAR'
 );
 bind(['Fecha de análisis jurídico del caso', 'Fecha de analisis juridico del caso', 'Fecha analisis'], 'GESTION', 'FECHA_ANALISIS');
+bind(['Nueva fecha de análisis', 'Nueva fecha de analisis', 'NUEVA_FECHA_ANALISIS'], 'GESTION', 'NUEVA_FECHA_ANALISIS');
 bind(['Vencimiento de terminos'], 'GESTION', 'VENCIMIENTO_TERMINOS');
 bind(['Procedencia de utilidad pública (solo para mujeres)', 'Utilidad publica'], 'GESTION', 'UTILIDAD_PUBLICA');
 bind(['Procedencia de libertad condicional', 'Libertad condicional'], 'GESTION', 'LIBERTAD_CONDICIONAL');
@@ -646,6 +658,8 @@ function toLegacyRecord(raw = {}) {
     // Alias legado para actuaciones creadas antes de unificar la terminología.
     'Acción a realizar': estadoEtiqueta,
     'Fecha de análisis jurídico del caso': toIsoDate(raw.G_FECHA_ANALISIS),
+    'Nueva fecha de análisis': toIsoDate(raw.G_NUEVA_FECHA_ANALISIS),
+    __oracleIdGestionOrigen: Number(raw.G_ID_GESTION_ORIGEN || 0) || null,
     'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS': String(raw.G_ACTUACION_ADELANTAR ?? raw.G_VENCIMIENTO_TERMINOS ?? ''),
     'Procedencia de utilidad pública (solo para mujeres)': String(raw.G_UTILIDAD_PUBLICA ?? ''),
     'Procedencia de libertad condicional': String(raw.G_LIBERTAD_CONDICIONAL ?? ''),
@@ -939,16 +953,6 @@ function assertSituacionEditable(context) {
   throw err;
 }
 
-async function ensureUnassignedGestionBySituacion(idSituacion) {
-  const latest = await gestionRepo.getLatestBySituacion(idSituacion);
-  if (latest && !String(latest.DEFENSOR_GESTION || '').trim()) {
-    return Number(latest.ID_GESTION || 0) || null;
-  }
-  return gestionRepo.insertGestion(idSituacion, { DEFENSOR_GESTION: null }, {
-    sequenceName: getOptionalGestionSequence(),
-  });
-}
-
 function gestionMismatchError() {
   const err = new Error('La actuación seleccionada no pertenece a la situación actual de la persona. Recargue el caso.');
   err.code = 'PPL_GESTION_MISMATCH';
@@ -985,8 +989,23 @@ async function createActuacionByDocumento(documento, payload) {
   if (!context?.S_ID_SITUACION) return null;
   assertSituacionEditable(context);
 
+  const previous = Number(context.G_ID_GESTION) > 0
+    ? await gestionRepo.getLatestBySituacion(context.S_ID_SITUACION) : null;
+  if (previous?.NUEVA_FECHA_ANALISIS && requiresAnalysisReview(previous)) {
+    const err = new Error('La revisión está programada para la nueva fecha de análisis y se creará automáticamente.');
+    err.code = 'PPL_REVISION_PROGRAMADA';
+    err.status = 409;
+    throw err;
+  }
+
   const updates = splitUpdatesByTable(payload);
+  if (!normalizeText(context.S_SITUACION_JURIDICA_ACTUALIZADA || context.S_SITUACION).includes('sindicad')) {
+    applyAutomaticBlock3Closure(updates.GESTION);
+  }
   validateRazonCierreCaso(updates.GESTION);
+  applyAnalysisReview(updates.GESTION, {}, {
+    sindicado: normalizeText(context.S_SITUACION_JURIDICA_ACTUALIZADA || context.S_SITUACION).includes('sindicad'),
+  });
   const calificacionUpdates = normalizeCalificacionesPayload(payload);
   const normalizedPayload = normalizePayload(payload);
   let defensorCatalogado = null;
@@ -1084,7 +1103,13 @@ async function updateByDocumento(documento, payload) {
     targetGestionId = Number(latest?.ID_GESTION || 0) || null;
   }
 
+  if (!normalizeText(updates.SITUACION.SITUACION_JURIDICA_ACTUALIZADA || context.S_SITUACION_JURIDICA_ACTUALIZADA || context.S_SITUACION).includes('sindicad')) {
+    applyAutomaticBlock3Closure(updates.GESTION, targetGestion || {});
+  }
   validateRazonCierreCaso(updates.GESTION, targetGestion || {});
+  applyAnalysisReview(updates.GESTION, targetGestion || {}, {
+    sindicado: normalizeText(updates.SITUACION.SITUACION_JURIDICA_ACTUALIZADA || context.S_SITUACION_JURIDICA_ACTUALIZADA || context.S_SITUACION).includes('sindicad'),
+  });
 
   if (situacionInactiva) {
     // La elegibilidad se comprueba con la fila seleccionada ya guardada.
@@ -1158,9 +1183,10 @@ async function updateByDocumento(documento, payload) {
   }
 
   if (normalizedPayload.__desasignarDefensor === true) {
-    const affected = await asignacionRepo.endActiveAssignmentByPersona(context.P_ID_PERSONA);
+    const affected = await asignacionRepo.endActiveAssignmentByPersona(context.P_ID_PERSONA, {
+      idSituacion: context.S_ID_SITUACION,
+    });
     if (affected > 0) {
-      await ensureUnassignedGestionBySituacion(context.S_ID_SITUACION);
       dataVersion += 1;
     }
   } else if (defensorCatalogado) {
@@ -1269,9 +1295,10 @@ async function unassignDefensor(documentos) {
     if (!context?.S_ID_SITUACION) continue;
     if (Object.prototype.hasOwnProperty.call(context, 'S_ACTIVO') && Number(context.S_ACTIVO) !== 1) continue;
 
-    const affected = await asignacionRepo.endActiveAssignmentByPersona(context.P_ID_PERSONA);
+    const affected = await asignacionRepo.endActiveAssignmentByPersona(context.P_ID_PERSONA, {
+      idSituacion: context.S_ID_SITUACION,
+    });
     if (affected > 0) {
-      await ensureUnassignedGestionBySituacion(context.S_ID_SITUACION);
       updated += affected;
     }
   }

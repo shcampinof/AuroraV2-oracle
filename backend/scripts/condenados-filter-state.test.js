@@ -2,7 +2,7 @@ const assert = require('assert');
 const { listAcciones } = require('../domain/catalogosHomologacion');
 const { ESTADOS_CASO } = require('../domain/estadoCaso');
 
-async function captureStateSearch(filters, tipo = 'all') {
+async function captureStateSearch(filters, tipo = 'all', { countOnly = false } = {}) {
   const oraclePoolPath = require.resolve('../db/oraclePool');
   const repositoryPath = require.resolve('../repositories/oracle/personaRepository');
   const oraclePool = require(oraclePoolPath);
@@ -22,6 +22,7 @@ async function captureStateSearch(filters, tipo = 'all') {
       filters,
       limit: 10,
       includeExactCounts: false,
+      countOnly,
     });
     return captured;
   } finally {
@@ -381,6 +382,32 @@ async function testAssignedUsersCheckboxExplicitlyIncludesInactiveSituations() {
   }
 }
 
+async function testAssignedUsersInclusionCheckboxesAreIndependent() {
+  const excludedSindicados = /NOT LIKE '%sindicad%'/;
+  const assignedOnly = /AND \(a\.CEDULA_DEFENSOR IS NOT NULL OR TRIM\(a\.NOMBRE_DEFENSOR\) IS NOT NULL\)/;
+  const activeOnly = /AND NVL\(s\.ACTIVO, 0\) = 1/;
+  for (let combination = 0; combination < 8; combination += 1) {
+    const filters = { documento: '1000' };
+    if (combination & 1) filters.incluirSindicados = '1';
+    if (combination & 2) filters.incluirNoAsignados = 'true';
+    if (combination & 4) filters.incluirFueraPrision = true;
+    for (const countOnly of [false, true]) {
+      const { sql } = await captureStateSearch(filters, 'all', { countOnly });
+      assert.equal(excludedSindicados.test(sql), !(combination & 1), 'Sindicados solo con su casilla.');
+      assert.equal(assignedOnly.test(sql), !(combination & 2), 'No asignados solo con su casilla.');
+      assert.equal(activeOnly.test(sql), !(combination & 4), 'Fuera de prisión solo con su casilla.');
+      if (countOnly) {
+        assert.match(sql, /COUNT\(\*\) AS TOTAL_MATCHED/);
+      } else {
+        assert(sql.indexOf('NOT LIKE') < sql.indexOf('WHERE ROWNUM') || (combination & 1));
+      }
+    }
+  }
+  const pag = await captureStateSearch({ incluirSindicados: '', incluirNoAsignados: '' }, 'condenado');
+  assert.doesNotMatch(pag.sql, excludedSindicados);
+  assert.doesNotMatch(pag.sql, assignedOnly);
+}
+
 async function testAssignedUsersClosedFilterDoesNotControlInactiveUniverse() {
   const activeOnly = await captureStateSearch({
     defensor: 'LUBIANA',
@@ -609,6 +636,14 @@ async function testRegionalPriorityAndUnassignedBeforePagination() {
 }
 
 (async () => {
+  for (const countOnly of [false, true]) {
+    const restricted = await captureStateSearch({ consultaSituacionIds: ['41', '42'] }, 'all', { countOnly });
+    assert.match(restricted.sql, /s\.ID_SITUACION IN \(:consultaSituacion0, :consultaSituacion1\)/);
+    assert.equal(restricted.binds.consultaSituacion0, '41');
+    assert.equal(restricted.binds.consultaSituacion1, '42');
+    const empty = await captureStateSearch({ consultaSituacionIds: [] }, 'all', { countOnly });
+    assert.match(empty.sql, /1=0/);
+  }
   await testLegacyStateIdentityAcrossEveryState();
   await testRegionalPriorityAndUnassignedBeforePagination();
   await testEstadoUsesDerivedWorkflowMilestones();
@@ -624,6 +659,7 @@ async function testRegionalPriorityAndUnassignedBeforePagination() {
   await testQueryContainsBothBusinessFlows();
   await testAssignedUsersDefaultAlwaysRequiresActiveSituation();
   await testAssignedUsersCheckboxExplicitlyIncludesInactiveSituations();
+  await testAssignedUsersInclusionCheckboxesAreIndependent();
   await testAssignedUsersClosedFilterDoesNotControlInactiveUniverse();
   await testPagClosedFilterKeepsMandatoryActiveRuleWithoutHistoricalExpansion();
   await testSelectedCenterUsesCurrentDatabaseName();

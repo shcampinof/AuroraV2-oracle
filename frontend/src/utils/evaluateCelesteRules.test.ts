@@ -42,15 +42,20 @@ describe('evaluateCelesteRules - flujo sindicados', () => {
     expect(result.derivedStatus).toBe('Analizar el caso');
   });
 
-  it('Regla 2: si Q21 inicia con "No se avanzará...", estado = Caso cerrado y lock activo', () => {
+  it.each([
+    Q21_NO_AVANZA,
+    'No se avanzará con la revocatoria porque la persona está privada de la libertad a órdenes de otro proceso.',
+  ])('Regla 2: con Q21 = "%s", estado = Caso cerrado y lock activo', (respuesta) => {
+    const answers = {
+      ...buildBloque3Completo(),
+      [Q21]: respuesta,
+    };
     const result = evaluateCelesteRules({
-      answers: {
-        ...buildBloque3Completo(),
-        [Q21]: Q21_NO_AVANZA,
-      },
+      answers,
     });
 
     expect(result.derivedStatus).toBe('Caso cerrado');
+    expect(deriveStatusCeleste(answers)).toBe('Caso cerrado');
     expect(result.locked).toBe(true);
     expect(result.visibleBlocks).toEqual(['bloque1', 'bloque2Celeste', 'bloque3Celeste']);
   });

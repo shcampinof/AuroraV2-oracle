@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import PagUserModal from '../components/PagUserModal.jsx';
+import ConsultaCasePermissions from '../components/ConsultaCasePermissions.jsx';
+import AdminUserActions from '../components/AdminUserActions.jsx';
 
 import {
   deleteAdminUser,
@@ -13,6 +15,7 @@ import {
 
 const ROLE_OPTIONS = [
   { id: 'user', label: 'Usuario' },
+  { id: 'consulta', label: 'Consulta' },
   { id: 'pag', label: 'PAG' },
   { id: 'dndp', label: 'DNDP' },
   { id: 'admin', label: 'Admin' },
@@ -47,9 +50,15 @@ function normalizeRoles(roles) {
 }
 
 function AdminUsuarios() {
+  const [tab, setTab] = useState('users');
   const [users, setUsers] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [actionsId, setActionsId] = useState(null);
+  const [updating, setUpdating] = useState(false);
+  const editorRef = useRef(null);
   const [pagDialog, setPagDialog] = useState(null);
   const [regionales, setRegionales] = useState([]);
   const [regionalesLoading, setRegionalesLoading] = useState(true);
@@ -84,6 +93,13 @@ function AdminUsuarios() {
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const visibleUsers = filteredUsers.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const actionsUser = users.find((user) => (user.id || user.email) === actionsId);
+
+  useEffect(() => {
+    if (!editorOpen) return;
+    editorRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    editorRef.current?.querySelector('input:not([readonly])')?.focus({ preventScroll: true });
+  }, [editorOpen, editingId]);
 
   useEffect(() => {
     setPage(1);
@@ -170,6 +186,7 @@ function AdminUsuarios() {
       else await saveAdminUser(payload);
       setForm(EMPTY_FORM);
       setEditingId(null);
+      setEditorOpen(false);
       setMessage('Usuario guardado.');
       await refresh();
     } catch (err) {
@@ -234,33 +251,44 @@ function AdminUsuarios() {
   }
 
   async function patchUser(user, patch) {
+    if (updating) return;
+    setUpdating(true);
     setMessage('');
     setError('');
+    const key = user.id || user.email;
+    let saved = false;
+    setUsers((current) => current.map((item) => (item.id || item.email) === key ? { ...item, ...patch } : item));
     try {
       await updateAdminUser(user.id || user.email, patch);
+      saved = true;
       setMessage('Usuario actualizado.');
       await refresh();
     } catch (err) {
+      if (!saved) setUsers((current) => current.map((item) => (item.id || item.email) === key ? user : item));
       setError(String(err?.message || 'No fue posible actualizar el usuario.'));
+    } finally {
+      setUpdating(false);
     }
   }
 
   function editUser(user) {
     setEditingId(user.id || user.email);
+    setImportOpen(false);
+    setEditorOpen(true);
     setForm({ ...EMPTY_FORM, ...user, roles: normalizeRoles(user.roles) });
     setMessage('');
     setError('');
-    window.scrollTo?.({ top: 0, behavior: 'smooth' });
   }
 
   function openPagDialog(user, id = null, fromForm = false) {
+    setActionsId(null);
     setPagDialog({ user: { ...EMPTY_FORM, ...user, roles: [...new Set([...normalizeRoles(user.roles), 'pag'])] }, id, fromForm });
   }
 
   async function savePagUser(payload) {
     if (pagDialog.id) await updateAdminUser(pagDialog.id, payload);
     else await saveAdminUser(payload);
-    if (pagDialog.fromForm || pagDialog.id === editingId) { setForm(EMPTY_FORM); setEditingId(null); }
+    if (pagDialog.fromForm || pagDialog.id === editingId) { setForm(EMPTY_FORM); setEditingId(null); setEditorOpen(false); }
     setPagDialog(null);
     setError('');
     setMessage('Usuario PAG guardado con cédula, correo y regional.');
@@ -268,18 +296,24 @@ function AdminUsuarios() {
   }
 
   async function handleDelete(user) {
+    if (updating) return;
     const email = user.email || user.username || user.id;
     const confirmed = window.confirm(`¿Eliminar ${email} de usuarios autorizados? En modo restrictivo no podra ingresar hasta que se agregue nuevamente.`);
     if (!confirmed) return;
+
+    setUpdating(true);
 
     setMessage('');
     setError('');
     try {
       await deleteAdminUser(user.id || user.email);
+      setActionsId(null);
       setMessage('Usuario eliminado.');
       await refresh();
     } catch (err) {
       setError(String(err?.message || 'No fue posible eliminar el usuario.'));
+    } finally {
+      setUpdating(false);
     }
   }
 
@@ -290,14 +324,37 @@ function AdminUsuarios() {
           <h2>Usuarios autorizados</h2>
           <p>Administre correos habilitados, roles internos y acceso a modulos administrativos.</p>
         </div>
-        <button type="button" className="secondary-button" onClick={() => refresh()} disabled={loading}>
-          Actualizar
-        </button>
+        <div className="admin-loads-header-actions">
+          <button type="button" className="secondary-button" onClick={() => {
+            setLoading(true); refresh().catch((err) => setError(err.message)).finally(() => setLoading(false));
+          }} disabled={loading}>{loading ? 'Actualizando…' : 'Actualizar'}</button>
+        </div>
       </header>
+
+      <div className="admin-users-tabs" role="tablist" aria-label="Administración de usuarios">
+        <button type="button" className="secondary-button" id="users-tab" role="tab" aria-selected={tab === 'users'} aria-controls="users-panel"
+          onClick={() => setTab('users')}>Usuarios y roles</button>
+        <button type="button" className="secondary-button" id="collaborators-tab" role="tab" aria-selected={tab === 'collaborators'} aria-controls="collaborators-panel"
+          onClick={() => setTab('collaborators')}>Asignación de casos · Perfil Consulta</button>
+      </div>
+
+      {tab === 'collaborators' ? <div id="collaborators-panel" role="tabpanel" aria-labelledby="collaborators-tab">
+        <ConsultaCasePermissions users={users} />
+      </div> : <div id="users-panel" role="tabpanel" aria-labelledby="users-tab" className="admin-users-panel">
 
       {message ? <div className="status-banner status-banner--ok">{message}</div> : null}
       {error ? <div className="status-banner status-banner--error">{error}</div> : null}
 
+      <div className="admin-users-create-actions">
+        <button type="button" className="primary-button" aria-expanded={editorOpen} aria-controls="admin-user-editor" onClick={() => {
+          setEditingId(null); setForm(EMPTY_FORM); setImportOpen(false); setEditorOpen(true);
+        }}>Crear usuario</button>
+        <button type="button" className="secondary-button" aria-expanded={importOpen} aria-controls="admin-user-import" onClick={() => {
+          setEditorOpen(false); setImportOpen((value) => !value);
+        }}>Importar usuarios desde CSV</button>
+      </div>
+      <section id="admin-user-editor" className="admin-users-editor" hidden={!editorOpen} ref={editorRef} aria-label={editingId ? 'Editar usuario' : 'Crear usuario'}>
+      <h3>{editingId ? 'Editar usuario' : 'Crear usuario'}</h3>
       <form className="admin-users-form" onSubmit={handleSubmit}>
         <label>
           Correo
@@ -327,6 +384,9 @@ function AdminUsuarios() {
             </label>
           ))}
         </fieldset>
+        {normalizeRoles(form.roles).includes('consulta') ? (
+          <p className="admin-users-pag-help">Consulta permite visualizar información y generar reportes. Solo puede editar casos autorizados en Asignación de casos · Perfil Consulta que tengan defensor asignado. Los demás permisos de modificación permanecen bloqueados aunque se marquen otros roles.</p>
+        ) : null}
         {form.roles.includes('pag') ? (
           <div className="admin-users-pag-help">
             <span>PAG: {form.pagCedula || 'Cédula pendiente'} · {form.pagRegional || 'Regional pendiente'} </span>
@@ -345,14 +405,16 @@ function AdminUsuarios() {
         <button type="submit" className="primary-button" disabled={submitting}>
           {submitting ? 'Guardando...' : 'Guardar usuario'}
         </button>
-        {editingId ? <button type="button" className="secondary-button" disabled={submitting}
-          onClick={() => { setEditingId(null); setForm(EMPTY_FORM); }}>Cancelar edición</button> : null}
+        <button type="button" className="secondary-button" disabled={submitting}
+          onClick={() => { setEditingId(null); setForm(EMPTY_FORM); setEditorOpen(false); }}>
+          {editingId ? 'Cancelar edición' : 'Cancelar'}</button>
       </form>
+      </section>
       {pagDialog ? <PagUserModal user={pagDialog.user} existing={Boolean(pagDialog.id)} regionales={regionales}
         loading={regionalesLoading} catalogError={regionalesError} onRetry={loadRegionales}
         onSave={savePagUser} onClose={() => setPagDialog(null)} /> : null}
 
-      <section className="admin-users-import" aria-labelledby="csv-import-title">
+      <section id="admin-user-import" className="admin-users-import" hidden={!importOpen} aria-labelledby="csv-import-title">
         <div className="admin-users-import-header">
           <div>
             <h3 id="csv-import-title">Importar usuarios desde CSV</h3>
@@ -418,6 +480,7 @@ function AdminUsuarios() {
             </div>
           </div>
         ) : null}
+      <button type="button" className="secondary-button admin-users-import-close" onClick={() => setImportOpen(false)}>Cerrar importación</button>
       </section>
 
       <div className="admin-users-toolbar">
@@ -443,7 +506,7 @@ function AdminUsuarios() {
         </div>
       </div>
 
-      <div className="admin-loads-table-wrap">
+      <div className="admin-loads-table-wrap admin-users-list">
         <table className="admin-loads-table admin-users-table">
           <thead>
             <tr>
@@ -452,7 +515,7 @@ function AdminUsuarios() {
               <th>Roles</th>
               <th>Estado</th>
               <th>Ultimo ingreso</th>
-              <th>Acciones</th>
+              <th>Administración</th>
             </tr>
           </thead>
           <tbody>
@@ -462,41 +525,20 @@ function AdminUsuarios() {
                 const enabled = user.enabled !== false;
                 return (
                   <tr key={user.id || user.email}>
-                    <td>{user.email || '-'}</td>
-                    <td>{user.name || 'Pendiente de primer ingreso'}</td>
-                    <td>{roles.join(', ')}</td>
-                    <td>
+                    <td data-label="Correo">{user.email || '-'}</td>
+                    <td data-label="Nombre">{user.name || 'Pendiente de primer ingreso'}</td>
+                    <td data-label="Roles">{roles.map((role) => ROLE_OPTIONS.find((item) => item.id === role)?.label || role).join(', ')}</td>
+                    <td data-label="Estado">
                       <span className={`user-status ${enabled ? 'user-status--enabled' : 'user-status--disabled'}`}>
                         {enabled ? 'Habilitado' : 'Deshabilitado'}
                       </span>
                     </td>
-                    <td>{formatDate(user.lastLoginAt)}</td>
-                    <td className="admin-loads-actions">
+                    <td data-label="Último ingreso">{formatDate(user.lastLoginAt)}</td>
+                    <td data-label="Administración">
+                      <div className="admin-users-row-actions">
                       <button type="button" onClick={() => editUser(user)}>Editar</button>
-                      <button type="button" onClick={() => patchUser(user, { enabled: !enabled })}>
-                        {enabled ? 'Deshabilitar' : 'Habilitar'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => roles.includes('pag')
-                          ? patchUser(user, { roles: roles.filter((role) => role !== 'pag' && !role.endsWith('.pag')) })
-                          : openPagDialog(user, user.id || user.email)}
-                      >
-                        {roles.includes('pag') ? 'Quitar PAG' : 'Habilitar PAG'}
-                      </button>
-                      <button type="button" onClick={() => patchUser(user, { roles: roles.includes('dndp')
-                        ? roles.filter((role) => role !== 'dndp' && !role.endsWith('.dndp')) : [...roles, 'dndp'] })}>
-                        {roles.includes('dndp') ? 'Quitar DNDP' : 'Habilitar DNDP'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => patchUser(user, { roles: roles.includes('admin') ? roles.filter((role) => role !== 'admin') : [...roles, 'admin'] })}
-                      >
-                        {roles.includes('admin') ? 'Quitar admin' : 'Hacer admin'}
-                      </button>
-                      <button type="button" className="danger-button" onClick={() => handleDelete(user)}>
-                        Eliminar
-                      </button>
+                      <button type="button" aria-haspopup="dialog" onClick={() => { setError(''); setActionsId(user.id || user.email); }}>Acceso y permisos</button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -527,6 +569,10 @@ function AdminUsuarios() {
           Ultimo
         </button>
       </div>
+      </div>}
+      {actionsUser ? <AdminUserActions user={actionsUser} roles={normalizeRoles(actionsUser.roles)} busy={updating} error={error}
+        onPatch={(patch) => patchUser(actionsUser, patch)} onPag={() => openPagDialog(actionsUser, actionsId)}
+        onDelete={() => handleDelete(actionsUser)} onClose={() => setActionsId(null)} /> : null}
     </section>
   );
 }

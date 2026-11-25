@@ -115,14 +115,21 @@ function testAllApiFiltersAreParsedAndTrimmed() {
     'accion',
     'potencialSubrogado',
     'asignacionEstado',
+    'incluirSindicados',
+    'incluirNoAsignados',
     'incluirFueraPrision',
+    'misCasosAutorizados',
   ];
   const input = Object.fromEntries(keys.map((key) => [key, `  ${key}  `]));
-  input.incluirFueraPrision = 'true';
+  const booleanKeys = ['incluirSindicados', 'incluirNoAsignados', 'incluirFueraPrision', 'misCasosAutorizados'];
+  booleanKeys.forEach((key) => { input[key] = 'true'; });
   const parsed = contract.parseFilters(input);
   assert.deepEqual(Object.keys(parsed), keys);
-  keys.filter((key) => key !== 'incluirFueraPrision').forEach((key) => assert.equal(parsed[key], key));
-  assert.equal(parsed.incluirFueraPrision, '1');
+  keys.filter((key) => !booleanKeys.includes(key)).forEach((key) => assert.equal(parsed[key], key));
+  booleanKeys.forEach((key) => {
+    assert.equal(parsed[key], '1');
+    assert.equal(contract.parseFilters({ [key]: 'false' })[key], '');
+  });
   assert.equal(contract.hasFilters(parsed), true);
   assert.equal(contract.hasFilters(contract.parseFilters({})), false);
 }

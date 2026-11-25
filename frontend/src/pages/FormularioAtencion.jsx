@@ -15,11 +15,17 @@ import { evaluateCelesteRules } from '../utils/evaluateCelesteRules.ts';
 import auroraFormRules, {
   AURORA_FIELD_CATALOG,
   isCierreBloque3Aurora,
+  getMotivoCierreBloque3Aurora,
+  requiereNuevaFechaAnalisisAurora,
+  getNuevaFechaAnalisisAurora,
+  getLimitesNuevaFechaAnalisis,
+  getErrorNuevaFechaAnalisis,
 } from '../config/formRules.aurora.ts';
 import { AURORA_FIELD_IDS } from '../config/auroraFieldIds.ts';
 import { reportError } from '../utils/reportError.js';
 import { getLabelAccionCaso } from '../utils/actuacionesLabels.js';
 import { shouldBlockNuevaActuacion } from '../utils/actuacionesValidation.js';
+import { isConsultaUser } from '../utils/assignmentAccess.js';
 import { isGestionEditable, isSituacionActiva } from '../utils/pplStatus.js';
 import {
   buildDefensorNameOptions,
@@ -390,6 +396,7 @@ const OPCIONES_CELESTE_ANALISIS_ACTUACION = [
   'No se avanzará con la revocatoria porque son tres o más los acusados y aún no se cumple el tiempo para solicitar el levantamiento de la detención preventiva en este supuesto',
   'No se avanzará con la revocatoria porque la persona está procesada por delitos atribuibles a Grupos Delictivos Organizados (GDO) o Grupos Armados Organizados (GAO) y aún no cumple el tiempo permitido',
   'No se avanzará con la revocatoria porque ya hay una solicitud en trámite',
+  'No se avanzará con la revocatoria porque la persona está privada de la libertad a órdenes de otro proceso.',
   'No se avanzará porque no tiene defensor público asignado',
   'No se avanzar\u00E1 porque ya no soy el defensor en este caso',
 ];
@@ -446,6 +453,7 @@ const EXPORT_FIELDS_AURORA_BLOQUE_2 = [
 const EXPORT_FIELDS_AURORA_BLOQUE_3 = [
   { label: '28. Defensor(a) público(a) asignado para tramitar la solicitud', key: 'Defensor(a) Público(a) Asignado para tramitar la solicitud' },
   { label: '29. Fecha de análisis jurídico del caso', key: 'Fecha de análisis jurídico del caso', isDate: true },
+  { label: 'Nueva fecha de análisis', key: 'Nueva fecha de análisis', isDate: true },
   { label: '30. Procedencia de libertad condicional', key: 'Procedencia de libertad condicional' },
   { label: '31. Procedencia de prisión domiciliaria de mitad de pena', key: 'Procedencia de prisión domiciliaria de mitad de pena' },
   { label: '32. Procedencia de utilidad pública (solo para mujeres)', key: 'Procedencia de utilidad pública (solo para mujeres)' },
@@ -1419,6 +1427,9 @@ function buildNuevaActuacionDraft(source) {
   const activo = Object.prototype.hasOwnProperty.call(target, 'defensorActivo')
     ? String(target.defensorActivo || '') : getDefensorAsignadoValue(target);
   DEFENSOR_DIRECT_KEYS.forEach(key => { next[key] = activo; });
+  next.defensorActivo = activo;
+  next.defensorGestion = '';
+  next.Cedula_PAG = target.Cedula_PAG || '';
   next.__defensorAsignadoOriginal = activo;
 
   // Toda actuación nace con una acción persistible, incluso antes de que se
@@ -1441,6 +1452,7 @@ const CAMPOS_LIMPIABLES_DESDE_BLOQUE_3 = new Set(
     KEY_Q35_UTF8,
     'Otras solicitudes a tramitar',
     'Resumen del análisis del caso',
+    'Nueva fecha de análisis',
     'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS',
     'RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO',
     'Fecha de entrevista',
@@ -1902,9 +1914,12 @@ function CampoCheckboxMultiple({
   );
 }
 
-export default function FormularioAtencion({ numeroInicial }) {
+export default function FormularioAtencion({ numeroInicial, user }) {
+  const esColaborador = isConsultaUser(user || getStoredSession()?.user);
   const [numeroBusqueda, setNumeroBusqueda] = useState(numeroInicial || '');
   const [registro, setRegistro] = useState(null);
+  const soloConsulta = esColaborador && registro?.__consultaPuedeEditar !== true;
+  const puedeEditarRegistro = useCallback((source) => !esColaborador || source?.__consultaPuedeEditar === true, [esColaborador]);
   const [tipoRegistro, setTipoRegistro] = useState('');
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
@@ -2093,7 +2108,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   const flow = useMemo(() => (registro ? computeFlow(registro, tipoRegistro) : null), [registro, tipoRegistro]);
   const numeroInsistencias = useMemo(() => getNumeroInsistencias(registro), [registro]);
   const personaFueraPrision = useMemo(() => Boolean(registro) && !isSituacionActiva(registro), [registro]);
-  const gestionSoloLectura = Boolean(registro) && !isGestionEditable(registro);
+  const gestionSoloLectura = soloConsulta || (Boolean(registro) && !isGestionEditable(registro));
   const tieneInfoDesdePregunta29 = useCallback((source) => {
     if (!source || typeof source !== 'object') return false;
     return CAMPOS_AURORA_DESDE_P29.some((alias) =>
@@ -2213,7 +2228,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   const enqueueAutosaveSnapshot = useCallback(
     (source, { immediate = false, restored = false } = {}) => {
-      if (!source || !isGestionEditable(source)) return;
+      if (!puedeEditarRegistro(source) || !source || !isGestionEditable(source)) return;
       const context = getAutosaveContextFor(source);
       const fullData = pickAutosaveBlockData(source);
       if (!context || !Object.keys(fullData).length) return;
@@ -2237,16 +2252,18 @@ export default function FormularioAtencion({ numeroInicial }) {
         data,
         fullData,
         restored,
+        consultaAuthorized: source.__consultaPuedeEditar === true,
         queuedAt: Date.now(),
       };
       autosaveContextKeyRef.current = context.key;
       writeFormAutosaveDraft(window.localStorage, context, fullData, job.queuedAt);
-      if (faltaRazonCierreCaso(source)) {
+      const reviewError = getErrorNuevaFechaAnalisis(source);
+      if (faltaRazonCierreCaso(source) || reviewError) {
         autosaveQueueRef.current.dropPending((pendingJob) => pendingJob?.context?.key === context.key);
         setAutosaveStatus({
           phase: 'pending',
           savedAt: null,
-          message: `${ERROR_RAZON_CIERRE_CASO} El borrador está protegido en este equipo.`,
+          message: `${reviewError || ERROR_RAZON_CIERRE_CASO} El borrador está protegido en este equipo.`,
         });
         return;
       }
@@ -2259,10 +2276,11 @@ export default function FormularioAtencion({ numeroInicial }) {
 
       if (immediate) void flushAutosave();
     },
-    [flushAutosave, getAutosaveContextFor]
+    [flushAutosave, getAutosaveContextFor, puedeEditarRegistro]
   );
 
   autosavePerformRef.current = async (job, queue) => {
+    if (esColaborador && !job.consultaAuthorized) return;
     const isCurrentContext = () => autosaveContextKeyRef.current === job.context.key;
     if (isCurrentContext()) {
       setAutosaveStatus({ phase: 'saving', savedAt: null, message: 'Guardando cambios…' });
@@ -2325,6 +2343,7 @@ export default function FormularioAtencion({ numeroInicial }) {
               'Acción a impulsar',
               'Acción a realizar',
               '__oracleIdGestion',
+              '__consultaPuedeEditar',
             ].forEach((key) => {
               if (Object.prototype.hasOwnProperty.call(serverRecord, key)) next[key] = serverRecord[key];
             });
@@ -2343,6 +2362,17 @@ export default function FormularioAtencion({ numeroInicial }) {
       }
       return updated;
     } catch (error) {
+      if (esColaborador && error?.code === 'CONSULTA_CASE_FORBIDDEN') {
+        queue.dropPending((pendingJob) => pendingJob?.context?.key === job.context.key);
+        if (isCurrentContext()) {
+          autosaveChangedRef.current = false;
+          setRegistro((prev) => prev ? wrapRegistroForLookup({ ...unwrapRegistro(prev), __consultaPuedeEditar: false }) : prev);
+          setError(error.message);
+          setAutosaveStatus({ phase: 'error', savedAt: null,
+            message: 'El permiso de edición ya no está vigente. El borrador se conserva en este equipo.' });
+        }
+        return null;
+      }
       if (isCurrentContext()) {
         const detail = String(error?.message || '').trim();
         setAutosaveStatus({
@@ -2404,7 +2434,7 @@ export default function FormularioAtencion({ numeroInicial }) {
       const current = registroRef.current;
       const contextBefore = getAutosaveContextFor(current);
       if (!current || !contextBefore) return;
-      if (faltaRazonCierreCaso(current)) return;
+      if (faltaRazonCierreCaso(current) || getErrorNuevaFechaAnalisis(current)) return;
       try {
         const response = await getPplActuacionesByDocumento(contextBefore.documento);
         const rows = Array.isArray(response?.actuaciones) ? response.actuaciones : [];
@@ -2435,7 +2465,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   const restoreAutosaveDraft = useCallback(
     (source, activeId = '') => {
-      if (!source || !isGestionEditable(source)) return { record: source, restored: false };
+      if (!puedeEditarRegistro(source) || !source || !isGestionEditable(source)) return { record: source, restored: false };
       const context = getAutosaveContextFor(source, activeId);
       const draft = readFormAutosaveDraft(window.localStorage, context);
       if (!draft?.data) return { record: source, restored: false };
@@ -2444,7 +2474,7 @@ export default function FormularioAtencion({ numeroInicial }) {
         restored: true,
       };
     },
-    [getAutosaveContextFor]
+    [getAutosaveContextFor, puedeEditarRegistro]
   );
 
   const handleActionLabelChange = useCallback((nextLabel) => {
@@ -2517,6 +2547,7 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   function handleChange(name, value) {
     if (gestionSoloLectura) return;
+    if (esColaborador && isDefensorLikeFieldName(name)) return;
     camposModificadosEnFormularioRef.current.add(normalizeFieldName(name));
     if (isCampoAutoguardableDesdeBloque3(name)) autosaveChangedRef.current = true;
     setRegistro((prev) => {
@@ -2713,6 +2744,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   }
 
   async function handleCrearNuevaActuacion(options = {}) {
+    if (soloConsulta) return;
     if (personaFueraPrision) {
       setError('La persona figura fuera de prisión. No se pueden crear nuevas actuaciones.');
       return;
@@ -3318,6 +3350,8 @@ export default function FormularioAtencion({ numeroInicial }) {
 
   const motivoCierre = useMemo(() => {
     if (!registro) return '';
+    const motivoBloque3 = auroraActivo ? getMotivoCierreBloque3Aurora(registro) : '';
+    if (motivoBloque3) return motivoBloque3;
     if (auroraActivo && cierrePorDecisionFinalBloque5) {
       if (isCierreImposibilidadSeleccionado(cierreImposibilidadTramite)) {
         return `Caso cerrado: ${cierreImposibilidadTramite}`;
@@ -4025,7 +4059,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   async function handleGuardar() {
     if (guardando) return;
     if (gestionSoloLectura) {
-      setError('La persona figura fuera de prisión. Solo se pueden completar gestiones que ya habían alcanzado el bloque 5.');
+      setError(soloConsulta ? 'Este caso no tiene un permiso de edición vigente para su cuenta o no tiene defensor asignado.' : 'La persona figura fuera de prisión. Solo se pueden completar gestiones que ya habían alcanzado el bloque 5.');
       return;
     }
     const doc = getDocumentoActual(registro);
@@ -4033,9 +4067,10 @@ export default function FormularioAtencion({ numeroInicial }) {
       setError('Debe cargar un usuario antes de guardar.');
       return;
     }
-    if (faltaRazonCierreCaso(registro)) {
-      setError(ERROR_RAZON_CIERRE_CASO);
-      setToastMessage(ERROR_RAZON_CIERRE_CASO);
+    const reviewError = auroraActivo ? getErrorNuevaFechaAnalisis(registro) : '';
+    if (faltaRazonCierreCaso(registro) || reviewError) {
+      setError(reviewError || ERROR_RAZON_CIERRE_CASO);
+      setToastMessage(reviewError || ERROR_RAZON_CIERRE_CASO);
       setToastOpen(true);
       return;
     }
@@ -4254,6 +4289,10 @@ export default function FormularioAtencion({ numeroInicial }) {
       setHistorialRefreshToken((prev) => prev + 1);
     } catch (e) {
       reportError(e, 'formulario-entrevista:guardar');
+      if (esColaborador && e?.code === 'CONSULTA_CASE_FORBIDDEN') {
+        setRegistro((prev) => prev ? wrapRegistroForLookup({ ...unwrapRegistro(prev), __consultaPuedeEditar: false }) : prev);
+        autosaveQueueRef.current?.clear();
+      }
       const detail = String(e?.message || '').trim();
       setError(detail ? `No fue posible guardar el registro: ${detail}` : 'No fue posible guardar el registro.');
     } finally {
@@ -4262,6 +4301,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   }
 
   const handleSaltoCelesteAAurora = useCallback(async (nextSituacionActualizada) => {
+    if (soloConsulta) return;
     const celesteEval = evaluateCelesteRules({
       answers: {
         ...(registro || {}),
@@ -4334,7 +4374,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     } finally {
       setSaltoCelesteGuardando(false);
     }
-  }, [buildUpdatePayload, getDocumentoActual, registro, saltoCelesteGuardando]);
+  }, [buildUpdatePayload, getDocumentoActual, registro, saltoCelesteGuardando, soloConsulta]);
 
   useEffect(() => {
     if (!auroraAbrirBloque2) return;
@@ -4441,7 +4481,7 @@ export default function FormularioAtencion({ numeroInicial }) {
         <>
           {personaFueraPrision && (
             <div className="ppl-inactive-alert" role="alert" style={{ marginTop: '1rem' }}>
-              FUERA DE PRISIÓN — el caso permanece cerrado. Solo se pueden completar las gestiones que ya habían alcanzado el bloque 5.
+              {soloConsulta ? 'FUERA DE PRISIÓN — el caso permanece cerrado y está disponible para consulta.' : 'FUERA DE PRISIÓN — el caso permanece cerrado. Solo se pueden completar las gestiones que ya habían alcanzado el bloque 5.'}
             </div>
           )}
           <div className="card" style={{ marginTop: '1rem' }}>
@@ -4455,18 +4495,22 @@ export default function FormularioAtencion({ numeroInicial }) {
               actuacionActivaId={actuacionActivaId}
               creandoActuacion={creandoActuacion}
               soloLectura={personaFueraPrision}
+              soloConsulta={soloConsulta}
               onActionLabelChange={handleActionLabelChange}
             />
           </div>
 
           {!mostrarFormularioDetalle && (
             <p className="hint-text" style={{ marginTop: '0.75rem' }}>
-              {displayText(`Vista previa activa. Seleccione "${textoAccionCaso}" para abrir el formulario precargado.`)}
+              {displayText(`Vista previa activa. Seleccione "${soloConsulta ? 'Ver detalle' : textoAccionCaso}" para abrir el formulario precargado.`)}
             </p>
           )}
 
           {mostrarFormularioDetalle && (
           <div ref={formularioDetalleRef} className="card" style={{ marginTop: '1rem' }}>
+            {esColaborador && <p className="hint-text" role="status">{soloConsulta
+              ? 'Rol Consulta: este caso está disponible solo para lectura.'
+              : 'Colaborador autorizado: puede editar este caso según el estado del formulario. El defensor responsable se conserva.'}</p>}
             {autosaveStatus.phase !== 'idle' && (
               <div className={`form-autosave-status form-autosave-status--${autosaveStatus.phase}`} role="status">
                 <span>{displayText(autosaveStatus.message)}</span>
@@ -4837,7 +4881,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                   <Campo
                     label="28. Defensor(a) público(a) asignado para tramitar la solicitud"
                     name="Defensor(a) Público(a) Asignado para tramitar la solicitud"
-                    disabled={personaFueraPrision || Boolean(registro?.defensorGestion)}
+                    disabled={esColaborador || personaFueraPrision || Boolean(registro?.defensorGestion)}
                     type="catalog-datalist"
                     value={getDefensorAsignadoValue(registro)}
                     onChange={handleChange}
@@ -4940,6 +4984,26 @@ export default function FormularioAtencion({ numeroInicial }) {
                 />
 
                 <CampoCierreCaso registro={registro} onChange={handleChange} />
+
+                {requiereNuevaFechaAnalisisAurora(registro) && (
+                  <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+                    <Campo
+                      label="Nueva fecha de análisis"
+                      name="Nueva fecha de análisis"
+                      type="date"
+                      value={getNuevaFechaAnalisisAurora(registro)}
+                      onChange={handleChange}
+                      minDate={getLimitesNuevaFechaAnalisis().min}
+                      maxDate={getLimitesNuevaFechaAnalisis().max}
+                      required
+                      showObligatoria
+                    />
+                    <p className="hint-text">
+                      Seleccione obligatoriamente la nueva fecha de análisis, desde hoy hasta un máximo de seis meses.
+                      Al cumplirse, se creará un nuevo caso de revisión asignado al mismo defensor.
+                    </p>
+                  </div>
+                )}
 
                 {bloqueCierre === 'bloque3' && motivoCierre && (
                   <div className="form-field" style={{ gridColumn: '1 / -1' }}>
@@ -5453,7 +5517,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                       <Campo
                         label="19. Defensor(a) p\u00fablico(a) asignado para tramitar la solicitud"
                         name="Defensor(a) Público(a) Asignado para tramitar la solicitud"
-                        disabled={personaFueraPrision || Boolean(registro?.defensorGestion)}
+                        disabled={esColaborador || personaFueraPrision || Boolean(registro?.defensorGestion)}
                         type="catalog-datalist"
                         value={getDefensorAsignadoValue(registro)}
                         onChange={handleChange}

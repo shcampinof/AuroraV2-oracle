@@ -255,7 +255,7 @@ export async function updatePpl(documento, payload) {
     body: JSON.stringify(payload),
   });
   const data = await readJsonOrThrow(res, 'Error actualizando registro');
-  if (!res.ok) throw new Error(String(data?.message || 'Error actualizando registro'));
+  if (!res.ok) throw Object.assign(new Error(String(data?.message || 'Error actualizando registro')), { status: res.status, code: data?.code });
   invalidateCondenadosClientCache();
   return normalizeQueuedResponse(data, {
     registro: payload?.data && typeof payload.data === 'object' ? payload.data : null,
@@ -301,9 +301,44 @@ export async function getPplActuacionesByDocumento(documento) {
 // Formatos
 // =====================
 export async function getFormatos() {
-  const res = await fetchJson(`${API_BASE}/formatos`);
+  const res = await fetchJson(`${API_BASE}/formatos`, { cache: 'no-store' });
   if (!res.ok) throw new Error('Error consultando formatos');
   return readJsonOrThrow(res, 'Error consultando formatos');
+}
+
+export async function guardarFormato(formato, id = '') {
+  const res = await fetchJson(`${API_BASE}/formatos${id ? `/${encodeURIComponent(id)}` : ''}`, {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(formato),
+  });
+  const data = await readJsonOrThrow(res, 'Error guardando el formato');
+  if (!res.ok) throw new Error(data?.message || 'Error guardando el formato');
+  return data;
+}
+
+export async function getCarpetasHerramientas() {
+  const res = await fetchJson(`${API_BASE}/formatos/carpetas`, { cache: 'no-store' });
+  if (!res.ok) throw new Error('Error consultando carpetas');
+  return readJsonOrThrow(res, 'Error consultando carpetas');
+}
+
+export async function guardarCarpetaHerramientas(carpeta, id = '') {
+  const res = await fetchJson(`${API_BASE}/formatos/carpetas${id ? `/${encodeURIComponent(id)}` : ''}`, {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(carpeta),
+  });
+  const data = await readJsonOrThrow(res, 'Error guardando la carpeta');
+  if (!res.ok) throw new Error(data?.message || 'Error guardando la carpeta');
+  return data;
+}
+
+export async function eliminarCarpetaHerramientas(id) {
+  const res = await fetchJson(`${API_BASE}/formatos/carpetas/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const data = await readJsonOrThrow(res, 'Error eliminando la carpeta');
+  if (!res.ok) throw new Error(data?.message || 'Error eliminando la carpeta');
+  return data;
 }
 
 export function getFormatoDownloadUrl(id) {
@@ -311,7 +346,7 @@ export function getFormatoDownloadUrl(id) {
 }
 
 export async function getFormatoDownloadTarget(id) {
-  const res = await fetchJson(`${API_BASE}/formatos/${encodeURIComponent(id)}/download-url`);
+  const res = await fetchJson(`${API_BASE}/formatos/${encodeURIComponent(id)}/download-url`, { cache: 'no-store' });
   if (!res.ok) throw new Error('Error preparando descarga');
   return readJsonOrThrow(res, 'Error preparando descarga');
 }
@@ -342,6 +377,7 @@ export function getCondenadosRequest(options = 1000) {
   const filters = source?.filters && typeof source.filters === 'object' ? source.filters : {};
   const params = new URLSearchParams();
   if (safeTipo) params.set('tipo', safeTipo);
+  if (source.pagCedula) params.set('pagCedula', String(source.pagCedula).trim());
   params.set('limit', String(safeLimit));
   params.set('page', String(safePage));
   if (safePageSize) params.set('pageSize', String(safePageSize));
@@ -364,7 +400,10 @@ export function getCondenadosRequest(options = 1000) {
     'accion',
     'potencialSubrogado',
     'asignacionEstado',
+    'incluirSindicados',
+    'incluirNoAsignados',
     'incluirFueraPrision',
+    'misCasosAutorizados',
   ];
   let hasFilters = false;
   filterKeys.forEach((key) => {
@@ -412,6 +451,7 @@ export function getCondenadosFilterOptionsRequest(options = {}) {
   const filters = source?.filters && typeof source.filters === 'object' ? source.filters : {};
   const params = new URLSearchParams();
   params.set('tipo', safeTipo);
+  if (source.pagCedula) params.set('pagCedula', String(source.pagCedula).trim());
 
   ['departamento', 'municipio', 'defensor', 'defensorId', 'centroId'].forEach((key) => {
     const value = String(filters?.[key] ?? '').trim();
@@ -690,6 +730,30 @@ export async function getAdminUsers() {
   const res = await fetchJson(`${API_BASE}/admin/users`, { cache: 'no-store' });
   const data = await readJsonOrThrow(res, 'Error consultando usuarios');
   if (!res.ok) throw new Error(String(data?.message || 'Error consultando usuarios'));
+  return data;
+}
+
+export async function searchConsultaCases(filters, page = 1) {
+  const params = new URLSearchParams({ ...filters, page: String(page) });
+  const res = await fetchJson(`${API_BASE}/admin/users/consulta/cases?${params}`, { cache: 'no-store' });
+  const data = await readJsonOrThrow(res, 'Error buscando casos');
+  if (!res.ok) throw new Error(data?.message || 'Error buscando casos');
+  return data;
+}
+
+export async function getConsultaCases(id) {
+  const res = await fetchJson(`${API_BASE}/admin/users/${encodeURIComponent(id)}/consulta-cases`, { cache: 'no-store' });
+  const data = await readJsonOrThrow(res, 'Error consultando permisos');
+  if (!res.ok) throw new Error(data?.message || 'Error consultando permisos');
+  return data;
+}
+
+export async function changeConsultaCases(id, action, cases) {
+  const res = await fetchJson(`${API_BASE}/admin/users/${encodeURIComponent(id)}/consulta-cases`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, cases }),
+  });
+  const data = await readJsonOrThrow(res, 'Error actualizando permisos');
+  if (!res.ok) throw new Error(data?.message || 'Error actualizando permisos');
   return data;
 }
 

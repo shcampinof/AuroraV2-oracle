@@ -39,10 +39,13 @@ describe('administración de PAG y actuaciones de prueba', () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
-  const button = (text) => [...container.querySelectorAll('button')].find((item) => item.textContent.trim() === text);
+  const button = (text) => [...(container.querySelector('[role="dialog"]') || container).querySelectorAll('button')]
+    .find((item) => (item.getAttribute('aria-label') || item.textContent.trim()) === text);
+  const permissionSwitch = (title) => [...container.querySelectorAll('[role="switch"]')]
+    .find((element) => document.getElementById(element.getAttribute('aria-labelledby'))?.textContent === title);
   const input = (text) => {
     const scope = container.querySelector('[role="dialog"]') || container;
-    const label = [...scope.querySelectorAll('label')].find((item) => item.textContent.trim() === text);
+    const label = [...scope.querySelectorAll('label')].find((item) => (item.getAttribute('aria-label') || item.textContent.trim()) === text);
     return label?.control || label?.querySelector('input');
   };
   async function click(element) {
@@ -75,7 +78,8 @@ describe('administración de PAG y actuaciones de prueba', () => {
   it('abre edición al habilitar PAG y permite completar la cédula de un usuario existente', async () => {
     api.getAdminUsers.mockResolvedValue({ users: [{ id: 'u1', email: 'pag@defensoria.gov.co', roles: ['user'], name: 'PAG' }] });
     await act(async () => root.render(<AdminUsuarios />));
-    await click(button('Habilitar PAG'));
+    await click(button('Acceso y permisos'));
+    await click(button('Configurar PAG'));
     expect(api.updateAdminUser).not.toHaveBeenCalled();
     await fill(input('Cédula PAG'), '123456');
     await fill(input('Regional PAG'), 'META');
@@ -130,6 +134,33 @@ describe('administración de PAG y actuaciones de prueba', () => {
     await fill(input('Regional PAG'), 'cu');
     expect(container.querySelector('[role="option"]').textContent).toBe('CUNDINAMARCA');
   });
+  it('crea un usuario de Consulta sin cédula ni regional PAG', async () => {
+    api.getPagRegionales.mockRejectedValueOnce(new Error('Catálogo no disponible'));
+    await act(async () => root.render(<AdminUsuarios />));
+    await fill(input('Correo'), 'consulta@defensoria.gov.co');
+    await click(input('Consulta'));
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(input('Cédula PAG')).toBeUndefined();
+    await click(button('Guardar usuario'));
+    expect(api.saveAdminUser).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'consulta@defensoria.gov.co', roles: ['user', 'consulta'], pagCedula: '', pagRegional: '',
+    }));
+  });
+  it('permite marcar y desmarcar Consulta en un usuario autorizado', async () => {
+    const user = { id: 'u1', email: 'consulta@defensoria.gov.co', roles: ['user'] };
+    api.getAdminUsers.mockResolvedValue({ users: [user] });
+    await act(async () => root.render(<AdminUsuarios />));
+    await click(button('Acceso y permisos'));
+    const checkbox = () => permissionSwitch('Consulta');
+    api.getAdminUsers.mockResolvedValue({ users: [{ ...user, roles: ['user', 'Aurora.Consulta'] }] });
+    await click(checkbox());
+    expect(api.updateAdminUser).toHaveBeenLastCalledWith('u1', { roles: ['user', 'consulta'] });
+    expect(checkbox().getAttribute('aria-checked')).toBe('true');
+    api.getAdminUsers.mockResolvedValue({ users: [user] });
+    await click(checkbox());
+    expect(api.updateAdminUser).toHaveBeenLastCalledWith('u1', { roles: ['user'] });
+    expect(checkbox().getAttribute('aria-checked')).toBe('false');
+  });
   it('permite crear un usuario DNDP sin cédula ni regional y sin depender del catálogo PAG', async () => {
     api.getPagRegionales.mockRejectedValueOnce(new Error('Catálogo no disponible'));
     await act(async () => root.render(<AdminUsuarios />));
@@ -157,7 +188,8 @@ describe('administración de PAG y actuaciones de prueba', () => {
     api.getAdminUsers.mockResolvedValue({ users: [{ id: 'u1', email: 'pag@defensoria.gov.co', roles: ['user'], name: 'PAG' }] });
     api.updateAdminUser.mockRejectedValueOnce(new Error('Cédula asociada a otro correo'));
     await act(async () => root.render(<AdminUsuarios />));
-    await click(button('Habilitar PAG'));
+    await click(button('Acceso y permisos'));
+    await click(button('Configurar PAG'));
     expect(input('Correo').value).toBe('pag@defensoria.gov.co');
     await fill(input('Cédula PAG'), '123456');
     await fill(input('Regional PAG'), 'META');
@@ -165,6 +197,28 @@ describe('administración de PAG y actuaciones de prueba', () => {
     expect(container.querySelector('[role="dialog"]').textContent).toContain('Cédula asociada a otro correo');
     expect(input('Cédula PAG').value).toBe('123456');
     expect(button('Guardar PAG').disabled).toBe(false);
+  });
+  it('mantiene el listado visible y abre el editor al pedir un nuevo usuario', async () => {
+    await act(async () => root.render(<AdminUsuarios />));
+    expect(container.querySelector('.admin-users-editor').hidden).toBe(true);
+    await click(button('Crear usuario'));
+    expect(container.querySelector('.admin-users-editor').hidden).toBe(false);
+    expect(document.activeElement).toBe(input('Correo'));
+  });
+  it('bloquea acciones repetidas mientras se guarda y conserva el diálogo ante un error', async () => {
+    const user = { id: 'u1', email: 'usuario@example.test', roles: ['user'] };
+    api.getAdminUsers.mockResolvedValue({ users: [user] });
+    let reject;
+    api.updateAdminUser.mockImplementation(() => new Promise((_resolve, fail) => { reject = fail; }));
+    await act(async () => root.render(<AdminUsuarios />));
+    await click(button('Acceso y permisos'));
+    await click(permissionSwitch('Acceso al aplicativo'));
+    expect(permissionSwitch('Acceso al aplicativo').disabled).toBe(true);
+    expect(button('Cerrar').disabled).toBe(true);
+    expect(api.updateAdminUser).toHaveBeenCalledOnce();
+    await act(async () => reject(new Error('No fue posible guardar')));
+    expect(container.querySelector('[role="dialog"] [role="alert"]').textContent).toContain('No fue posible guardar');
+    expect(permissionSwitch('Acceso al aplicativo').disabled).toBe(false);
   });
   it('conserva selección entre páginas y elimina solo los IDs elegidos sin retirar asignaciones', async () => {
     await act(async () => root.render(<AdminCargasBD />));

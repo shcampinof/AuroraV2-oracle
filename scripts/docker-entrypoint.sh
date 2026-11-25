@@ -5,6 +5,8 @@ AUTH_STORE_PATH="${AUTH_USER_STORE_PATH:-/app/backend/storage/auth/auth-users.js
 AUTH_STORE_DIR="$(dirname "$AUTH_STORE_PATH")"
 CARGAS_DIR="${AURORA_CARGAS_DIR:-/app/backend/storage/cargas_bd}"
 REPORTES_DIR="${AURORA_REPORTES_DIR:-/app/backend/storage/reportes}"
+FORMATOS_STORE_PATH="${AURORA_FORMATOS_STORE_PATH:-/app/backend/storage/formatos/catalogo.json}"
+FORMATOS_DIR="$(dirname "$FORMATOS_STORE_PATH")"
 
 resolve_backend_path() {
   case "$1" in
@@ -33,7 +35,7 @@ if [ -n "${HTTPS_KEY_PATH:-}" ] || [ -n "${HTTPS_CERT_PATH:-}" ]; then
   export HTTPS_KEY_PATH HTTPS_CERT_PATH
 fi
 
-mkdir -p "$AUTH_STORE_DIR" "$CARGAS_DIR" "$REPORTES_DIR"
-chown -R node:node "$AUTH_STORE_DIR" "$CARGAS_DIR" "$REPORTES_DIR"
+mkdir -p "$AUTH_STORE_DIR" "$CARGAS_DIR" "$REPORTES_DIR" "$FORMATOS_DIR"
+chown -R node:node "$AUTH_STORE_DIR" "$CARGAS_DIR" "$REPORTES_DIR" "$FORMATOS_DIR"
 
 exec gosu node "$@"

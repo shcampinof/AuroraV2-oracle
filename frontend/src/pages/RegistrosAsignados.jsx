@@ -23,6 +23,7 @@ import {
   getEstadoClassForRecord,
 } from '../config/estadoActuaciones.rules.ts';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
+import { isConsultaUser } from '../utils/assignmentAccess.js';
 
 function prettifyHeader(key) {
   if (!key) return '';
@@ -36,6 +37,11 @@ function prettifyHeader(key) {
 const EXTRA_COLUMNS = ['actuacionJudicial'];
 const PAGE_SIZE = 50;
 const INITIAL_FILTER_OPTIONS_QUERY = { tipo: 'all' };
+const INCLUSION_OPTIONS = [
+  { key: 'incluirSindicados', id: 'incluir-sindicados', label: 'Incluir sindicados' },
+  { key: 'incluirNoAsignados', id: 'incluir-no-asignados', label: 'Incluir usuarios no asignados' },
+  { key: 'incluirFueraPrision', id: 'incluir-fuera-prision', label: 'Incluir personas fuera de prisión' },
+];
 const PRIORIDADES_GESTION = [
   { value: 'verde', label: 'Verde (1 a 15 días)' },
   { value: 'amarillo', label: 'Amarillo (16 a 45 días)' },
@@ -336,7 +342,7 @@ function getColumnWidth(col) {
   return widths[col] || 145;
 }
 
-export default function RegistrosAsignados({ onSelectRegistro }) {
+export default function RegistrosAsignados({ onSelectRegistro, user }) {
   const [initialOptions] = useState(() =>
     normalizeFilterOptions(getCachedCondenadosFilterOptions(INITIAL_FILTER_OPTIONS_QUERY))
   );
@@ -363,6 +369,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     prioridadGestion: '',
     estadoCodigo: '',
     accionCodigo: '',
+    incluirSindicados: false,
+    incluirNoAsignados: false,
     incluirFueraPrision: false,
   });
   const [filtrosAplicados, setFiltrosAplicados] = useState({
@@ -378,6 +386,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     prioridadGestion: '',
     estadoCodigo: '',
     accionCodigo: '',
+    incluirSindicados: false,
+    incluirNoAsignados: false,
     incluirFueraPrision: false,
   });
   const [metaConsulta, setMetaConsulta] = useState(null);
@@ -679,13 +689,14 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       prioridadGestion: String(filtrosDraft.prioridadGestion || '').trim(),
       estadoCodigo: String(filtrosDraft.estadoCodigo || '').trim(),
       accionCodigo: String(filtrosDraft.accionCodigo || '').trim(),
+      incluirSindicados: filtrosDraft.incluirSindicados === true,
+      incluirNoAsignados: filtrosDraft.incluirNoAsignados === true,
       incluirFueraPrision: filtrosDraft.incluirFueraPrision === true,
+      misCasosAutorizados: isConsultaUser(user) && filtrosDraft.misCasosAutorizados === true,
     };
 
     setFiltrosDraft(next);
-    if (!Object.entries(next).some(([key, value]) =>
-      key === 'incluirFueraPrision' ? value === true : String(value || '').trim() !== ''
-    )) {
+    if (!Object.values(buildAssignedUsersFilters(next)).some((value) => value !== '')) {
       rowsRequestIdRef.current += 1;
       rowsRequestRef.current = null;
       setCargando(false);
@@ -727,6 +738,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       prioridadGestion: '',
       estadoCodigo: '',
       accionCodigo: '',
+      incluirSindicados: false,
+      incluirNoAsignados: false,
       incluirFueraPrision: false,
     };
     setFiltrosDraft(empty);
@@ -969,11 +982,11 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                 />
                 <DropdownField
                   label="Filtrar"
-                  description="Por nombre, lugar de privación, departamento o municipio."
+                  description="Por nombre de la persona privada de la libertad, lugar de privación, departamento o municipio."
                   value={filtroAdicionalSeleccionado}
                   onChange={seleccionarFiltroAdicional}
                   options={[
-                    { value: 'nombre', label: 'Nombre' },
+                    { value: 'nombre', label: 'Nombre persona privada de la libertad' },
                     { value: 'lugar', label: 'Nombre del lugar de privación de la libertad' },
                     { value: 'departamento', label: 'Departamento del lugar de privación de la libertad' },
                     { value: 'municipio', label: 'Distrito/municipio del lugar de privación de la libertad' },
@@ -984,10 +997,10 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                   <div className="asignados-extra-filter">
                     {filtroAdicionalSeleccionado === 'nombre' && (
                       <InputField
-                        label="Nombre"
+                        label="Nombre persona privada de la libertad"
                         value={filtrosDraft.nombre}
                         onChange={(value) => setFiltroDraft('nombre', value)}
-                        placeholder="Ingrese nombre"
+                        placeholder="Ingrese nombre de la persona privada de la libertad"
                       />
                     )}
 
@@ -1039,17 +1052,19 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                 <button className="primary-button" type="button" onClick={reiniciar}>
                   Limpiar
                 </button>
-                <label className="asignados-inactive-toggle" htmlFor="incluir-fuera-prision">
-                  <input
-                    id="incluir-fuera-prision"
-                    type="checkbox"
-                    checked={filtrosDraft.incluirFueraPrision}
-                    onChange={(event) => setFiltroDraft('incluirFueraPrision', event.target.checked)}
-                  />
-                  <span>
-                    Incluir personas fuera de prisión
-                  </span>
-                </label>
+                <div className="asignados-inclusion-options">
+                  {[...INCLUSION_OPTIONS, ...(isConsultaUser(user) ? [{ key: 'misCasosAutorizados', id: 'mis-casos-autorizados', label: 'Mis casos autorizados' }] : [])].map(({ key, id, label }) => (
+                    <label className="asignados-inactive-toggle" key={key} htmlFor={id}>
+                      <input
+                        id={id}
+                        type="checkbox"
+                        checked={Boolean(filtrosDraft[key])}
+                        onChange={(event) => setFiltroDraft(key, event.target.checked)}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
             </div>
           )}

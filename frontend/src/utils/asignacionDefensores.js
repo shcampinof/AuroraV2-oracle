@@ -5,6 +5,7 @@ export function buildAsignacionBackendFilters(currentTab, filtros) {
 
   return {
     documento: String(safe.documento || '').trim(),
+    nombre: String(safe.nombre || '').trim(),
     departamento: String(safe.departamento || '').trim(),
     municipio: String(safe.municipio || '').trim(),
     lugar: String(safe.lugar || '').trim(),

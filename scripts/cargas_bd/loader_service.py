@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pandas as pd
 import oracledb
+import sisipec_category_reviews
+import sisipec_regional_reviews
 
 
 BATCH_SIZE = int(os.getenv("CARGUEBD_BATCH_SIZE", "500"))
@@ -961,9 +963,22 @@ def apply_sisipec_bot_transitions(cursor, transitions, config):
 def call_etl(connection, cursor, config, df):
     print(f"[5/6] Ejecutando {config.procedure}...")
     try:
+        owner, _ = parse_qualified_object(config.qualified_table)
+        regional_transitions = (sisipec_regional_reviews.capture(cursor, df, owner)
+                                if config.key == "sisipec" else [])
+        transferred_people = {item["ID_PERSONA"] for item in regional_transitions}
+        category_transitions = (sisipec_category_reviews.capture(cursor, df, owner)
+                                if config.key == "sisipec" else [])
+        category_transitions = [item for item in category_transitions if item["ID_PERSONA"] not in transferred_people]
         transitions = capture_sisipec_bot_transitions(cursor, df, config)
+        # Un caso ya cerrado que cambia de categoría debe volver al mismo
+        # responsable, también cuando ese responsable es el equipo PPL.
+        reopened_people = {item["ID_PERSONA"] for item in category_transitions}
+        transitions = [item for item in transitions if item["ID_PERSONA"] not in reopened_people | transferred_people]
         cursor.callproc(config.procedure)
+        sisipec_regional_reviews.apply(cursor, regional_transitions, owner)
         apply_sisipec_bot_transitions(cursor, transitions, config)
+        sisipec_category_reviews.apply(cursor, category_transitions, owner)
         synchronize_sisipec_enfoques(cursor, df, config)
         connection.commit()
     except oracledb.Error as exc:

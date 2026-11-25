@@ -20,6 +20,7 @@ const { requireAuth } = require('./middleware/auth');
 const { closePool } = require('./db/oraclePool');
 const { repairRegistryOnStartup, shutdownCargaJobs } = require('./services/cargaBdService');
 const { startGeneralReportScheduler, stopGeneralReportScheduler } = require('./services/reporteGeneralService');
+const { startAnalysisReviewScheduler, stopAnalysisReviewScheduler } = require('./services/analysisReviewService');
 
 const app = express();
 const PORT = process.env.PORT || 7860;
@@ -186,6 +187,7 @@ const server = httpsOptions ? https.createServer(httpsOptions, app) : http.creat
 server.listen(PORT, '0.0.0.0', () => {
   const protocol = httpsOptions ? 'https' : 'http';
   console.log(`Servidor AURORA escuchando en ${protocol}://0.0.0.0:${PORT}`);
+  startAnalysisReviewScheduler();
   setImmediate(async () => {
     if (!enableStartupWarmup) {
       console.log('[warmup] Deshabilitado. Define ENABLE_STARTUP_WARMUP=true para activarlo.');
@@ -210,6 +212,7 @@ async function shutdown(signal) {
   try {
     shutdownCargaJobs(signal);
     stopGeneralReportScheduler();
+    await stopAnalysisReviewScheduler();
     await closePool();
   } catch (err) {
     console.error('[shutdown] Error cerrando pool Oracle:', err?.message || err);

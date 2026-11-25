@@ -28,6 +28,7 @@ services:
       AUTH_USER_ACCESS_MODE: ${AUTH_USER_ACCESS_MODE:-open}
       AUTH_BOOTSTRAP_ADMIN_EMAILS: ${AUTH_BOOTSTRAP_ADMIN_EMAILS:-}
       AUTH_USER_STORE_PATH: ${AUTH_USER_STORE_PATH:-/app/backend/storage/auth/auth-users.json}
+      AURORA_FORMATOS_STORE_PATH: ${AURORA_FORMATOS_STORE_PATH:-/app/backend/storage/formatos/catalogo.json}
       AUTH_USER_IMPORT_MAX_MB: ${AUTH_USER_IMPORT_MAX_MB:-2}
       AUTH_USER_IMPORT_MAX_ROWS: ${AUTH_USER_IMPORT_MAX_ROWS:-5000}
       AUTH_USER_SYNC_REQUIRED: ${AUTH_USER_SYNC_REQUIRED:-false}
@@ -74,8 +75,10 @@ services:
       - aurora_auth_users:/app/backend/storage/auth
       - aurora_cargas_bd:/app/backend/storage/cargas_bd
       - aurora_reportes:/app/backend/storage/reportes
+      - aurora_formatos:/app/backend/storage/formatos
 
 volumes:
   aurora_auth_users:
   aurora_cargas_bd:
   aurora_reportes:
+  aurora_formatos:

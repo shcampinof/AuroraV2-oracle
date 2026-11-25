@@ -1,5 +1,6 @@
 const { isLocalAdminEnabled, isManagedUserAccessEnabled, verifyAppToken } = require('../services/authService');
 const { findUser } = require('../services/userDirectoryService');
+const { enforceReadOnlyAccess } = require('./roles');
 
 function requireAuth(req, res, next) {
   const authHeader = String(req.headers.authorization || '');
@@ -66,7 +67,7 @@ function requireAuth(req, res, next) {
         roles: managedUser.roles,
       }
     : tokenUser;
-  return next();
+  return enforceReadOnlyAccess(req, res, next);
 }
 
 module.exports = {

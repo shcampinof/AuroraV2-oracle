@@ -80,6 +80,7 @@ describe('utilidades del PDF de atenciones', () => {
       resumen: {
         casosAnalizados: 12, entrevistasRealizadas: 8, solicitudesPresentadas: 4,
         reiteracionesPresentadas: 2, recursosPresentados: 1, casosCerrados: 6,
+        totalActuaciones: 14,
         personasAsignadas: 90, personasActivas: 29, personasActivasConGestion: 7,
         personasConCasoCerrado: 5, totalPersonasConCasosCerrados: 61,
       },
@@ -93,12 +94,11 @@ describe('utilidades del PDF de atenciones', () => {
       ['1.4. Número de reiteraciones presentadas', '2'],
       ['1.5. Número de recursos presentados', '1'],
       ['1.6. Número de casos cerrados durante el periodo', '6'],
-      ['1.7. Número total de actuaciones adelantadas en el periodo', '27'],
+      ['1.7. Número total de actuaciones adelantadas en el periodo', '14'],
       ['2.1. Número de personas asignadas al defensor público', '90'],
       ['2.2. Número de personas activas (asignadas que aún no se han cerrado)', '29'],
       ['2.3. Número de personas activas que reportan alguna gestión de atención jurídica durante el periodo', '7'],
       ['2.4. Número de personas a quienes se les cerró el caso durante el periodo', '5'],
-      ['2.6. Número total de personas con casos cerrados', '61'],
     ];
     let previous = -1;
     for (const [label, value] of originalRows) {
@@ -109,7 +109,8 @@ describe('utilidades del PDF de atenciones', () => {
     }
     expect(texts).toContain('2. Conteo total de personas con actuaciones durante el periodo');
     expect(texts).not.toContain('RESUMEN DEL REPORTE');
-    expect(texts.some(text => /^(1\.8\.|2\.5\.)/.test(text))).toBe(false);
+    expect(texts).not.toContain('2.6. Número total de personas con casos cerrados');
+    expect(texts.some(text => /^(1\.8\.|2\.5\.|2\.6\.)/.test(text))).toBe(false);
     expect(texts.some(text => text.startsWith('Detalle de cierres jurídicos'))).toBe(false);
   });
 });

@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node scripts/gestion-editability.test.js && node scripts/auth-config.test.js && node scripts/auth-session.test.js && node scripts/auth-modules.test.js && node scripts/http-config.test.js && node scripts/pag-access.test.js && node scripts/managed-pag.test.js && node scripts/user-csv-import.test.js && node scripts/carga-bd-service.test.js && node scripts/actuacion-cleanup-service.test.js && node scripts/asignacion-safety.test.js && node scripts/defensor-gestion.test.js && node scripts/fecha-insistencia.test.js && node scripts/mojibake-search.test.js && node scripts/text-normalization.test.js && node scripts/catalogos-homologacion.test.js && node scripts/homologation-audit.test.js && node scripts/condenados-filter-state.test.js && node scripts/assigned-users-contract.test.js && node scripts/oracle-consolidado-contract.test.js && node scripts/reporte-atenciones.test.js && node scripts/reporte-general.test.js",
+    "test": "node scripts/analysis-review.test.js && node scripts/aurora-case-closures.test.js && node scripts/gestion-editability.test.js && node scripts/auth-config.test.js && node scripts/auth-session.test.js && node scripts/auth-modules.test.js && node scripts/formatos.test.js && node scripts/http-config.test.js && node scripts/pag-access.test.js && node scripts/pag-regional-scope.test.js && node scripts/consulta-access.test.js && node scripts/managed-pag.test.js && node scripts/user-csv-import.test.js && node scripts/carga-bd-service.test.js && node scripts/actuacion-cleanup-service.test.js && node scripts/asignacion-safety.test.js && node scripts/defensor-gestion.test.js && node scripts/fecha-insistencia.test.js && node scripts/mojibake-search.test.js && node scripts/text-normalization.test.js && node scripts/catalogos-homologacion.test.js && node scripts/homologation-audit.test.js && node scripts/condenados-filter-state.test.js && node scripts/assigned-users-contract.test.js && node scripts/oracle-consolidado-contract.test.js && node scripts/reporte-atenciones.test.js && node scripts/reporte-general.test.js",
     "start": "node index.js",
     "start:prod": "node index.js",
     "dev": "nodemon index.js",
@@ -28,7 +28,11 @@
     "test:api": "node scripts/api-regression.js",
     "test:api:write": "node scripts/api-write-regression.js",
     "test:api:workflow": "node scripts/api-full-workflow-regression.js",
-    "test-db:setup": "node scripts/test-db/setup-test-db.js"
+    "test-db:setup": "node scripts/test-db/setup-test-db.js",
+    "test:oracle:case-lifecycle": "node scripts/oracle-case-lifecycle.integration.js",
+    "db:install-analysis-review": "node scripts/install-analysis-review.js",
+    "test:oracle:analysis-review": "node scripts/oracle-analysis-review.integration.js",
+    "test:oracle:empty-assignment": "node scripts/oracle-empty-assignment.integration.js"
   },
   "keywords": [],
   "author": "",

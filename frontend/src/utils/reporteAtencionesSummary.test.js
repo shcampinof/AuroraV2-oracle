@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { calculateTotalActuaciones, getReporteAtencionesScopeNote } from './reporteAtencionesSummary.js';
 
 describe('calculateTotalActuaciones', () => {
-  it('mantiene los casos cerrados fuera del total mostrado', () => {
+  it('usa las gestiones distintas del servidor aunque la suma de eventos sea mayor', () => {
     expect(calculateTotalActuaciones({
       casosAnalizados: 20,
       entrevistasRealizadas: 16,
@@ -11,12 +11,15 @@ describe('calculateTotalActuaciones', () => {
       reiteracionesPresentadas: 10,
       recursosPresentados: 8,
       casosCerrados: 22,
-      totalActuaciones: 66,
-    })).toBe(66);
+      totalActuaciones: 15,
+    })).toBe(15);
   });
 
   it('tolera valores numéricos serializados y campos ausentes', () => {
-    expect(calculateTotalActuaciones({ casosAnalizados: '3', casosCerrados: '2' })).toBe(3);
+    expect(calculateTotalActuaciones({ totalActuaciones: '3', casosAnalizados: 9, casosCerrados: '2' })).toBe(3);
+    expect(calculateTotalActuaciones({ totalActuaciones: 0, casosAnalizados: 9 })).toBe(0);
+    expect(calculateTotalActuaciones({ totalActuaciones: 'inválido' })).toBe(0);
+    expect(calculateTotalActuaciones()).toBe(0);
   });
 });
 

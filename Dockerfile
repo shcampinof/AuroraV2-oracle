@@ -11,6 +11,7 @@ COPY frontend/package*.json ./
 RUN npm ci
 
 COPY frontend/ ./
+COPY shared/ ../shared/
 RUN npm run build
 
 FROM node:${NODE_VERSION}-bookworm-slim AS production

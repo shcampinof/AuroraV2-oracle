@@ -128,6 +128,18 @@ function buildReportRegionalClause({ regional = '', lugar = '' } = {}, situacion
   };
 }
 
+// El corte es diario. La hora técnica de una fila histórica sin FECHA_CORTE
+// no debe desplazar una situación activa del mismo día. Un día posterior sí
+// conserva prioridad, incluso si su situación está inactiva.
+function buildSituacionOrderSql(alias) {
+  return `TRUNC(COALESCE(${alias}.FECHA_CORTE, CAST(${alias}.FECHA_REGISTRO AS DATE), ${alias}.FECHA_CAPTURA)) DESC NULLS LAST,
+            CASE WHEN NVL(${alias}.ACTIVO, 0) = 1 THEN 0 ELSE 1 END,
+            ${alias}.FECHA_REGISTRO DESC NULLS LAST,
+            ${alias}.FECHA_CAPTURA DESC NULLS LAST,
+            LENGTH(REGEXP_REPLACE(NVL(${alias}.PROCESO, ''), '[^0-9]', '')) DESC,
+            ${alias}.ID_SITUACION DESC`;
+}
+
 function buildActiveSituacionCte() {
   return `
     WITH ranked_situacion AS (
@@ -139,12 +151,7 @@ function buildActiveSituacionCte() {
         ROW_NUMBER() OVER (
           PARTITION BY s.ID_PERSONA
           ORDER BY
-            COALESCE(s.FECHA_CORTE, CAST(s.FECHA_REGISTRO AS DATE), s.FECHA_CAPTURA) DESC NULLS LAST,
-            CASE WHEN NVL(s.ACTIVO, 0) = 1 THEN 0 ELSE 1 END,
-            s.FECHA_REGISTRO DESC NULLS LAST,
-            s.FECHA_CAPTURA DESC NULLS LAST,
-            LENGTH(REGEXP_REPLACE(NVL(s.PROCESO, ''), '[^0-9]', '')) DESC,
-            s.ID_SITUACION DESC
+            ${buildSituacionOrderSql('s')}
         ) AS RN
       FROM DNDP.SITUACION_CARCELARIA s
     )
@@ -164,10 +171,7 @@ function buildStrictActiveSituacionCte() {
           ROW_NUMBER() OVER (
             PARTITION BY source_s.ID_PERSONA
             ORDER BY
-              COALESCE(source_s.FECHA_CORTE, CAST(source_s.FECHA_REGISTRO AS DATE), source_s.FECHA_CAPTURA) DESC NULLS LAST,
-              source_s.FECHA_REGISTRO DESC NULLS LAST,
-              source_s.FECHA_CAPTURA DESC NULLS LAST,
-              source_s.ID_SITUACION DESC
+              ${buildSituacionOrderSql('source_s')}
           ) AS RN
         FROM DNDP.SITUACION_CARCELARIA source_s
       ) s

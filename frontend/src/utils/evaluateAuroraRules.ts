@@ -1,5 +1,6 @@
 import auroraFormRules, {
   hasHistoricalBlock5ProgressAurora,
+  isCierreBloque3Aurora,
   type AuroraBlockId,
   type DerivedStatus,
   type FormRecord,
@@ -235,7 +236,7 @@ function evaluateVisibleBlocks(answers: FormRecord, locked: boolean, activeBlock
   // Regla: AURORA.B4.VISIBILIDAD.2
   // Para habilitar Bloque 4: obligatorios de Bloque 3 + al menos un "Si" entre Q30-Q34.
   if (
-    visible.includes('bloque3') &&
+    visible.includes('bloque3') && !isCierreBloque3Aurora(answers) &&
     areMandatoryFieldsFilled(answers, 'bloque3') &&
     (hasAtLeastOneSiBetween30And34(answers) || hasPositiveOtrasSolicitudesInP36(answers))
   ) {
@@ -249,7 +250,7 @@ function evaluateVisibleBlocks(answers: FormRecord, locked: boolean, activeBlock
   // Las cargas históricas pueden contener hitos reales de Bloque 5 aunque
   // falte un dato intermedio de Bloque 3 o 4. Si el análisis base está
   // completo, mostrar esos hitos para que no desaparezcan al consultar.
-  if (!locked && hasHistoricalBlock5ProgressAurora(answers)) {
+  if (!locked && !isCierreBloque3Aurora(answers) && hasHistoricalBlock5ProgressAurora(answers)) {
     if (!visible.includes('bloque4')) visible.push('bloque4');
     if (!visible.includes(activeBlock5)) visible.push(activeBlock5);
   }

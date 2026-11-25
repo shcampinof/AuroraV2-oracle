@@ -3,8 +3,9 @@ import { StrictMode, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import FormularioAtencion from './FormularioAtencion.jsx';
-import { getDefensoresCatalogo, getPplByDocumento, updatePpl } from '../services/api.js';
+import { createPplActuacion, getDefensoresCatalogo, getPplByDocumento, updatePpl } from '../services/api.js';
 import { buildFormAutosaveContext, readFormAutosaveDraft, writeFormAutosaveDraft } from '../utils/formAutosave.js';
+import automaticClosures from '../../../shared/aurora-case-closures.json';
 
 const fixture = vi.hoisted(() => ({ record: null }));
 
@@ -113,6 +114,69 @@ describe.each(['condenado', 'sindicado'])('autoguardado del formulario %s', (tip
     return readFormAutosaveDraft(localStorage, context);
   }
 
+  if (tipo === 'condenado') {
+    it.each([
+      ['Procedencia de libertad condicional', automaticClosures.libertad],
+      ['Procedencia de prisión domiciliaria de mitad de pena', automaticClosures.libertad],
+      ['Procedencia de prisión domiciliaria de mitad de pena', automaticClosures.traslado],
+    ])('muestra y autoguarda el cierre específico al seleccionar %s: %j', async (field, closure) => {
+      if (closure === automaticClosures.traslado) Object.assign(base, {
+        'Procedencia de libertad condicional': automaticClosures.traslado.respuesta,
+        'Procedencia de pena cumplida': 'No',
+        'Procedencia de acumulación de penas': 'No',
+        'Otras solicitudes a tramitar': 'Ninguna',
+      });
+      createPplActuacion.mockClear();
+      await mount();
+      const select = container.querySelector(`[name="${field}"]`);
+      expect(select).not.toBeNull();
+      await act(async () => {
+        select.value = closure.respuesta;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      expect(container.textContent).toContain(closure.motivo);
+      await advance(30000);
+      expect(updatePpl).toHaveBeenCalled();
+      expect(updatePpl.mock.calls.at(-1)[1].data[field]).toBe(closure.respuesta);
+      expect(createPplActuacion).not.toHaveBeenCalled();
+    });
+  }
+
+  if (tipo === 'sindicado') {
+    it('guarda como cierre la privación de libertad a órdenes de otro proceso en la pregunta 21', async () => {
+      const field = 'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS';
+      const option = 'No se avanzará con la revocatoria porque la persona está privada de la libertad a órdenes de otro proceso.';
+      Object.assign(base, {
+        'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'DEFENSORA',
+        'Fecha de análisis jurídico del caso': '2026-10-09',
+        [summaryKey]: 'La persona está detenida por otro proceso.',
+        [field]: 'Se avanzará con solicitud de revocatoria o sustitución de la medida',
+        'Fecha de entrevista': '2026-10-09',
+      });
+      await mount();
+      expect(container.querySelector('[name="Fecha de entrevista"]')).not.toBeNull();
+      const select = container.querySelector(`[name="${field}"]`);
+      expect([...select.options].map((item) => item.value)).toContain(option);
+      await act(async () => {
+        select.value = option;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      expect(container.querySelector('[name="Fecha de entrevista"]')).toBeNull();
+      expect(container.textContent).not.toContain('BLOQUE 5 (SINDICADOS)');
+      await advance(30000);
+      expect(updatePpl).toHaveBeenCalled();
+      expect(updatePpl.mock.calls.at(-1)[1].data).toMatchObject({
+        [field]: option,
+        'Actuación a adelantar': option,
+      });
+      await click('GUARDAR ENTREVISTA');
+      expect(updatePpl.mock.calls.at(-1)[1].data).toMatchObject({
+        [field]: option,
+        'Estado del caso': 'Cerrado',
+      });
+    });
+  }
+
   it('guardar una gestión histórica conserva su defensor aunque la asignación vigente sea de otro', async () => {
     Object.assign(base, {
       defensorGestion: 'DEFENSORA HISTORICA', defensorActivo: 'DEFENSOR ACTUAL',
@@ -134,6 +198,61 @@ describe.each(['condenado', 'sindicado'])('autoguardado del formulario %s', (tip
     expect(data.defensorGestion).toBe('DEFENSORA HISTORICA');
   });
 
+  it('Consulta visualiza el formulario persistido sin editar ni recuperar o enviar borradores', async () => {
+    base[summaryKey] = 'Análisis persistido';
+    const context = buildFormAutosaveContext({ subject: 'tester', documento: '123', gestionId: 17, actuacionId: 'actuacion-17' });
+    writeFormAutosaveDraft(localStorage, context, { [summaryKey]: 'Borrador sin guardar' }, Date.now());
+    await act(async () => root.render(<FormularioAtencion numeroInicial="123" user={{ roles: ['user', 'Aurora.Consulta', 'dndp'] }} />));
+    await click('Abrir actuación');
+    await advance(0);
+    const field = container.querySelector(`textarea[name="${summaryKey}"]`);
+    expect(field.value).toBe('Análisis persistido');
+    expect(field.matches(':disabled')).toBe(true);
+    const buttons = [...container.querySelectorAll('button')];
+    expect(buttons.find((item) => item.textContent === 'SOLO LECTURA').disabled).toBe(true);
+    expect(buttons.find((item) => item.textContent === 'GENERAR CONSOLIDADO (PDF)').disabled).toBe(false);
+    // Aun si se fuerza un evento DOM, el manejador y la cola impiden el cambio.
+    await edit(summaryKey, 'Intento de edición');
+    expect(field.value).toBe('Análisis persistido');
+    await advance(10000);
+    await act(async () => root.render(null));
+    expect(updatePpl).not.toHaveBeenCalled();
+    expect(createPplActuacion).not.toHaveBeenCalled();
+    expect(readFormAutosaveDraft(localStorage, context).data[summaryKey]).toBe('Borrador sin guardar');
+  });
+
+  it('Consulta con permiso del servidor edita y autoguarda conservando al defensor responsable', async () => {
+    Object.assign(base, { __consultaPuedeEditar: true, defensorActivo: 'DEFENSORA', defensorGestion: 'DEFENSORA',
+      'Defensor(a) Público(a) Asignado para tramitar la solicitud': 'DEFENSORA' });
+    await act(async () => root.render(<FormularioAtencion numeroInicial="123" user={{ roles: ['consulta'] }} />));
+    await click('Abrir actuación');
+    await advance(0);
+    const summary = container.querySelector(`textarea[name="${summaryKey}"]`);
+    expect(summary.matches(':disabled')).toBe(false);
+    expect(container.querySelector('[name="Defensor(a) Público(a) Asignado para tramitar la solicitud"]').disabled).toBe(true);
+    await edit(summaryKey, 'Análisis realizado por colaborador');
+    await advance(31000);
+    expect(updatePpl).toHaveBeenCalledWith('123', expect.objectContaining({
+      data: expect.objectContaining({ [summaryKey]: 'Análisis realizado por colaborador' }),
+    }));
+    expect(base.defensorActivo).toBe('DEFENSORA');
+  });
+
+  it('al revocar el permiso de Consulta bloquea el formulario y conserva el borrador sin reintentar', async () => {
+    base.__consultaPuedeEditar = true;
+    updatePpl.mockRejectedValue(Object.assign(new Error('Permiso retirado'), { code: 'CONSULTA_CASE_FORBIDDEN' }));
+    await act(async () => root.render(<FormularioAtencion numeroInicial="123" user={{ roles: ['consulta'] }} />));
+    await click('Abrir actuación');
+    await advance(0);
+    await edit(summaryKey, 'Borrador del colaborador');
+    await advance(31000);
+    expect(updatePpl).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(`textarea[name="${summaryKey}"]`).matches(':disabled')).toBe(true);
+    expect(draft().data[summaryKey]).toBe('Borrador del colaborador');
+    await advance(60000);
+    expect(updatePpl).toHaveBeenCalledTimes(1);
+  });
+
   it('la pregunta de cierre está al final del análisis y no altera la numeración', async () => {
     await mount();
     const closure = container.querySelector('[name="Cierre del caso por imposibilidad de avanzar (si aplica)"]');
@@ -143,6 +262,48 @@ describe.each(['condenado', 'sindicado'])('autoguardado del formulario %s', (tip
     expect(container.textContent).not.toContain('Antes de seleccionar una opción de cierre');
     expect(container.querySelector(`[name="${reasonKey}"]`)).toBeNull();
     expect(closure.closest('.form-field').querySelector('label').textContent).toBe(closureKey);
+  });
+
+  it('exige elegir la nueva fecha dentro de seis meses antes de guardar', async () => {
+    Object.assign(base, {
+      'Fecha de análisis jurídico del caso': '2026-08-31',
+      'Procedencia de libertad condicional': 'No cumple requisitos objetivos',
+      'Procedencia de prisión domiciliaria de mitad de pena': 'No aplica',
+      'Procedencia de pena cumplida': 'No',
+      'Procedencia de acumulación de penas': 'No',
+      'Otras solicitudes a tramitar': 'Ninguna',
+    });
+    await mount();
+    const field = container.querySelector('[name="Nueva fecha de análisis"]');
+    if (tipo === 'sindicado') {
+      expect(field).toBeNull();
+      return;
+    }
+    expect(field).not.toBeNull();
+    expect(field.disabled).toBe(false);
+    expect(field.required).toBe(true);
+    expect(field.value).toBe('');
+    expect(field.min).toBe('2026-10-09');
+    expect(field.max).toBe('2027-04-09');
+    await edit(summaryKey, 'Análisis sin procedencias');
+    await advance(30000);
+    expect(updatePpl).not.toHaveBeenCalled();
+    await click('GUARDAR ENTREVISTA');
+    expect(updatePpl).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Debe seleccionar la nueva fecha de análisis');
+    for (const invalid of ['2026-10-08', '2027-04-10']) {
+      await edit('Nueva fecha de análisis', invalid);
+      expect(field.checkValidity()).toBe(false);
+      await advance(30000);
+      await click('GUARDAR ENTREVISTA');
+      expect(updatePpl).not.toHaveBeenCalled();
+    }
+    await edit('Nueva fecha de análisis', '2027-01-15');
+    expect(field.checkValidity()).toBe(true);
+    await advance(30000);
+    expect(updatePpl).toHaveBeenCalled();
+    expect(updatePpl.mock.calls.at(-1)[1].data['Nueva fecha de análisis']).toBe('2027-01-15');
+    expect(container.textContent).toContain('se creará un nuevo caso de revisión asignado al mismo defensor');
   });
 
   it('exige una explicación propia solo para Otro motivo antes de cualquier guardado', async () => {

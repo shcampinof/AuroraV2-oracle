@@ -123,11 +123,12 @@ async function run() {
   assert.strictEqual(report.resumen.reiteracionesPresentadas, 2);
   assert.strictEqual(report.resumen.casosCerrados, 1, 'un caso cerrado no debe duplicarse por filas repetidas');
   assert.strictEqual(report.resumen.personasConCasoCerrado, 1);
-  assert.strictEqual(report.resumen.totalActuaciones, 6, 'los casos cerrados no hacen parte del total de actuaciones');
+  assert.strictEqual(report.resumen.totalActuaciones, 1, 'varios eventos de una gestión cuentan como una actuación; el cierre no se suma');
   assert.strictEqual(report.resumen.personasAsignadas, 2);
   assert.strictEqual(report.resumen.personasActivas, 1);
   assert.strictEqual(report.resumen.personasActivasConGestion, 0, 'las personas activas sin actuaciones no cuentan en el indicador de gestión del periodo');
-  assert.strictEqual(report.resumen.totalPersonasConCasosCerrados, 1);
+  assert(!Object.hasOwn(report.resumen, 'totalPersonasConCasosCerrados'), 'el indicador 2.6 se elimina del reporte');
+  assert(!Object.hasOwn(report.metadata, 'corteCierres'));
   assert.strictEqual(report.detalles.casosAnalizados[0].fecha, '2026-08-05');
   assert.deepStrictEqual(
     report.detalles.casosAsignados.map((item) => item.estado),
@@ -158,7 +159,6 @@ async function run() {
   assert.strictEqual(repeatedReport.resumen.personasAsignadas, 2, 'se cuentan personas, no filas de gestiones');
   assert.strictEqual(repeatedReport.resumen.personasActivas, 1);
   assert.strictEqual(repeatedReport.resumen.personasActivasConGestion, 0, 'tener una asignación activa no acredita gestión durante el periodo');
-  assert.strictEqual(repeatedReport.resumen.totalPersonasConCasosCerrados, 1);
   const otherPeriodReport = buildReport({
     fechaInicio: '2026-10-01',
     fechaFin: '2026-10-27',
@@ -166,14 +166,9 @@ async function run() {
     eventRows: [],
   });
   assert.strictEqual(otherPeriodReport.resumen.totalActuaciones, 0);
-  for (const key of ['personasActivas', 'totalPersonasConCasosCerrados']) {
+  for (const key of ['personasActivas']) {
     assert.strictEqual(otherPeriodReport.resumen[key], report.resumen[key], `${key} no depende del periodo ni de sus actuaciones`);
   }
-  assert.strictEqual(
-    otherPeriodReport.resumen.personasActivas + otherPeriodReport.resumen.totalPersonasConCasosCerrados,
-    otherPeriodReport.resumen.personasAsignadas,
-    'los totales globales dividen toda la carga actual en personas con caso activo o cerrado'
-  );
   const managedAssignments = [...assignedRows, { ID_PERSONA: 32, ESTADO: 'Analizar el caso', ACTIVO: 1 }];
   const managedReport = buildReport({
     assignedRows: managedAssignments,
@@ -192,6 +187,24 @@ async function run() {
   const transferredReport = buildReport({ eventRows: [rawEvent('analisis')], assignedRows: [] });
   assert.strictEqual(transferredReport.resumen.casosAnalizados, 1, 'la actuación se conserva sin asignación actual');
   assert.strictEqual(transferredReport.resumen.personasAsignadas, 0);
+
+  const distinctReport = buildReport({ eventRows: [
+    rawEvent('analisis'), rawEvent('entrevista'), rawEvent('solicitud'),
+    rawEvent('reiteracion'), rawEvent('reiteracion'), rawEvent('recurso'),
+    rawEvent('solicitud', { ID_GESTION: 11 }),
+    rawEvent('cierre', { ID_GESTION: 12 }),
+    rawEvent('cierre', { ID_GESTION: 13, ID_SITUACION: 21 }),
+    rawEvent('analisis', { ID_GESTION: null }),
+  ] });
+  assert.strictEqual(distinctReport.resumen.casosAnalizados, 2, 'COUNT(*) cuenta cada evento, incluso con gestión nula');
+  assert.strictEqual(distinctReport.resumen.entrevistasRealizadas, 1);
+  assert.strictEqual(distinctReport.resumen.solicitudesPresentadas, 2);
+  assert.strictEqual(distinctReport.resumen.reiteracionesPresentadas, 2);
+  assert.strictEqual(distinctReport.resumen.recursosPresentados, 1);
+  assert.strictEqual(distinctReport.resumen.totalActuaciones, 2, 'COUNT(DISTINCT id_gestion) excluye nulos y gestiones que solo tienen cierres');
+  assert.strictEqual(distinctReport.resumen.casosCerrados, 2, '1.6 cuenta situaciones distintas');
+  assert.strictEqual(distinctReport.resumen.personasConCasoCerrado, 1, '2.4 cuenta personas distintas, aunque tengan dos casos cerrados');
+  assert(!Object.hasOwn(distinctReport.resumen, 'totalPersonasConCasosCerrados'));
 
   const scopedOptions = attachCaseRegionales(consolidatedDefensorOptions, [
     { CEDULA: '7001', NOMBRE: 'NOMBRE ANTERIOR', REGIONAL_CASO: 'QUINDIO' },
@@ -219,7 +232,8 @@ async function run() {
     reporteRepo.listAssignedCases = async (params) => { calls.push(params); return []; };
     const filters = { defensorId: '7001', regional: 'CUNDINAMARCA', lugar: 'CPMS GIRARDOT', fechaInicio: '2026-10-01', fechaFin: '2026-10-27' };
     assert.deepStrictEqual((await getReportOptions()).establecimientos, ['CPMS GIRARDOT', 'CPMS ARMENIA'], 'el selector solo ofrece ERON homologados, nunca CDT');
-    await generateReport(filters);
+    const generatedReport = await generateReport(filters);
+    assert(!Object.hasOwn(generatedReport.resumen, 'totalPersonasConCasosCerrados'));
     assert.strictEqual(calls.length, 2);
     assert(calls.every((params) => params.regional === 'CUNDINAMARCA'), 'el filtro regional llega al histórico y a los totales globales');
     await assert.rejects(generateReport({ ...filters, regional: 'QUINDIO', lugar: '' }), /no tiene casos en esta regional/);

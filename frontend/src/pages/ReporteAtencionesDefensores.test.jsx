@@ -136,16 +136,17 @@ describe('alcance del reporte de gestión', () => {
     await fill('Defensoría Regional', 'CUNDINAMARCA');
     expect(names()).toEqual(['DEFENSOR PRUEBA']);
   });
-  it('mantiene los totales globales independientes del periodo', async () => {
+  it('mantiene el total de personas activas y omite el indicador retirado de casos cerrados', async () => {
     getReporteAtencionesDefensores.mockImplementation(async (filters) => ({
       metadata: { ...filters, defensor: 'DEFENSOR PRUEBA' },
       resumen: {
         casosAnalizados: filters.fechaInicio === '2025-01-01' ? 10 : 0,
         entrevistasRealizadas: 0, solicitudesPresentadas: 0, reiteracionesPresentadas: 0,
         recursosPresentados: 0, casosCerrados: 0,
+        totalActuaciones: filters.fechaInicio === '2025-01-01' ? 4 : 0,
         personasAsignadas: 319, personasActivas: 42,
         personasActivasConGestion: filters.fechaInicio === '2025-01-01' ? 30 : 2,
-        totalPersonasConCasosCerrados: 277,
+        totalPersonasConCasosCerrados: 339,
       },
     }));
     await fill('Fecha inicio', '2025-01-01');
@@ -155,14 +156,18 @@ describe('alcance del reporte de gestión', () => {
       const group = container.querySelector('[aria-label="Totales globales actuales"]');
       expect(group.textContent).not.toContain('Sin filtro de fechas');
       expect([...group.querySelectorAll('article')].map((card) => card.textContent)).toEqual([
-        'Total personas con caso activo42', 'Total personas con casos cerrados277',
+        'Total personas con caso activo42',
       ]);
       expect(group.textContent).not.toContain('Personas activas con gestión');
+      expect(container.textContent).not.toContain('Total personas con casos cerrados');
       expect(container.querySelector('.report-attentions-note')).toBeNull();
     };
     checkGlobalCards();
     expect(container.querySelector('.report-attentions-scope-note').textContent).toContain('asociados a la regional seleccionada');
     expect(container.querySelector('.report-attentions-period article strong').textContent).toBe('10');
+    const totalCard = () => [...container.querySelectorAll('.report-attentions-period article')]
+      .find(card => card.querySelector('span').textContent === 'Total actuaciones');
+    expect(totalCard().querySelector('strong').textContent).toBe('4');
     const managedCard = () => [...container.querySelectorAll('.report-attentions-period article')]
       .find(card => card.querySelector('span').textContent === 'Personas activas con gestión en el periodo');
     expect(managedCard().querySelector('strong').textContent).toBe('30');
@@ -171,6 +176,7 @@ describe('alcance del reporte de gestión', () => {
     await submit();
     checkGlobalCards();
     expect(container.querySelector('.report-attentions-period article strong').textContent).toBe('0');
+    expect(totalCard().querySelector('strong').textContent).toBe('0');
     expect(managedCard().querySelector('strong').textContent).toBe('2');
     await fill('Establecimiento', 'CPMS GIRARDOT');
     await submit();

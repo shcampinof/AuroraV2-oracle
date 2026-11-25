@@ -154,7 +154,6 @@ function buildDocument(pdf, report, logos) {
     ['2.2. Número de personas activas (asignadas que aún no se han cerrado)', report.resumen.personasActivas],
     ['2.3. Número de personas activas que reportan alguna gestión de atención jurídica durante el periodo', report.resumen.personasActivasConGestion],
     ['2.4. Número de personas a quienes se les cerró el caso durante el periodo', report.resumen.personasConCasoCerrado],
-    ['2.6. Número total de personas con casos cerrados', report.resumen.totalPersonasConCasosCerrados],
   ];
   summaryRows.forEach(([label, value], index) => {
     const heading = index === 0 || index === 8;

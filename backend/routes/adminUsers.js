@@ -12,6 +12,7 @@ const {
 const { analyzeUserCsv } = require('../services/userCsvImportService');
 const { prepareManagedPag } = require('../services/managedPagService');
 const pagRepo = require('../repositories/oracle/pagRepository');
+const consultaCases = require('../services/consultaCaseService');
 
 const router = express.Router();
 
@@ -89,6 +90,26 @@ function receiveCsv(req, res, next) {
 
 router.get('/', (_req, res) => {
   res.json({ users: listUsers() });
+});
+
+router.get('/consulta/cases', async (req, res, next) => {
+  try { return res.json(await consultaCases.searchCases(req.query)); }
+  catch (error) { return next(error); }
+});
+
+router.get('/:id/consulta-cases', async (req, res, next) => {
+  try { return res.json(await consultaCases.getPermissions(req.params.id)); }
+  catch (error) { return next(error); }
+});
+
+router.patch('/:id/consulta-cases', async (req, res, next) => {
+  try { return res.json(await consultaCases.changePermissions(req.params.id, req.body, req.user)); }
+  catch (error) { return next(error); }
+});
+
+router.use((error, _req, res, next) => {
+  if (!error.status) return next(error);
+  return res.status(error.status).json({ message: error.message, code: error.code });
 });
 
 router.get('/pag/regionales', async (_req, res) => {

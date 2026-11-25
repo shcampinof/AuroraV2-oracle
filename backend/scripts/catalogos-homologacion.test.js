@@ -127,14 +127,15 @@ function testFilterCatalogsRequireActivePrisonStatus() {
   const sql = buildStrictActiveSituacionCte();
   assert.match(sql, /WHERE\s+s\.RN\s*=\s*1\s+AND\s+NVL\(s\.ACTIVO,\s*0\)\s*=\s*1/i);
   assert.match(sql, /FROM\s+DNDP\.SITUACION_CARCELARIA\s+source_s/i);
-  assert.doesNotMatch(sql, /CASE\s+WHEN\s+NVL\(s\.ACTIVO/i);
+  assert.match(sql, /TRUNC\(COALESCE\(source_s\.FECHA_CORTE/);
+  assert.match(sql, /CASE WHEN NVL\(source_s\.ACTIVO, 0\) = 1 THEN 0 ELSE 1 END/);
 }
 
 function testCurrentSituationPrioritizesLatestCutoff() {
   const sql = buildActiveSituacionCte();
   assert.match(
     sql,
-    /ORDER BY\s+COALESCE\(s\.FECHA_CORTE, CAST\(s\.FECHA_REGISTRO AS DATE\), s\.FECHA_CAPTURA\) DESC NULLS LAST[\s\S]*CASE WHEN NVL\(s\.ACTIVO, 0\) = 1/i
+    /ORDER BY\s+TRUNC\(COALESCE\(s\.FECHA_CORTE, CAST\(s\.FECHA_REGISTRO AS DATE\), s\.FECHA_CAPTURA\)\) DESC NULLS LAST[\s\S]*CASE WHEN NVL\(s\.ACTIVO, 0\) = 1/i
   );
   assert.match(sql, /COUNT\(\*\) OVER \(PARTITION BY s\.ID_PERSONA\) AS TOTAL_SITUACIONES/i);
 }

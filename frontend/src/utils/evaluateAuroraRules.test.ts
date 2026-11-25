@@ -699,7 +699,7 @@ describe('evaluateAuroraRules - reglas Aurora', () => {
     const answers = {
       ...buildNegativeClosureBase(),
       [AURORA_FIELD_CATALOG.q30]: 'No aplica porque ya se concedió prisión domiciliaria',
-      [AURORA_FIELD_CATALOG.q31]: 'No aplica porque ya está en libertad por pena cumplida',
+      [AURORA_FIELD_CATALOG.q31]: 'No aplica porque ya se concedió prisión domiciliaria',
       [AURORA_FIELD_CATALOG.q32]: 'Sí cumple requisitos objetivos',
       [AURORA_FIELD_CATALOG.q33]: 'No',
       [AURORA_FIELD_CATALOG.q34]: 'No',

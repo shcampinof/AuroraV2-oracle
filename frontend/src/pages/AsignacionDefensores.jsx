@@ -17,7 +17,7 @@ import { getEstadoDisplayInfo } from '../config/estadoActuaciones.rules.ts';
 import { displayOrDash } from '../utils/pplDisplay.js';
 import { reportError } from '../utils/reportError.js';
 import { buildAsignacionBackendFilters } from '../utils/asignacionDefensores.js';
-import { hasAssignmentRole } from '../utils/assignmentAccess.js';
+import { hasAssignmentRole, isConsultaUser } from '../utils/assignmentAccess.js';
 import {
   isNombreDefensorValido,
   normalizeDefensorNombre,
@@ -66,20 +66,21 @@ function getAccionImpulsarDisplay(row) {
 const PAGE_SIZE = 50;
 const MAX_DEFENSOR_SUGGESTIONS = 80;
 
-const AsignacionRow = memo(function AsignacionRow({ row, selected, onToggle }) {
+const AsignacionRow = memo(function AsignacionRow({ row, selected, onToggle, soloConsulta }) {
   const doc = String(row.numeroIdentificacion);
+  const seleccionable = !soloConsulta && row.puedeAsignar !== false;
 
   return (
-    <tr className="clickable-row" onClick={() => onToggle(doc)}>
-      <td>
-        <input
+    <tr className={seleccionable ? 'clickable-row' : undefined} onClick={seleccionable ? () => onToggle(doc) : undefined}>
+      {!soloConsulta && <td>
+        {seleccionable ? <input
           type="checkbox"
           checked={selected}
           onClick={(e) => e.stopPropagation()}
           onChange={() => onToggle(doc)}
           aria-label={`Seleccionar ${doc}`}
-        />
-      </td>
+        /> : <span className="hint-text">Solo consulta</span>}
+      </td>}
       <td>{displayOrDash(row.situacionJuridica)}</td>
       <td>{displayOrDash(row.numeroIdentificacion)}</td>
       <td>{displayOrDash(row.nombreUsuario)}</td>
@@ -95,6 +96,7 @@ const AsignacionRow = memo(function AsignacionRow({ row, selected, onToggle }) {
 });
 
 function AsignacionDefensores({ tipo = 'condenado', user }) {
+  const soloConsulta = isConsultaUser(user);
   const esDndp = hasAssignmentRole(user, 'dndp');
   const tipoAsignacion = String(tipo || '').trim().toLowerCase() === 'sindicado' ? 'sindicado' : 'condenado';
   const esSindicado = tipoAsignacion === 'sindicado';
@@ -134,9 +136,11 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
   const [pagCedula, setPagCedula] = useState('');
   const [pagValidado, setPagValidado] = useState(null);
   const [validandoPag, setValidandoPag] = useState(false);
-  const accesoAsignacion = esDndp || Boolean(pagValidado?.cedula);
+  const accesoAsignacion = soloConsulta || esDndp || Boolean(pagValidado?.cedula);
+  const pagCedulaConsulta = !esSindicado && !soloConsulta && !esDndp ? pagValidado?.cedula : undefined;
 
   const [fDocumento, setFDocumento] = useState('');
+  const [fNombre, setFNombre] = useState('');
   const [fDepartamento, setFDepartamento] = useState('');
   const [fMunicipio, setFMunicipio] = useState('');
   const [fLugar, setFLugar] = useState('');
@@ -145,6 +149,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
   const [fDefensorActual, setFDefensorActual] = useState('');
   const [filtrosAplicados, setFiltrosAplicados] = useState({
     documento: '',
+    nombre: '',
     departamento: '',
     municipio: '',
     lugar: '',
@@ -164,6 +169,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
     try {
       const data = await getCondenados({
         tipo: tipoAsignacion,
+        pagCedula: pagCedulaConsulta,
         page: nextPage,
         pageSize: PAGE_SIZE,
         filters: buildAsignacionBackendFilters(currentTab, filtros),
@@ -182,7 +188,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
     } finally {
       setCargando(false);
     }
-  }, [tipoAsignacion]);
+  }, [tipoAsignacion, pagCedulaConsulta]);
 
   const cargarDefensoresActuales = useCallback(async () => {
     const normalizarLista = (catalogo) => {
@@ -231,13 +237,14 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
   }, [tipoAsignacion]);
 
   const cargarOpcionesFiltro = useCallback(async (filters = {}) => {
+    if (!esSindicado && !soloConsulta && !esDndp && !pagCedulaConsulta) return null;
     try {
-      return await getCondenadosFilterOptions({ tipo: tipoAsignacion, filters });
+      return await getCondenadosFilterOptions({ tipo: tipoAsignacion, pagCedula: pagCedulaConsulta, filters });
     } catch (e) {
       reportError(e, 'asignacion-defensores:cargar-opciones-filtro');
       return null;
     }
-  }, [tipoAsignacion]);
+  }, [tipoAsignacion, pagCedulaConsulta, esSindicado, soloConsulta, esDndp]);
 
   useEffect(() => {
     cargarDefensoresActuales();
@@ -438,18 +445,20 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
   }, [rowsPorDocumento, seleccionados, tab]);
 
   const toggleSeleccion = useCallback((doc) => {
+    if (rowsPorDocumento.get(doc)?.puedeAsignar === false) return;
     setSeleccionados((prev) => {
       const next = new Set(prev);
       if (next.has(doc)) next.delete(doc);
       else next.add(doc);
       return next;
     });
-  }, []);
+  }, [rowsPorDocumento]);
 
   async function aplicarFiltros() {
     const centroId = resolveCentroId(fLugar, centrosDisponibles);
     const nextFiltros = {
       documento: String(fDocumento || '').trim(),
+      nombre: fNombre.trim(),
       departamento: String(fDepartamento || '').trim(),
       municipio: String(fMunicipio || '').trim(),
       lugar: String(fLugar || '').trim(),
@@ -461,6 +470,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
 
     const hasUserFilter = [
       nextFiltros.documento,
+      nextFiltros.nombre,
       nextFiltros.departamento,
       nextFiltros.municipio,
       nextFiltros.lugar,
@@ -485,6 +495,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
   async function limpiarFiltros() {
     const emptyFiltros = {
       documento: '',
+      nombre: '',
       departamento: '',
       municipio: '',
       lugar: '',
@@ -494,6 +505,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
       defensorActual: '',
     };
     setFDocumento('');
+    setFNombre('');
     setFDepartamento('');
     setFMunicipio('');
     setFLugar('');
@@ -525,6 +537,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
       const pag = await validatePagCedula(cedula);
       setPagCedula(cedula);
       setPagValidado(pag || { cedula });
+      setSeleccionados(new Set());
       setRows([]);
       setMetaConsulta(null);
       setPagina(1);
@@ -540,6 +553,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
   }
 
   async function guardarAsignacion() {
+    if (soloConsulta) return;
     if (!accesoAsignacion) {
       setError('Debe validar la cedula del PAG antes de guardar.');
       return;
@@ -616,6 +630,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
   }
 
   async function eliminarAsignacionesSeleccionadas() {
+    if (soloConsulta) return;
     if (!accesoAsignacion) {
       setError('Debe validar la cedula del PAG antes de eliminar asignaciones.');
       return;
@@ -658,6 +673,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
   }
 
   async function guardarNuevoDefensor() {
+    if (soloConsulta) return;
     const cedula = normalizeDocumento(crearDefensorCedula);
     const nombre = normalizeDefensorNombre(crearDefensorNombre);
     setCrearDefensorSuccess('');
@@ -806,7 +822,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
           aria-pressed={tab === 'asignacion'}
           onClick={() => cambiarTab('asignacion')}
         >
-          Asignación
+          {soloConsulta ? 'Casos sin defensor' : 'Asignación'}
         </button>
         <button
           className={`primary-button aurora-tab ${tab === 'reasignacion' ? 'active' : ''}`}
@@ -814,8 +830,9 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
           aria-pressed={tab === 'reasignacion'}
           onClick={() => cambiarTab('reasignacion')}
         >
-          Reasignación
+          {soloConsulta ? 'Casos con defensor' : 'Reasignación'}
         </button>
+        {!soloConsulta && <>
         <button
           className={`primary-button aurora-tab ${tab === 'eliminarAsignaciones' ? 'active' : ''}`}
           type="button"
@@ -832,6 +849,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
         >
           Crear defensor
         </button>
+        </>}
       </div>
 
       {tab === 'crearDefensor' ? (
@@ -897,7 +915,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
         </div>
       ) : (
         <>
-      {esDndp ? <p className="hint-text" style={{ marginTop: '1rem' }}>Acceso DNDP: puede gestionar asignaciones sin registrar cédula ni regional PAG.</p> : (
+      {soloConsulta ? <p className="hint-text" role="status" style={{ marginTop: '1rem' }}>Rol Consulta: puede consultar los casos sin ingresar cédula PAG.</p> : esDndp ? <p className="hint-text" style={{ marginTop: '1rem' }}>Acceso DNDP: puede gestionar asignaciones sin registrar cédula ni regional PAG.</p> : (
       <div className="card" style={{ marginTop: '1rem' }}>
         <h3 className="block-title">Validacion de PAG</h3>
         <div className="grid-2">
@@ -928,6 +946,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
             {pagValidado?.cedula && (
               <p className="hint-text">
                 PAG validado: {pagValidado?.nombre || '-'} ({pagValidado.cedula})
+                {!esSindicado && ` · ${pagValidado.regional ? `Regional: ${pagValidado.regional}` : 'Sin regional definida: consulta de todas las regionales'}`}
               </p>
             )}
           </div>
@@ -942,6 +961,13 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
 
       {accesoAsignacion ? (
         <>
+      {!soloConsulta && !esDndp && !esSindicado && (
+        <p className="hint-text" role="status">
+          {String(pagValidado?.regional || '').trim()
+            ? 'En esta pantalla se muestran únicamente los casos de su regional. Para consultar todas las regionales, ingrese a Usuarios asignados.'
+            : 'No hay una regional definida para el PAG. Puede consultar casos de todas las regionales.'}
+        </p>
+      )}
       <div className="filter-panel" style={{ marginTop: '1rem' }}>
         <h3 className="filter-title">Filtros</h3>
 
@@ -1035,6 +1061,23 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
             />
           </div>
 
+          <div className="form-field">
+            <label htmlFor="pag-nombre-ppl">Nombre persona privada de la libertad</label>
+            <input
+              id="pag-nombre-ppl"
+              className="input-text"
+              placeholder="Ingrese nombre de la persona privada de la libertad"
+              value={fNombre}
+              onChange={(e) => setFNombre(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  aplicarFiltros();
+                }
+              }}
+            />
+          </div>
+
           {esSindicado ? (
             <div className="form-field">
               <label>Priorización</label>
@@ -1084,6 +1127,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
           filtrosAplicados.municipio ||
           filtrosAplicados.lugar ||
           filtrosAplicados.documento ||
+          filtrosAplicados.nombre ||
           filtrosAplicados.potencialSubrogado ||
           (esSindicado && filtrosAplicados.priorizacionSindicados) ||
           (tabGestionaAsignacionesExistentes && filtrosAplicados.defensorActual)) && (
@@ -1092,6 +1136,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
             {tabGestionaAsignacionesExistentes ? `${filtrosAplicados.defensorActual || '-'} / ` : ''}
             {filtrosAplicados.departamento || '-'} / {filtrosAplicados.municipio || '-'} /{' '}
             {filtrosAplicados.lugar || '-'} / {filtrosAplicados.documento || '-'} /{' '}
+            {filtrosAplicados.nombre || '-'} /{' '}
             {esSindicado
               ? filtrosAplicados.priorizacionSindicados === 'cumple_vencimiento_terminos'
                 ? 'Cumple vencimiento de términos (informativo)'
@@ -1109,7 +1154,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
         )}
       </div>
 
-      <div className="card" style={{ marginTop: '1rem' }}>
+      {!soloConsulta && <div className="card" style={{ marginTop: '1rem' }}>
         <h3 className="block-title">
           {tab === 'asignacion'
             ? 'Asignación de defensor'
@@ -1182,7 +1227,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
             </button>
           )}
         </div>
-      </div>
+      </div>}
 
       {busquedaRealizada && (
       <div className="pag-layout" style={{ marginTop: '1rem' }}>
@@ -1191,7 +1236,7 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
             <table className="data-table tabla-asignacion pag-table">
               <thead>
                 <tr>
-                  <th />
+                  {!soloConsulta && <th />}
                   <th>Situación jurídica</th>
                   <th>Número de identificación</th>
                   <th>Nombre usuario</th>
@@ -1213,13 +1258,14 @@ function AsignacionDefensores({ tipo = 'condenado', user }) {
                       row={r}
                       selected={seleccionados.has(doc)}
                       onToggle={toggleSeleccion}
+                      soloConsulta={soloConsulta}
                     />
                   );
                 })}
 
                 {!cargando && rowsFiltradas.length === 0 && (
                   <tr>
-                    <td colSpan={11} style={{ textAlign: 'center', padding: '1rem' }}>
+                    <td colSpan={soloConsulta ? 10 : 11} style={{ textAlign: 'center', padding: '1rem' }}>
                       No hay registros para mostrar.
                     </td>
                   </tr>

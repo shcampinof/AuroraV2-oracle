@@ -25,6 +25,13 @@ function normalizeCatalogText(value) {
     .toLowerCase();
 }
 
+export const ASSIGNED_USERS_BOOLEAN_FILTER_KEYS = Object.freeze([
+  'incluirSindicados',
+  'incluirNoAsignados',
+  'incluirFueraPrision',
+  'misCasosAutorizados',
+]);
+
 export const ASSIGNED_USERS_FILTER_KEYS = Object.freeze([
   'defensor',
   'defensorId',
@@ -38,7 +45,7 @@ export const ASSIGNED_USERS_FILTER_KEYS = Object.freeze([
   'prioridadGestion',
   'estadoCodigo',
   'accionCodigo',
-  'incluirFueraPrision',
+  ...ASSIGNED_USERS_BOOLEAN_FILTER_KEYS,
 ]);
 
 export function buildAssignedUsersFilters(filters) {
@@ -46,7 +53,7 @@ export function buildAssignedUsersFilters(filters) {
   return Object.fromEntries(
     ASSIGNED_USERS_FILTER_KEYS.map((key) => [
       key,
-      key === 'incluirFueraPrision'
+      ASSIGNED_USERS_BOOLEAN_FILTER_KEYS.includes(key)
         ? safe[key] === true || ['1', 'true', 'si', 'sí'].includes(String(safe[key] ?? '').trim().toLowerCase())
           ? '1'
           : ''

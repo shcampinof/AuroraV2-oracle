@@ -7,6 +7,7 @@ require('dotenv').config({
 
 const db = require('../db/oraclePool');
 const { getOracleSchema } = require('../config/oracle');
+const lifecycle = require('./sisipec-case-lifecycle');
 
 const PATCH_MARKER = 'AURORA_REASIGNACION_SISIPEC_V3';
 const V2_PATCH_MARKER = 'AURORA_REASIGNACION_SISIPEC_V2';
@@ -224,7 +225,7 @@ function replaceOnce(source, needle, replacement, label) {
   return source.slice(0, first) + replacement + source.slice(first + needle.length);
 }
 
-function transformSisipecProcedure(rawSource) {
+function transformLegacySisipecProcedure(rawSource) {
   let source = String(rawSource || '').replace(/\r\n?/g, '\n');
   assert(source.trim(), 'El procedimiento PRC_CARGA_SISIPEC no tiene codigo fuente visible.');
   if (source.includes(PATCH_MARKER)) return { source, changed: false };
@@ -349,6 +350,16 @@ async function readProcedureSource(owner) {
   return (result.rows || []).map((row) => String(row.TEXT || '')).join('');
 }
 
+function transformSisipecProcedure(rawSource) {
+  const source = String(rawSource || '').replace(/\r\n?/g, '\n');
+  if (source.includes(lifecycle.PATCH_MARKER) && source.includes('v_cambio_elegibilidad')) {
+    return { source, changed: false };
+  }
+  const prepared = lifecycle.removeDeferredRegionalTransition(source);
+  const legacy = transformLegacySisipecProcedure(prepared);
+  return { source: lifecycle.upgradeLifecycle(legacy.source), changed: true };
+}
+
 async function compileProcedure(source) {
   const ddl = /^\s*CREATE\s+OR\s+REPLACE\s+/i.test(source)
     ? source
@@ -416,7 +427,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  PATCH_MARKER,
+  PATCH_MARKER: lifecycle.PATCH_MARKER,
   run,
   transformSisipecProcedure,
 };

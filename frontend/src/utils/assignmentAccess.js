@@ -6,5 +6,9 @@ export function hasAssignmentRole(user, role) {
 }
 
 export function canAccessAssignments(user) {
-  return hasAssignmentRole(user, 'pag') || hasAssignmentRole(user, 'dndp');
+  return hasAssignmentRole(user, 'pag') || hasAssignmentRole(user, 'dndp') || isConsultaUser(user);
+}
+
+export function isConsultaUser(user) {
+  return hasAssignmentRole(user, 'consulta');
 }

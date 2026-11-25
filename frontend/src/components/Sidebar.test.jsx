@@ -19,7 +19,7 @@ describe('Sidebar - reporte general eliminado', () => {
     expect(markup).not.toContain('Reporte general de avance');
     expect(markup).toContain('Descargar reporte de atención');
   });
-  it.each(['pag', 'dndp', 'Aurora.DNDP'])('muestra la pestaña de asignación al rol %s', (role) => {
+  it.each(['pag', 'dndp', 'Aurora.DNDP', 'consulta', 'Aurora.Consulta'])('muestra la pestaña de asignación al rol %s', (role) => {
     expect(renderSidebar({ showPag: canAccessAssignments({ roles: [role] }) })).toContain('PAG - Asignación de casos');
   });
   it.each(['user', 'admin'])('conserva la restricción de asignación para %s sin PAG ni DNDP', (role) => {
